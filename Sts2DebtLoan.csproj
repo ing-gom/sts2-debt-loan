@@ -1,0 +1,28 @@
+<Project Sdk="Godot.NET.Sdk/4.5.1">
+    <Import Project="..\Sts2.ModKit\build\Sts2.ModKit.props" />
+
+    <PropertyGroup>
+        <RootNamespace>Sts2DebtLoan</RootNamespace>
+        <AssemblyName>Sts2DebtLoan</AssemblyName>
+    </PropertyGroup>
+
+    <!-- Compile the solo-verify self-test only in Debug; it is stripped from Release builds. -->
+    <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+        <DefineConstants>$(DefineConstants);DEBTLOAN_SELFTEST</DefineConstants>
+    </PropertyGroup>
+
+    <!-- Copy the resource pack (relic icon + localization) into the mod folder when present.
+         Generate it with the make-relic-sprite + build-pck skills; until then the Exists guard
+         skips the copy and the mod still loads as DLL-only. -->
+    <Target Name="CopyPckToModsFolder" AfterTargets="Sts2ModKit_CopyToModsFolder">
+        <Copy SourceFiles="$(MSBuildProjectDirectory)/pck_src/$(AssemblyName).pck"
+              DestinationFolder="$(Sts2ModOutputDir)"
+              Condition="Exists('$(MSBuildProjectDirectory)/pck_src/$(AssemblyName).pck')" />
+        <!-- Loose copy of the relic art for the shop repay button's icon. PreloadManager.Cache/GD.Load
+             don't reliably resolve mod-pck textures for a manually-built TextureButton, so the button
+             loads this loose PNG next to the DLL (Image.LoadFromFile) — the RelicForge pattern. -->
+        <Copy SourceFiles="$(MSBuildProjectDirectory)/pck_src/Sts2DebtLoan/icons/debt_loan_relic.png"
+              DestinationFiles="$(Sts2ModOutputDir)/repay_shop_icon.png"
+              Condition="Exists('$(MSBuildProjectDirectory)/pck_src/Sts2DebtLoan/icons/debt_loan_relic.png')" />
+    </Target>
+</Project>

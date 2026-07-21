@@ -1,0 +1,11 @@
+{
+  "id": "Sts2DebtLoan",
+  "name": "Merchant Loans (상점 대출)",
+  "author": "inggom",
+  "description": "Borrow gold at the Act 1 merchant to afford an item you can't quite pay for. Taking a loan grants a Debt relic; leave it unpaid and Debt curse cards start seeping into your deck (14th room: 1, 17th: 3, 20th: 5), each draining gold as interest. Repay the principal at any shop — or let interest hit 200% of the loan — to retire the relic and clear every Debt card.",
+  "version": "v0.1.0",
+  "has_pck": true,
+  "has_dll": true,
+  "dependencies": [],
+  "affects_gameplay": true
+}

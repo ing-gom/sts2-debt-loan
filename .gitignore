@@ -1,0 +1,14 @@
+# Build artifacts
+bin/
+obj/
+.godot/
+*.pck
+*.lscache
+*.user
+
+# solo-verify runtime outputs
+selftest.*
+
+# OS
+Thumbs.db
+.DS_Store
