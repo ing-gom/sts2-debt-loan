@@ -32,6 +32,7 @@ public class MainFile
             tree.CreateTimer(0.0).Timeout += RegisterConfig;
 #if DEBTLOAN_SELFTEST
             SoloTest.ArmIfRequested();   // dormant unless selftest.sp.flag is present (solo-verify)
+            CoopTest.ArmIfRequested();   // dormant unless selftest.coop.flag is present (coop-verify)
 #endif
         });
 

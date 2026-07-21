@@ -24,7 +24,7 @@ public sealed class DebtLoanRelic : RelicModel
     protected override string PackedIconOutlinePath => "res://Sts2DebtLoan/icons/debt_loan_relic_outline.png";
     protected override string BigIconPath => "res://Sts2DebtLoan/icons/debt_loan_relic.png";
 
-    private int _principal, _interestPaid, _roomsSinceLoan, _loanFloor;
+    private int _principal, _interestPaid, _loanFloor;
     private bool _active, _defaulted;
 
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
@@ -32,9 +32,6 @@ public sealed class DebtLoanRelic : RelicModel
 
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public int InterestPaid { get => _interestPaid; set { AssertMutable(); _interestPaid = value; } }
-
-    [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
-    public int RoomsSinceLoan { get => _roomsSinceLoan; set { AssertMutable(); _roomsSinceLoan = value; } }
 
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public int LoanFloor { get => _loanFloor; set { AssertMutable(); _loanFloor = value; } }

@@ -131,19 +131,20 @@ internal static class SoloTest
             await Task.Delay(300);
             var rec = LoanService.For(player);
             bool tA = LoanService.PlayerHasLedger(player) && rec != null && rec.Principal == 100 && rec.Active
-                      && LoanService.CurrentDebtCardCount(rec) == 1;
-            W($"  assert loan: ledger={LoanService.PlayerHasLedger(player)} P={rec?.Principal} active={rec?.Active} cards@0={(rec != null ? LoanService.CurrentDebtCardCount(rec) : -1)} -> {tA}");
+                      && LoanService.DebtCardCountFor(player) == 1;
+            W($"  assert loan: ledger={LoanService.PlayerHasLedger(player)} P={rec?.Principal} active={rec?.Active} cards@0={LoanService.DebtCardCountFor(player)} -> {tA}");
             all &= tA;
 
-            // B) Debt-card count schedule: 1 / 2 / 3 at rooms 0 / 10 / 20, capped at 3.
+            // B) Debt-card count schedule: 1 / 2 / 3 at rooms 0 / 10 / 20, capped at 3. Rooms are now COMPUTED
+            //    as TotalFloor − LoanFloor, so we simulate room progress by back-dating LoanFloor.
             Step("debt-card count schedule");
-            int cnt0 = LoanService.CurrentDebtCardCount(rec!);
-            for (int i = 0; i < 10; i++) await LoanService.OnRoomEntered(player);
-            int cnt10 = LoanService.CurrentDebtCardCount(LoanService.For(player)!);
-            for (int i = 0; i < 10; i++) await LoanService.OnRoomEntered(player);
-            int cnt20 = LoanService.CurrentDebtCardCount(LoanService.For(player)!);
-            for (int i = 0; i < 10; i++) await LoanService.OnRoomEntered(player);
-            int cnt30 = LoanService.CurrentDebtCardCount(LoanService.For(player)!);
+            int baseFloor = player.RunState.TotalFloor;
+            var recB = LoanService.For(player)!;
+            recB.LoanFloor = baseFloor;        int cnt0  = LoanService.DebtCardCountFor(player);   // rooms 0
+            recB.LoanFloor = baseFloor - 10;   int cnt10 = LoanService.DebtCardCountFor(player);   // rooms 10
+            recB.LoanFloor = baseFloor - 20;   int cnt20 = LoanService.DebtCardCountFor(player);   // rooms 20
+            recB.LoanFloor = baseFloor - 30;   int cnt30 = LoanService.DebtCardCountFor(player);   // rooms 30 (cap)
+            LoanService.SyncToRelic(player);         // persist LoanFloor=baseFloor-30 onto the relic for the C round-trip
             bool tB = cnt0 == 1 && cnt10 == 2 && cnt20 == 3 && cnt30 == 3;
             W($"  assert count: r0={cnt0}(1) r10={cnt10}(2) r20={cnt20}(3) r30={cnt30}(3 max) -> {tB}");
             all &= tB;
@@ -156,19 +157,23 @@ internal static class SoloTest
             var reloaded = RunState.FromSerializable(save);
             var rp = reloaded.Players.First();
             var rrelic = LoanService.LedgerRelicOf(rp);
-            bool tC = rrelic != null && rrelic.Principal == 100 && rrelic.RoomsSinceLoan == 30 && rrelic.Active;
+            bool tC = rrelic != null && rrelic.Principal == 100 && rrelic.LoanFloor == baseFloor - 30 && rrelic.Active;
             LoanService.RestoreFromRelic(rp);
             var rrec = LoanService.For(rp);
-            bool tC2 = rrec != null && rrec.Principal == 100 && rrec.RoomsSinceLoan == 30 && rrec.Active;
-            W($"  assert persist: relic P={rrelic?.Principal} rooms={rrelic?.RoomsSinceLoan} -> {tC}; restore P={rrec?.Principal} -> {tC2}");
+            // rooms-since-loan (30 → 3 cards) is re-derived from the restored LoanFloor, not stored.
+            bool tC2 = rrec != null && rrec.Principal == 100 && rrec.LoanFloor == baseFloor - 30 && rrec.Active
+                       && LoanService.DebtCardCountFor(rp) == 3;
+            W($"  assert persist: relic P={rrelic?.Principal} loanFloor={rrelic?.LoanFloor} -> {tC}; restore P={rrec?.Principal} cards={LoanService.DebtCardCountFor(rp)}(3) -> {tC2}");
             all &= tC && tC2;
 
             // D) Debt price surcharge at OTHER shops (rooms 30 = 3 cards → +20%); none at your own shop.
             Step("debt price surcharge");
             var rd = LoanService.For(player)!;
-            double sameMult = LoanService.DebtPriceMultiplier(player);           // same floor → 1.0
-            int df = rd.LoanFloor; rd.LoanFloor = df - 999;                       // pretend a different shop
-            double otherMult = LoanService.DebtPriceMultiplier(player);          // 3 cards → 1.20
+            int df = rd.LoanFloor;
+            rd.LoanFloor = player.RunState.TotalFloor;                            // same shop → rooms 0, no surcharge
+            double sameMult = LoanService.DebtPriceMultiplier(player);           // 1.0
+            rd.LoanFloor = player.RunState.TotalFloor - 30;                       // different shop, rooms 30 → 3 cards
+            double otherMult = LoanService.DebtPriceMultiplier(player);          // 1.20
             rd.LoanFloor = df;
             bool tD = Math.Abs(sameMult - 1.0) < 0.001 && Math.Abs(otherMult - 1.20) < 0.001;
             W($"  assert surcharge: sameShop={sameMult}(1.0) otherShop={otherMult}(1.2) -> {tD}");
@@ -177,9 +182,11 @@ internal static class SoloTest
             // E) Same-shop top-up rule.
             Step("same-shop top-up");
             if ((int)player.Gold > 0) await PlayerCmd.LoseGold((int)player.Gold, player, GoldLossType.Spent);
+            var re = LoanService.For(player)!;
+            re.LoanFloor = player.RunState.TotalFloor;   // undo B's room back-dating: we're back at the borrow shop
             var entryE = mkEntry();
             bool sameOk = LoanService.CanLoanCover(entryE, player);
-            var re = LoanService.For(player)!; int sf = re.LoanFloor; re.LoanFloor = sf - 999;
+            int sf = re.LoanFloor; re.LoanFloor = sf - 999;
             bool otherDenied = !LoanService.CanLoanCover(entryE, player);
             re.LoanFloor = sf;
             bool tE = sameOk && otherDenied;

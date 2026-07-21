@@ -23,10 +23,8 @@ internal sealed class LoanRecord
     /// <summary>Cumulative gold drained by Debt cards = interest paid.</summary>
     internal int InterestPaid;
 
-    /// <summary>Map rooms entered since the loan was taken (drives the per-combat Debt-card count).</summary>
-    internal int RoomsSinceLoan;
-
-    /// <summary>TotalFloor of the shop where the loan was taken. Top-ups are allowed only at THAT shop.</summary>
+    /// <summary>TotalFloor of the shop where the loan was taken. Top-ups are allowed only at THAT shop.
+    /// Rooms-since-loan (which drives the Debt-card count) is computed as TotalFloor − LoanFloor.</summary>
     internal int LoanFloor = -1;
 
     /// <summary>False once settled (repaid, or defaulted at 200%).</summary>
@@ -57,8 +55,15 @@ internal static class LoanService
     private static LoanRecord GetOrCreate(Player player)
         => Records.GetValue(player, _ => new LoanRecord());
 
-    /// <summary>Debt cards from ONE loan = the schedule's count for the current rooms-since-loan.</summary>
-    internal static int CurrentDebtCardCount(LoanRecord rec) => DebtLoanConfig.TargetDebtCards(rec.RoomsSinceLoan);
+    /// <summary>Debt cards from one player's loan = the schedule count for rooms-since-loan, COMPUTED as
+    /// TotalFloor − LoanFloor. Deriving it from shared game state (not a stored counter) makes it identical
+    /// on every co-op peer automatically — no per-room broadcast needed.</summary>
+    internal static int DebtCardCountFor(Player? p)
+    {
+        var rec = For(p);
+        if (rec == null || !rec.Active || p?.RunState == null) return 0;
+        return DebtLoanConfig.TargetDebtCards(p.RunState.TotalFloor - rec.LoanFloor);
+    }
 
     /// <summary>Total Debt cards injected per combat = the SUM of every player's active-loan count. In
     /// co-op this makes one player's debt spread into the partner's combats too, and stack if both borrow.</summary>
@@ -66,11 +71,7 @@ internal static class LoanService
     {
         if (run?.Players == null) return 0;
         int total = 0;
-        foreach (var p in run.Players)
-        {
-            var rec = For(p);
-            if (rec != null && rec.Active) total += CurrentDebtCardCount(rec);
-        }
+        foreach (var p in run.Players) total += DebtCardCountFor(p);
         return total;
     }
 
@@ -112,7 +113,7 @@ internal static class LoanService
 
     // ── Persistence (the relic carries [SavedProperty] fields; rebuilt on load) ─────────────────────
 
-    private static void SyncToRelic(Player player)
+    internal static void SyncToRelic(Player player)
     {
         var rec = For(player);
         var relic = LedgerRelicOf(player);
@@ -121,17 +122,16 @@ internal static class LoanService
         {
             relic.Principal = rec.Principal;
             relic.InterestPaid = rec.InterestPaid;
-            relic.RoomsSinceLoan = rec.RoomsSinceLoan;
             relic.LoanFloor = rec.LoanFloor;
             relic.Active = rec.Active;
             relic.Defaulted = rec.Defaulted;
-            LocInjectionPatch.SetLedgerDescription(BuildLedgerText(rec));
+            LocInjectionPatch.SetLedgerDescription(BuildLedgerText(player, rec));
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] relic sync failed: {e.Message}"); }
     }
 
     /// <summary>Live hover text for the Ledger relic.</summary>
-    private static string BuildLedgerText(LoanRecord rec)
+    private static string BuildLedgerText(Player player, LoanRecord rec)
     {
         if (rec.Defaulted)
             return "DEFAULTED — interest reached 200% of the loan. The ledger is frozen for the rest of the run; the merchant will not lend to you again.";
@@ -139,7 +139,8 @@ internal static class LoanService
             return "The debt is settled.";
 
         int owed = rec.Principal, interest = rec.InterestPaid, cap = rec.InterestCap;
-        int cards = CurrentDebtCardCount(rec), rooms = rec.RoomsSinceLoan;
+        int rooms = (player?.RunState?.TotalFloor ?? rec.LoanFloor) - rec.LoanFloor;
+        int cards = DebtCardCountFor(player);
         int nextRoom = DebtLoanConfig.NextThresholdRoom(rooms);
         string next = nextRoom < 0
             ? $"[b]{cards}[/b] Debt card(s) injected each combat (max)."
@@ -157,13 +158,12 @@ internal static class LoanService
         var rec = GetOrCreate(player);
         rec.Principal = relic.Principal;
         rec.InterestPaid = relic.InterestPaid;
-        rec.RoomsSinceLoan = relic.RoomsSinceLoan;
         rec.LoanFloor = relic.LoanFloor;
         rec.Active = relic.Active;
         rec.Defaulted = relic.Defaulted;
         rec.RelicGranted = true;
         if (rec.Defaulted) DebtLoanGrants.DisableRelic(relic);
-        MainFile.Logger.Info($"[{MainFile.ModId}] restored loan: principal {rec.Principal}, interest {rec.InterestPaid}, rooms {rec.RoomsSinceLoan}, active {rec.Active}, defaulted {rec.Defaulted}.");
+        MainFile.Logger.Info($"[{MainFile.ModId}] restored loan: principal {rec.Principal}, interest {rec.InterestPaid}, loanFloor {rec.LoanFloor}, active {rec.Active}, defaulted {rec.Defaulted}.");
     }
 
     // ── Eligibility ──────────────────────────────────────────────────────────
@@ -183,8 +183,10 @@ internal static class LoanService
     internal static bool CanLoanCover(MerchantEntry entry, Player player)
     {
         if (entry == null || player == null) return false;
-        // Co-op: loans are OFF (desync-safe) until the replication + coop-verify work lands.
-        if (!(RunManager.Instance?.IsSingleplayerOrFakeMultiplayer ?? true)) return false;
+        // Co-op: loans replicate via the networked dl_sync command (relic + record on both peers), and the
+        // gold rides the reward-sync. Only the LOCAL player may take a loan (others' shops are theirs).
+        bool sp = RunManager.Instance?.IsSingleplayerOrFakeMultiplayer ?? true;
+        if (!(sp || LocalContext.IsMe(player))) return false;
         if (!ActAllowsLoan(player)) return false;
 
         var rec = For(player);
@@ -213,7 +215,7 @@ internal static class LoanService
         var rec = For(player);
         if (rec == null || !rec.Active) return 1.0;
         if (player.RunState.TotalFloor == rec.LoanFloor) return 1.0;   // no surcharge at your own shop
-        int cards = CurrentDebtCardCount(rec);                          // 1/2/3
+        int cards = DebtCardCountFor(player);                           // 1/2/3
         return 1.0 + (5 + 5 * cards) / 100.0;                           // 10% / 15% / 20%
     }
 
@@ -222,7 +224,11 @@ internal static class LoanService
     internal static Task GrantLoanFor(MerchantEntry entry, Player player)
         => GrantLoanDirect(player, LoanAmountFor(entry, player));
 
-    /// <summary>Credit the loan gold, record the debt, and grant the Ledger relic on the first loan.</summary>
+    /// <summary>Credit the loan gold, record the debt, and grant the Ledger relic on the first loan. The
+    /// gold is a LOCAL mutation + reward-sync (so it shows on the partner too); the relic + loan record are
+    /// applied LOCALLY in SP, or dispatched to BOTH peers via the networked <c>dl_sync</c> command in co-op
+    /// (RelicCmd.Obtain is a local mutation — see <see cref="ApplyActiveLoan"/> — so running dl_sync on each
+    /// peer grants exactly one relic per peer, no doubling).</summary>
     internal static async Task GrantLoanDirect(Player player, int amount)
     {
         if (amount <= 0) return;
@@ -234,30 +240,34 @@ internal static class LoanService
         await PlayerCmd.GainGold(amount, player, false);
         run?.RewardSynchronizer?.SyncLocalObtainedGold(amount);
 
-        var rec = GetOrCreate(player);
-        rec.Principal += amount;
+        var existing = For(player);
+        int principal = (existing?.Principal ?? 0) + amount;
+        int interest  = existing?.InterestPaid ?? 0;
+        int loanFloor = (existing != null && existing.RelicGranted)
+                        ? existing.LoanFloor                   // top-up keeps the original shop floor
+                        : player.RunState.TotalFloor;          // first loan: rooms = TotalFloor − here (0 → 1 card)
 
-        if (!rec.RelicGranted)
-        {
-            rec.RelicGranted = true;
-            rec.RoomsSinceLoan = 0;                        // Debt count starts at 1 (schedule room 0)
-            rec.LoanFloor = player.RunState.TotalFloor;    // lock top-ups to this shop
-            if (!PlayerHasLedger(player))
-                await DebtLoanGrants.GrantRelic(player);
-        }
+        if (sp) await ApplyActiveLoan(player, principal, interest, loanFloor);
+        else    DebtLoanNet.BroadcastLoan(player, principal, interest, loanFloor);
 
-        SyncToRelic(player);
-        MainFile.Logger.Info($"[{MainFile.ModId}] loan +{amount}g (principal {rec.Principal}/{DebtLoanConfig.MaxLoan}, cap {rec.InterestCap}g).");
+        MainFile.Logger.Info($"[{MainFile.ModId}] loan +{amount}g (principal {principal}/{DebtLoanConfig.MaxLoan}).");
     }
 
-    /// <summary>A new map room was entered — advance the counter (raises the per-combat Debt-card count).</summary>
-    internal static Task OnRoomEntered(Player player)
+    /// <summary>Apply an ACTIVE loan state locally: set the record, grant the Ledger relic if the player
+    /// doesn't have it, and write the state through to the relic. Runs on EACH peer — directly in SP, or
+    /// once per peer via the networked <c>dl_sync</c> replay in co-op (idempotent: re-grants only if missing).</summary>
+    internal static async Task ApplyActiveLoan(Player player, int principal, int interestPaid, int loanFloor)
     {
-        var rec = For(player);
-        if (rec == null || !rec.RelicGranted || !rec.Active) return Task.CompletedTask;
-        rec.RoomsSinceLoan++;
+        var rec = GetOrCreate(player);
+        rec.Principal    = principal;
+        rec.InterestPaid = interestPaid;
+        rec.LoanFloor    = loanFloor;
+        rec.Active       = true;
+        rec.Defaulted    = false;
+        rec.RelicGranted = true;
+        if (!PlayerHasLedger(player))
+            await DebtLoanGrants.GrantRelic(player);
         SyncToRelic(player);
-        return Task.CompletedTask;
     }
 
     /// <summary>A Debt card drained gold — book it as interest and DEFAULT the loan at the 200% ceiling.</summary>
@@ -288,18 +298,21 @@ internal static class LoanService
         await PlayerCmd.LoseGold(rec.Principal, player, GoldLossType.Spent);
         run?.RewardSynchronizer?.SyncLocalGoldLost(rec.Principal);
         MainFile.Logger.Info($"[{MainFile.ModId}] repaid principal {rec.Principal}g — credit restored.");
-        await SettleByRepay(player, rec);
+
+        if (sp) await ApplyRepay(player);
+        else    DebtLoanNet.BroadcastRepay(player);
         return true;
     }
 
-    /// <summary>Repay settle: stop the Debt cards, REMOVE the relic, and clear the record so a fresh loan
-    /// can be taken at a future shop.</summary>
-    private static async Task SettleByRepay(Player player, LoanRecord rec)
+    /// <summary>Apply the repay settle locally: stop the Debt cards, REMOVE the relic, and clear the record
+    /// so a fresh loan can be taken at a future shop. Runs on EACH peer — directly in SP, or once per peer
+    /// via the networked <c>dl_sync repaid</c> replay in co-op (RelicCmd.Remove is a local mutation).</summary>
+    internal static async Task ApplyRepay(Player player)
     {
-        rec.Active = false;
-        SyncToRelic(player);                       // reflect "settled" for one frame
-        await DebtLoanGrants.RemoveRelic(player);   // clean slate — no inert relic left behind
-        ResetFor(player);                           // record gone → CanLoanCover treats next as a first loan
+        var rec = For(player);
+        if (rec != null) { rec.Active = false; SyncToRelic(player); }   // reflect "settled" for one frame
+        await DebtLoanGrants.RemoveRelic(player);                        // clean slate — no inert relic left behind
+        ResetFor(player);                                               // record gone → next loan is a fresh first loan
     }
 
     /// <summary>Default settle (200%): freeze the ledger for the rest of the run and DISABLE the relic
