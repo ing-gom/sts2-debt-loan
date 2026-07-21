@@ -37,14 +37,15 @@ internal static class DebtLoanConfig
     /// Act 2, 2 = through Act 3. Compared against <c>RunState.CurrentActIndex</c>.</summary>
     internal static int MaxLoanActIndex = 0;
 
-    // Debt-card schedule: (roomsSinceLoan, cardsInjectedPerCombat). Taking the loan injects 1 immediately
-    // (room 0); every 10 further rooms adds one, capped at 3. These cards are injected fresh into the draw
-    // pile at the START of each combat (temporary — they vanish at combat end), NOT added to the deck.
+    // Debt-curse ESCALATION tier by rooms-since-loan. Each tier UNLOCKS a new curse in the injected set (see
+    // LoanService.InjectAllDebtsForCombat): 1=빚 독촉(Dunning), 2=+연체(Delinquency), 3=+차압(Seizure),
+    // 4=+신용 불량(Bad Credit). Injected fresh into the draw pile each combat (temporary — gone at combat end).
     internal static readonly (int Room, int Cards)[] Schedule =
     {
         (0, 1),
         (10, 2),
         (20, 3),
+        (30, 4),
     };
 
     /// <summary>Target Debt-card count for a given rooms-since-loan count.</summary>

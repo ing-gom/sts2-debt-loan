@@ -146,18 +146,18 @@ internal static class SoloTest
             W($"  assert loan: ledger={LoanService.PlayerHasLedger(player)} borrowed={rec?.Borrowed} owed={rec?.Principal} active={rec?.Active} cards@0={LoanService.DebtCardCountFor(player)} -> {tA}");
             all &= tA;
 
-            // B) Debt-card count schedule: 1 / 2 / 3 at rooms 0 / 10 / 20, capped at 3. Rooms are now COMPUTED
-            //    as TotalFloor − LoanFloor, so we simulate room progress by back-dating LoanFloor.
-            Step("debt-card count schedule");
+            // B) Debt-curse TIER schedule: 1/2/3/4 at rooms 0/10/20/30 (each tier unlocks a new curse), capped
+            //    at 4. Rooms are COMPUTED as TotalFloor − LoanFloor, so we simulate progress by back-dating.
+            Step("debt-curse tier schedule");
             int baseFloor = player.RunState.TotalFloor;
             var recB = LoanService.For(player)!;
-            recB.LoanFloor = baseFloor;        int cnt0  = LoanService.DebtCardCountFor(player);   // rooms 0
-            recB.LoanFloor = baseFloor - 10;   int cnt10 = LoanService.DebtCardCountFor(player);   // rooms 10
-            recB.LoanFloor = baseFloor - 20;   int cnt20 = LoanService.DebtCardCountFor(player);   // rooms 20
-            recB.LoanFloor = baseFloor - 30;   int cnt30 = LoanService.DebtCardCountFor(player);   // rooms 30 (cap)
+            recB.LoanFloor = baseFloor;        int cnt0  = LoanService.DebtCardCountFor(player);   // rooms 0  → 1
+            recB.LoanFloor = baseFloor - 10;   int cnt10 = LoanService.DebtCardCountFor(player);   // rooms 10 → 2
+            recB.LoanFloor = baseFloor - 20;   int cnt20 = LoanService.DebtCardCountFor(player);   // rooms 20 → 3
+            recB.LoanFloor = baseFloor - 30;   int cnt30 = LoanService.DebtCardCountFor(player);   // rooms 30 → 4 (cap)
             LoanService.SyncToRelic(player);         // persist LoanFloor=baseFloor-30 onto the relic for the C round-trip
-            bool tB = cnt0 == 1 && cnt10 == 2 && cnt20 == 3 && cnt30 == 3;
-            W($"  assert count: r0={cnt0}(1) r10={cnt10}(2) r20={cnt20}(3) r30={cnt30}(3 max) -> {tB}");
+            bool tB = cnt0 == 1 && cnt10 == 2 && cnt20 == 3 && cnt30 == 4;
+            W($"  assert tier: r0={cnt0}(1) r10={cnt10}(2) r20={cnt20}(3) r30={cnt30}(4 max) -> {tB}");
             all &= tB;
             // Per-relic hover: DynamicDescription fills {borrowed}/{paid} from THIS relic's DynamicVars.
             try { W($"  ledger hover (per-relic): {LoanService.LedgerRelicOf(player)?.DynamicDescription.GetFormattedText()}"); }
@@ -172,10 +172,10 @@ internal static class SoloTest
             bool tC = rrelic != null && rrelic.Borrowed == 100 && rrelic.Principal == 100 && rrelic.LoanFloor == baseFloor - 30 && rrelic.Active;
             LoanService.RestoreFromRelic(rp);
             var rrec = LoanService.For(rp);
-            // rooms-since-loan (30 → 3 cards) is re-derived from the restored LoanFloor, not stored.
+            // rooms-since-loan (30 → tier 4) is re-derived from the restored LoanFloor, not stored.
             bool tC2 = rrec != null && rrec.Borrowed == 100 && rrec.Principal == 100 && rrec.LoanFloor == baseFloor - 30 && rrec.Active
-                       && LoanService.DebtCardCountFor(rp) == 3;
-            W($"  assert persist: relic borrowed={rrelic?.Borrowed} owed={rrelic?.Principal} loanFloor={rrelic?.LoanFloor} -> {tC}; restore owed={rrec?.Principal} cards={LoanService.DebtCardCountFor(rp)}(3) -> {tC2}");
+                       && LoanService.DebtCardCountFor(rp) == 4;
+            W($"  assert persist: relic borrowed={rrelic?.Borrowed} owed={rrelic?.Principal} loanFloor={rrelic?.LoanFloor} -> {tC}; restore owed={rrec?.Principal} cards={LoanService.DebtCardCountFor(rp)}(4) -> {tC2}");
             all &= tC && tC2;
 
             // D) Debt price surcharge at OTHER shops (rooms 30 = 3 cards → +20%); none at your own shop.
@@ -332,6 +332,28 @@ internal static class SoloTest
             try { int ht = 0; foreach (var _ in LoanService.LedgerRelicOf(player)!.HoverTips) ht++;
                   W($"  ledger hovertips: {ht} (incl. Debt card preview)"); }
             catch (Exception e) { W("  hovertips failed: " + e.Message); }
+
+            // L) 강제 징수 (Forced Collection) payload = ForceRepayPrincipal writes off principal DIRECTLY (no
+            //    interest split), counts toward paid, and settles the loan (Active=false) when principal hits 0.
+            //    Mirrors the L0..L3 collection amounts 5/10/30/80 the spiral applies over a fight.
+            Step("forced collection → principal writeoff + self-terminate");
+            LoanService.ResetFor(player);
+            await DebtLoanGrants.RemoveRelic(player);
+            await Task.Delay(120);
+            DebtLoanConfig.MaxLoan = 300;
+            await LoanService.GrantLoanDirect(player, 125);          // principal 125 = exactly 5+10+30+80
+            await Task.Delay(120);
+            var recL = LoanService.For(player)!;
+            int p0 = recL.Principal;                                  // 125
+            LoanService.ForceRepayPrincipal(player, 5);   int p1 = recL.Principal;   // L0 → 120
+            LoanService.ForceRepayPrincipal(player, 10);  int p2 = recL.Principal;   // L1 → 110
+            LoanService.ForceRepayPrincipal(player, 30);  int p3 = recL.Principal;   // L2 → 80
+            LoanService.ForceRepayPrincipal(player, 80);  int p4 = recL.Principal;   // L3 → 0 → settle
+            LoanService.ForceRepayPrincipal(player, 80);  int p5 = recL.Principal;   // already settled → no-op (stays 0)
+            bool settledL = !recL.Active && recL.TotalPaid == 125;
+            bool tL = p0 == 125 && p1 == 120 && p2 == 110 && p3 == 80 && p4 == 0 && p5 == 0 && settledL;
+            W($"  assert forced: 125→{p1}(120)→{p2}(110)→{p3}(80)→{p4}(0) paid={recL.TotalPaid}(125) active={recL.Active}(false) -> {tL}");
+            all &= tL;
 
             await Shot("2_final");
             W($"=== solo test done: {(all ? "ALL PASS" : "FAIL")} ===");

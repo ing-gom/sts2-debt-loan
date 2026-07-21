@@ -37,6 +37,11 @@ internal sealed class LoanRecord
     internal bool Active = true;
 
     internal bool RelicGranted;
+
+    /// <summary>PER-COMBAT transient: the 신용 불량 (Bad Credit) collection level 0..3. Reset to 0 at each
+    /// combat start (by the injector) and ratcheted up by BadCreditCard every turn it sits in hand. Not
+    /// persisted (it's a within-combat spiral, and it's deterministic from lockstep turn starts).</summary>
+    internal int CollectionLevel;
 }
 
 /// <summary>
@@ -101,6 +106,11 @@ internal static class LoanService
             }
             if (tier >= 2) { var c = combat.CreateCard<DelinquencyCard>(injectee); if (c != null) cards.Add(c); }
             if (tier >= 3) { var c = combat.CreateCard<SeizureCard>(injectee);     if (c != null) cards.Add(c); }
+            if (tier >= 4)
+            {
+                rec.CollectionLevel = 0;   // fresh spiral each combat; BadCredit ratchets it up per turn
+                var c = combat.CreateCard<BadCreditCard>(injectee); if (c != null) cards.Add(c);
+            }
         }
         if (cards.Count == 0) return;
 
@@ -227,8 +237,8 @@ internal static class LoanService
         var rec = For(player);
         if (rec == null || !rec.Active) return 1.0;
         if (player.RunState.TotalFloor == rec.LoanFloor) return 1.0;   // no surcharge at your own shop
-        int cards = DebtCardCountFor(player);                           // 1/2/3
-        return 1.0 + (5 + 5 * cards) / 100.0;                           // 10% / 15% / 20%
+        int tier = DebtCardCountFor(player);                            // 1..4
+        return 1.0 + Math.Min(20, 5 + 5 * tier) / 100.0;                // 10% / 15% / 20% (capped — tier 4 bites via HP)
     }
 
     // ── Actions ──────────────────────────────────────────────────────────────
@@ -298,6 +308,21 @@ internal static class LoanService
         rec.Principal = Math.Max(0, rec.Principal - principalCut);
         SyncToRelic(player);
         await Task.CompletedTask;
+    }
+
+    /// <summary>The 강제 징수 (Forced Collection) writes principal off DIRECTLY — no gold, it's paid in HP. So
+    /// the whole amount retires principal (all "principal", no interest split), counts toward TotalPaid, and
+    /// once principal hits 0 the loan is settled (record only — the relic drops at the next shop). Pure record
+    /// math off the lockstep turn-end, identical on both peers.</summary>
+    internal static void ForceRepayPrincipal(Player player, int amount)
+    {
+        var rec = For(player);
+        if (rec == null || !rec.Active || amount <= 0) return;
+        int cut = Math.Min(rec.Principal, amount);
+        rec.Principal = Math.Max(0, rec.Principal - cut);
+        rec.TotalPaid += cut;
+        if (rec.Principal <= 0) rec.Active = false;   // spiral self-terminates; relic removed at next shop
+        SyncToRelic(player);
     }
 
     /// <summary>Repay the outstanding principal at a shop → good credit: relic removed, borrow again later.</summary>

@@ -51,6 +51,12 @@ internal static class LocInjectionPatch
                 ["SEIZURE_CARD.title"] = s.SeiTitle,
                 ["SEIZURE_CARD.description"] = s.SeiDesc,
                 ["SEIZURE_CARD.smartDescription"] = s.SeiDesc,
+                ["BAD_CREDIT_CARD.title"] = s.BcTitle,
+                ["BAD_CREDIT_CARD.description"] = s.BcDesc,
+                ["BAD_CREDIT_CARD.smartDescription"] = s.BcDesc,
+                ["FORCED_COLLECTION_CARD.title"] = s.FcTitle,
+                ["FORCED_COLLECTION_CARD.description"] = s.FcDesc,
+                ["FORCED_COLLECTION_CARD.smartDescription"] = s.FcDesc,
             });
         }
         catch (Exception ex)

@@ -13,12 +13,13 @@ namespace Sts2DebtLoan;
 /// <summary>
 /// 빚 독촉 (Dunning) — the base Debt curse the loan seeps into combat. Unlike a plain unplayable curse, this
 /// gives the player AGENCY:
-///   • ON DRAW it collects 10 gold (20% toward principal, the rest interest) — the unavoidable collection tax.
-///   • It is ETHEREAL — if you don't play it, it exhausts at end of turn (you paid only the draw tax).
-///   • You may PLAY it (energy cost 1) to pay 20 more gold, split 50/50 principal/interest — VOLUNTARY faster
-///     repayment. But you can only play it if you actually have the gold (IsPlayable gates on gold).
+///   • It is ETHEREAL — if you leave it in hand, at END OF TURN it collects 10 gold (20% toward principal,
+///     the rest interest) and then vanishes. The turn-end effect fires BEFORE the Ethereal exhaust (confirmed
+///     against OnTurnEndInHandWrapper), so it's a clean "collect, then disappear".
+///   • You may instead PLAY it (energy cost 1) to pay 20 gold, split 50/50 principal/interest — VOLUNTARY
+///     faster repayment, and it's gone (Exhaust). You can only play it if you have the gold (IsPlayable gate).
 /// The UPGRADED form (빚 독촉+, injected once your lifetime borrowing exceeds the soft cap) hits harder:
-/// 15 on draw / 30 on play. Auto-registered; localization injected by LocInjectionPatch.
+/// 15 at turn end / 30 on play. Auto-registered; localization injected by LocInjectionPatch.
 /// </summary>
 public sealed class DebtCurseCard : CardModel
 {
@@ -33,11 +34,13 @@ public sealed class DebtCurseCard : CardModel
     // NOT Unplayable — the player may choose to play it (to repay faster).
     public override IEnumerable<CardKeyword> CanonicalKeywords => new[] { CardKeyword.Ethereal, CardKeyword.Exhaust };
 
-    private int DrawCost => IsUpgraded ? 15 : 10;
+    private int DrawCost => IsUpgraded ? 15 : 10;   // the passive turn-end collection ({draw} in loc)
     private int PlayCost => IsUpgraded ? 30 : 20;
 
     protected override IEnumerable<DynamicVar> CanonicalVars =>
         new[] { new DynamicVar("draw", DrawCost), new DynamicVar("play", PlayCost) };
+
+    public override bool HasTurnEndInHandEffect => true;
 
     public DebtCurseCard() : base(canonicalEnergyCost: 1, CardType.Curse, CardRarity.Curse, TargetType.None) { }
 
@@ -45,10 +48,11 @@ public sealed class DebtCurseCard : CardModel
     /// enough). Grayed out when broke (BlockedByCardLogic), like Grand Finale's draw-pile check.</summary>
     protected override bool IsPlayable => Owner != null && (int)Owner.Gold >= PlayCost;
 
-    /// <summary>The collection tax on DRAW: lose DrawCost gold (20% toward principal).</summary>
-    public override async Task AfterCardDrawn(PlayerChoiceContext choiceContext, CardModel card, bool fromHandDraw)
+    /// <summary>The passive collection: if it's still in hand at TURN END, lose DrawCost gold (20% toward
+    /// principal), then the Ethereal keyword exhausts it (collect → vanish).</summary>
+    protected override async Task OnTurnEndInHand(PlayerChoiceContext choiceContext)
     {
-        if (!ReferenceEquals(card, this) || Owner == null) return;
+        if (Owner == null) return;
         int drain = Mathf.Min(DrawCost, (int)Owner.Gold);
         if (drain <= 0) return;
         await PlayerCmd.LoseGold(drain, Owner);
