@@ -98,7 +98,12 @@ internal static class SoloTest
     {
         try
         {
-            var character = ModelDb.AllCharacters.First();
+            // ★ Use vanilla IRONCLAD explicitly, not AllCharacters.First(): in a heavy modded environment
+            // First() can resolve to a custom character whose run-start hangs — that (not this mod) is why
+            // the modded automated test stalled at 'starting single-player run'.
+            var character = ModelDb.AllCharacters.FirstOrDefault(c => c.Id.Entry == "IRONCLAD")
+                            ?? ModelDb.AllCharacters.First();
+            W($"picked character: {character.Id.Entry} (of {ModelDb.AllCharacters.Count()}; First()={ModelDb.AllCharacters.First().Id.Entry})");
             var acts = ActModel.GetDefaultList().ToList();
             await NGame.Instance.StartNewSingleplayerRun(character, shouldSave: false, acts,
                 Array.Empty<ModifierModel>(), "SOLOTEST", GameMode.Standard, 0);
