@@ -149,6 +149,10 @@ internal static class LoanService
     internal static bool CanLoanCover(MerchantEntry entry, Player player)
     {
         if (entry == null || player == null) return false;
+        // Co-op: loans are OFF (desync-safe). Activating them would replicate an unsynced relic grant
+        // (RelicCmd.Obtain needs SyncLocalObtainedRelic) + Debt-card injection/removal, which needs
+        // RewardSynchronizer wiring and a 2-instance coop-verify. Single-player only until that lands.
+        if (!(RunManager.Instance?.IsSingleplayerOrFakeMultiplayer ?? true)) return false;
         if (!ActAllowsLoan(player)) return false;
 
         int cost = entry.Cost;

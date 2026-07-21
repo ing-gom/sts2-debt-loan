@@ -119,6 +119,9 @@ Retire: 유물 비활성(Active=false) + 빚 카드 전부 RemoveFromDeck
 7. ✅ **[완료] 유물 아이콘** — gem 스프라이트 pck 빌드+인게임 렌더 확인.
 8. ✅ **[완료] 상환 버튼** — `NMerchantRepayButton` (RelicForge cleanse 패턴). UI 실측은 #2.
 9. **[정책] 이자 크기 기본값** — 고정 10. 원금 비례(5%) 원하면 변경.
-10. **[구현] co-op config 동기화** + coop-guard/coop-verify.
+10. ⚠️ **[SP 게이트] co-op** — coop-guard 결과 desync 위험(유물 지급 `SyncLocalObtainedRelic` 누락 +
+    빚카드 add/remove 복제 미확인). 안전을 위해 `CanLoanCover`에서 **co-op은 대출 OFF**로 게이트
+    (desync 원천 차단). 골드 경로는 이미 로컬+Sync로 안전. **완전 co-op 지원(future)** = 유물/카드
+    RewardSynchronizer 배선 + `coop-verify` 2-인스턴스 실측 필요.
 
 빌드: `dotnet build Sts2DebtLoan/Sts2DebtLoan.csproj -c Debug` → 게임 mods 폴더 자동 복사.
