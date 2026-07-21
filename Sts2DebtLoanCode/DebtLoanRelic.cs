@@ -19,7 +19,9 @@ namespace Sts2DebtLoan;
 /// </summary>
 public sealed class DebtLoanRelic : RelicModel
 {
-    public override RelicRarity Rarity => RelicRarity.Common;
+    // Event rarity = grant-only: the reward/shop pools only roll Common/Uncommon/Rare/Shop, so the
+    // Ledger never drops as a random reward — it can only be obtained by taking a loan (RelicCmd.Obtain).
+    public override RelicRarity Rarity => RelicRarity.Event;
 
     public override string PackedIconPath => "res://Sts2DebtLoan/icons/debt_loan_relic.png";
     protected override string PackedIconOutlinePath => "res://Sts2DebtLoan/icons/debt_loan_relic_outline.png";

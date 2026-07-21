@@ -32,9 +32,9 @@ internal static class CustomRelicRegistry
 /// (the relic UI relies on Pool) and so the <c>relic &lt;slug&gt;</c> console command can grant it
 /// for testing.
 ///
-/// TODO (grant-only): the Merchant's Ledger should be obtainable ONLY by taking a loan, never as a
-/// random relic reward. Registering it here makes it theoretically droppable. Before release, either
-/// exclude it from reward generation or give it a non-droppable rarity — see DESIGN.md.
+/// Grant-only: the Merchant's Ledger is <see cref="RelicRarity.Event"/>, which the reward/shop pools
+/// never roll (they pull Common/Uncommon/Rare/Shop only), so registering it here is safe — it gives the
+/// relic a valid Pool + makes the `relic &lt;slug&gt;` console command work without ever letting it drop.
 /// </summary>
 [HarmonyPatch(typeof(SharedRelicPool), "GenerateAllRelics")]
 internal static class SharedRelicPoolPatch
