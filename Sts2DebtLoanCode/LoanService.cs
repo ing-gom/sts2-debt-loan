@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Commands;
@@ -76,13 +77,26 @@ internal static class LoanService
     /// <summary>Inject <paramref name="count"/> temporary Debt cards into a player's combat draw pile.</summary>
     internal static async Task InjectDebtCardsForCombat(Player player, int count)
     {
+        var combat = player?.Creature?.CombatState;
+        if (combat == null) return;   // only inside a live combat
+
+        int made = 0;
         for (int i = 0; i < count; i++)
         {
-            var card = player.RunState.CreateCard<DebtCurseCard>(player);
-            if (card != null)
-                await CardPileCmd.AddGeneratedCardToCombat(card, PileType.Draw, (Player?)null, CardPilePosition.Random);
+            var card = combat.CreateCard<DebtCurseCard>(player);
+            if (card == null) continue;
+
+            // Show the card visibly flying INTO the draw pile using the game's native pile-to-pile shuffle
+            // VFX (NCardFlyShuffleVfx). Adding a generated card DIRECTLY to the draw pile is silent, and the
+            // "reveal" path (PreviewCardPileAdd / NCard.Create) trips a test-only engine guard for custom card
+            // types. So we drop the card into the discard pile (silent), then MOVE it to the draw pile — a
+            // pile→pile move that plays the fly-into-pile VFX WITHOUT building a card node (which is what
+            // throws). Net gameplay is unchanged: the Debt card ends up in the draw pile.
+            await CardPileCmd.AddGeneratedCardToCombat(card, PileType.Discard, player, CardPilePosition.Bottom);
+            await CardPileCmd.Add(card, PileType.Draw, CardPilePosition.Random);
+            made++;
         }
-        if (count > 0) MainFile.Logger.Info($"[{MainFile.ModId}] injected {count} Debt card(s) into a combat.");
+        if (made > 0) MainFile.Logger.Info($"[{MainFile.ModId}] injected {made} Debt card(s) into the draw pile.");
     }
 
     /// <summary>True if the player already carries the Merchant's Ledger relic.</summary>
