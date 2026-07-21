@@ -51,25 +51,9 @@ public sealed class DebtLoanRelic : RelicModel
     /// <summary>NRelic renders the amount badge only when this is true — show it while a loan is active.</summary>
     public override bool ShowCounter => _active;
 
-    /// <summary>At the start of each combat, inject the current Debt-card count into the draw pile. These
-    /// are combat-temporary (gone at combat end). Runs on both peers in co-op (combat setup is lockstep).</summary>
-    public override async Task BeforeCombatStart()
-    {
-        try
-        {
-            var rec = LoanService.For(Owner);
-            if (rec == null || !rec.Active) return;
-            int count = LoanService.CurrentDebtCardCount(rec);
-            for (int i = 0; i < count; i++)
-            {
-                var card = Owner.RunState.CreateCard<DebtCurseCard>(Owner);
-                if (card != null)
-                    await CardPileCmd.AddGeneratedCardToCombat(card, PileType.Draw, (Player?)null, CardPilePosition.Random);
-            }
-            if (count > 0) MainFile.Logger.Info($"[{MainFile.ModId}] injected {count} Debt card(s) at combat start.");
-        }
-        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] combat-start Debt injection failed: {e.Message}"); }
-    }
+    // Combat-start Debt-card injection now lives in CombatStartInjectPatch (a global Hook.BeforeCombatStart
+    // patch) so it can inject the RUN-WIDE total into EVERY player — in co-op one player's debt spreads to
+    // the partner's combats too. See LoanService.RunWideDebtTotal / InjectDebtCardsForCombat.
 
     internal static void RefreshDisplay(Player player) { /* badge/desc refresh handled by the setters + loc update */ }
 }

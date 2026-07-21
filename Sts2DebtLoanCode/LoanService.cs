@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
+using MegaCrit.Sts2.Core.Entities.Cards;      // PileType, CardPilePosition
 using MegaCrit.Sts2.Core.Entities.Gold;       // GoldLossType
 using MegaCrit.Sts2.Core.Entities.Merchant;   // MerchantEntry
 using MegaCrit.Sts2.Core.Entities.Players;
@@ -56,8 +57,34 @@ internal static class LoanService
     private static LoanRecord GetOrCreate(Player player)
         => Records.GetValue(player, _ => new LoanRecord());
 
-    /// <summary>Debt cards this combat = the schedule's count for the current rooms-since-loan.</summary>
+    /// <summary>Debt cards from ONE loan = the schedule's count for the current rooms-since-loan.</summary>
     internal static int CurrentDebtCardCount(LoanRecord rec) => DebtLoanConfig.TargetDebtCards(rec.RoomsSinceLoan);
+
+    /// <summary>Total Debt cards injected per combat = the SUM of every player's active-loan count. In
+    /// co-op this makes one player's debt spread into the partner's combats too, and stack if both borrow.</summary>
+    internal static int RunWideDebtTotal(IRunState run)
+    {
+        if (run?.Players == null) return 0;
+        int total = 0;
+        foreach (var p in run.Players)
+        {
+            var rec = For(p);
+            if (rec != null && rec.Active) total += CurrentDebtCardCount(rec);
+        }
+        return total;
+    }
+
+    /// <summary>Inject <paramref name="count"/> temporary Debt cards into a player's combat draw pile.</summary>
+    internal static async Task InjectDebtCardsForCombat(Player player, int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            var card = player.RunState.CreateCard<DebtCurseCard>(player);
+            if (card != null)
+                await CardPileCmd.AddGeneratedCardToCombat(card, PileType.Draw, (Player?)null, CardPilePosition.Random);
+        }
+        if (count > 0) MainFile.Logger.Info($"[{MainFile.ModId}] injected {count} Debt card(s) into a combat.");
+    }
 
     /// <summary>True if the player already carries the Merchant's Ledger relic.</summary>
     internal static bool PlayerHasLedger(Player player)
