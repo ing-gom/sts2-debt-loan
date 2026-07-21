@@ -306,6 +306,29 @@ internal static class SoloTest
             W($"  assert min-loan: cost={jCost} gold={(int)player.Gold} shortfall={jCost-(int)player.Gold} -> amount={jAmt}(100) -> {tJ}");
             all &= tJ;
 
+            // K) Over-soft-cap: borrowing past MaxLoan up to HardCap is allowed, and starts Debt cards at 2.
+            Step("over-cap → 2 cards");
+            DebtLoanConfig.MaxLoan = 300; DebtLoanConfig.OverCapAllowance = 100;   // soft 300 / hard 400
+            LoanService.ResetFor(player);
+            await DebtLoanGrants.RemoveRelic(player);
+            await Task.Delay(120);
+            await LoanService.GrantLoanDirect(player, 200);          // borrowed 200 (under soft cap)
+            await Task.Delay(120);
+            int roomUnder  = LoanService.RemainingRoom(player);      // 400-200 = 200
+            int cardsUnder = LoanService.DebtCardCountFor(player);   // rooms 0, under cap → 1
+            await LoanService.GrantLoanDirect(player, 120);          // → borrowed 320 (over soft, under hard)
+            await Task.Delay(120);
+            int borrowedK = LoanService.For(player)!.Borrowed;
+            int cardsOver = LoanService.DebtCardCountFor(player);    // over the soft cap → 2
+            int roomAfter = LoanService.RemainingRoom(player);       // 400-320 = 80
+            bool tK = roomUnder == 200 && cardsUnder == 1 && borrowedK == 320 && cardsOver == 2 && roomAfter == 80;
+            W($"  assert over-cap: room@200={roomUnder}(200) under={cardsUnder}(1) borrowed={borrowedK}(320) over={cardsOver}(2) roomAfter={roomAfter}(80) -> {tK}");
+            all &= tK;
+            // Tooltip: the relic's hover tips include the Debt-card preview (must not throw).
+            try { int ht = 0; foreach (var _ in LoanService.LedgerRelicOf(player)!.HoverTips) ht++;
+                  W($"  ledger hovertips: {ht} (incl. Debt card preview)"); }
+            catch (Exception e) { W("  hovertips failed: " + e.Message); }
+
             await Shot("2_final");
             W($"=== solo test done: {(all ? "ALL PASS" : "FAIL")} ===");
             Flush(all);

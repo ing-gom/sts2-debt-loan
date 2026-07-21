@@ -61,7 +61,9 @@ internal static class LoanService
     {
         var rec = For(p);
         if (rec == null || !rec.Active || rec.Principal <= 0 || p?.RunState == null) return 0;
-        return DebtLoanConfig.TargetDebtCards(p.RunState.TotalFloor - rec.LoanFloor);
+        int count = DebtLoanConfig.TargetDebtCards(p.RunState.TotalFloor - rec.LoanFloor);
+        if (rec.Borrowed > DebtLoanConfig.MaxLoan) count = Math.Min(3, count + 1);   // over the soft cap → start at 2
+        return count;
     }
 
     /// <summary>Total Debt cards injected per combat = the SUM of every player's active-loan count. In
@@ -171,7 +173,7 @@ internal static class LoanService
     {
         var rec = For(player);
         int used = rec?.Borrowed ?? 0;      // cap is on lifetime borrowed, not the amortized outstanding
-        return Math.Max(0, DebtLoanConfig.MaxLoan - used);
+        return Math.Max(0, DebtLoanConfig.HardCap - used);   // may overshoot the soft cap up to the hard cap
     }
 
     /// <summary>Can this merchant item be bought on loan now? First loan: any Act-1 shop. Top-up: only at

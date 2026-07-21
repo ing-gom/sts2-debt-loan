@@ -15,6 +15,15 @@ internal static class DebtLoanConfig
     /// amount and keep the change. Spec: 100.</summary>
     internal static int MinLoan = 100;
 
+    /// <summary>How much you may borrow BEYOND <see cref="MaxLoan"/> (the soft cap) to afford a purchase.
+    /// Total borrowing is allowed up to MaxLoan + this (the hard cap), but once your lifetime borrowed
+    /// exceeds the soft cap the per-combat Debt-card count starts one higher (2 instead of 1). Spec: 100
+    /// (so 300 soft / 400 hard).</summary>
+    internal static int OverCapAllowance = 100;
+
+    /// <summary>Absolute hard cap on lifetime borrowing = soft cap + over-cap allowance.</summary>
+    internal static int HardCap => MaxLoan + OverCapAllowance;
+
     /// <summary>Gold each Debt card drains when it triggers = the interest rate.
     /// Spec default matches the vanilla Debt curse (10). Config-adjustable.</summary>
     internal static int InterestPerDraw = 10;

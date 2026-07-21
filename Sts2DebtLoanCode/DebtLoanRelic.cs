@@ -1,9 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Commands;                // RelicCmd, CardPileCmd
 using MegaCrit.Sts2.Core.Entities.Cards;          // PileType, CardPilePosition
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Relics;         // RelicRarity
+using MegaCrit.Sts2.Core.HoverTips;               // HoverTipFactory, IHoverTip (Debt-card preview in tooltip)
 using MegaCrit.Sts2.Core.Localization.DynamicVars; // DynamicVar (per-relic hover values)
 using MegaCrit.Sts2.Core.Models;                  // RelicModel, ModelDb
 using MegaCrit.Sts2.Core.Saves.Runs;              // SavedProperty, SerializationCondition
@@ -54,8 +56,14 @@ public sealed class DebtLoanRelic : RelicModel
     // Paid [gold]{paid} Gold[/gold]…", and these DynamicVars fill {borrowed}/{paid} from THIS relic's own
     // state. RelicModel.DynamicDescription applies DynamicVars per-instance, so two players' Ledgers each show
     // their own numbers — unlike the old global loc-table overwrite (which was a co-op display bug).
-    protected override System.Collections.Generic.IEnumerable<DynamicVar> CanonicalVars =>
+    protected override IEnumerable<DynamicVar> CanonicalVars =>
         new[] { new DynamicVar("borrowed", _borrowed), new DynamicVar("paid", _totalPaid), new DynamicVar("cards", _cards) };
+
+    /// <summary>Show a preview of the Debt curse card (plus its keyword tips) in the relic's hover tooltip
+    /// — the same mechanism vanilla Soot uses. So hovering the Ledger reveals exactly what the injected
+    /// Debt cards look like.</summary>
+    protected override IEnumerable<IHoverTip> ExtraHoverTips =>
+        HoverTipFactory.FromCardWithCardHoverTips<DebtCurseCard>();
 
     /// <summary>Push the current borrowed/paid values + per-combat Debt-card count into the cached DynamicVars
     /// so the hover shows live, per-relic numbers. Called by LoanService.SyncToRelic on every state change
