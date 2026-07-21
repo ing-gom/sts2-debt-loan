@@ -238,6 +238,32 @@ internal static class SoloTest
             W($"  assert default: active={rh?.Active} defaulted={rh?.Defaulted} relicKept={(hRelic != null)} status={hRelic?.Status} lockedOut={lockedOut} -> {tH}");
             all &= tH;
 
+            // I) Combat-start injection: a fresh loan (count 1) → entering a Monster room fires
+            //    BeforeCombatStart, which must put the Debt card(s) into the combat piles.
+            Step("combat-start injection");
+            LoanService.ResetFor(player);
+            await DebtLoanGrants.RemoveRelic(player);
+            await Task.Delay(150);
+            await LoanService.GrantLoanDirect(player, 60);          // count 1 at rooms 0
+            await Task.Delay(150);
+            bool tI = false;
+            if (Engine.GetMainLoop() is SceneTree)
+            {
+                await RunManager.Instance.EnterRoomDebug(RoomType.Monster);
+                await Task.Delay(4000);                            // combat setup + BeforeCombatStart
+                int debtInCombat = 0;
+                foreach (var pt in new[] { PileType.Draw, PileType.Hand, PileType.Discard })
+                {
+                    var pile = pt.GetPile(player);
+                    if (pile != null) debtInCombat += pile.Cards.Count(c => c is DebtCurseCard);
+                }
+                bool inCombat = MegaCrit.Sts2.Core.Combat.CombatManager.Instance?.IsInProgress ?? false;
+                tI = inCombat && debtInCombat >= 1;
+                W($"  assert combat inject: inCombat={inCombat} debtCardsInCombat={debtInCombat}(>=1) -> {tI}");
+                await Shot("4_combat");
+            }
+            all &= tI;
+
             await Shot("2_final");
             W($"=== solo test done: {(all ? "ALL PASS" : "FAIL")} ===");
             Flush(all);
