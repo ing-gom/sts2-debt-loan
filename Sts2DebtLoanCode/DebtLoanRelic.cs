@@ -62,6 +62,11 @@ public sealed class DebtLoanRelic : RelicModel
     /// (hidden at the top tier, so it reads as "—" rather than a stuck 0).</summary>
     public override bool ShowCounter => _active && DisplayAmount > 0;
 
+    /// <summary>Current escalation tier 1..4 (0 = no active loan) computed live from the floor — drives the
+    /// evolving-ledger overlay (LedgerOverlay). Same live source as the badge.</summary>
+    internal int CurrentTier
+        => (_active && Owner?.RunState != null) ? DebtLoanConfig.TargetDebtCards(Owner.RunState.TotalFloor - _loanFloor) : 0;
+
     // Per-relic dynamic hover: the loc description is the static template "Borrowed [gold]{borrowed} Gold[/gold]…
     // Paid [gold]{paid} Gold[/gold]…", and these DynamicVars fill {borrowed}/{paid} from THIS relic's own
     // state. RelicModel.DynamicDescription applies DynamicVars per-instance, so two players' Ledgers each show
