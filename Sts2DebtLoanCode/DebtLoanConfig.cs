@@ -58,4 +58,13 @@ internal static class DebtLoanConfig
             if (roomsSinceLoan >= room) target = cards;
         return target;
     }
+
+    /// <summary>Rooms remaining until the NEXT escalation tier — the relic badge countdown ("N rooms until it
+    /// gets worse"). Returns 0 once you're already at the top tier (badge hidden / "—").</summary>
+    internal static int RoomsUntilNextTier(int roomsSinceLoan)
+    {
+        foreach (var (room, _) in Schedule)
+            if (roomsSinceLoan < room) return room - roomsSinceLoan;
+        return 0;   // past the last threshold → max tier, no further escalation
+    }
 }

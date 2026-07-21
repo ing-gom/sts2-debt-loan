@@ -184,6 +184,16 @@ internal static class LoanService
         MainFile.Logger.Info($"[{MainFile.ModId}] restored loan: borrowed {rec.Borrowed}, owed {rec.Principal}, paid {rec.TotalPaid}, loanFloor {rec.LoanFloor}, active {rec.Active}.");
     }
 
+    /// <summary>Display-only: push the current tier count into the relic's DynamicVars so the hover's per-tier
+    /// text keeps pace (the badge is already computed live). No networked/SavedProperty mutation → safe to run
+    /// per-client (e.g. at combat start). Also self-heals via SyncToRelic whenever a Debt card drains gold.</summary>
+    internal static void RefreshRelicDisplay(Player? player)
+    {
+        if (player == null) return;
+        var relic = LedgerRelicOf(player);
+        if (relic != null) relic.RefreshVars(DebtCardCountFor(player));
+    }
+
     // ── Eligibility ──────────────────────────────────────────────────────────
 
     private static bool ActAllowsLoan(Player player)

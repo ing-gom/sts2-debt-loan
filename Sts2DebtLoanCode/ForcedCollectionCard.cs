@@ -29,6 +29,10 @@ public sealed class ForcedCollectionCard : CardModel
 
     public override int MaxUpgradeLevel => 0;
     public override IEnumerable<CardKeyword> CanonicalKeywords => new[] { CardKeyword.Unplayable };
+
+    // Custom curse art from the mod pck.
+    public override string PortraitPath => "res://Sts2DebtLoan/card_art/forced_levy.png";
+    public override string BetaPortraitPath => PortraitPath;
     public override bool HasTurnEndInHandEffect => true;
 
     private int _level;

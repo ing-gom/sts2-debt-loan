@@ -132,6 +132,23 @@ internal static class SoloTest
 
             bool all = true;
 
+            // Custom curse-card portraits: each must load from the mod pck at the exact res:// path the card's
+            // PortraitPath override returns (renderer: _portrait.Texture = Model.Portrait => Load(PortraitPath)).
+            Step("curse-card portraits");
+            {
+                bool tArt = true;
+                foreach (var n in new[] { "debt_dunning", "debt_dunning_plus", "overdue", "seizure", "bad_credit", "forced_levy" })
+                {
+                    var tex = ResourceLoader.Load<Texture2D>($"res://Sts2DebtLoan/card_art/{n}.png", null, ResourceLoader.CacheMode.Reuse);
+                    var sz = tex?.GetSize() ?? Vector2.Zero;
+                    bool ok = tex != null && (int)sz.X == 1000 && (int)sz.Y == 760;
+                    W($"  art {n}: {(tex != null ? "loaded" : "NULL")} {(int)sz.X}x{(int)sz.Y} -> {ok}");
+                    tArt &= ok;
+                }
+                W($"  assert portraits: all 6 load @1000x760 -> {tArt}");
+                all &= tArt;
+            }
+
             DebtLoanConfig.MaxLoan = 9999;   // let any test loan through the cap
             var mkEntry = new Func<MerchantRelicEntry>(() => new MerchantRelicEntry(RelicRarity.Shop, player));
 
@@ -163,9 +180,21 @@ internal static class SoloTest
             bool tB = cnt0 == 1 && cnt10 == 2 && cnt16 == 2 && cnt17 == 3 && cnt21 == 3 && cnt22 == 4 && cnt30 == 4;
             W($"  assert tier: r0={cnt0}(1) r10={cnt10}(2) r16={cnt16}(2) r17={cnt17}(3) r21={cnt21}(3) r22={cnt22}(4) r30={cnt30}(4) -> {tB}");
             all &= tB;
-            // Per-relic hover: DynamicDescription fills {borrowed}/{paid} from THIS relic's DynamicVars.
-            try { W($"  ledger hover (per-relic): {LoanService.LedgerRelicOf(player)?.DynamicDescription.GetFormattedText()}"); }
+            // Badge countdown = rooms until the NEXT escalation (0 at the top tier → counter hidden).
+            int b0 = DebtLoanConfig.RoomsUntilNextTier(0), b10 = DebtLoanConfig.RoomsUntilNextTier(10),
+                b17 = DebtLoanConfig.RoomsUntilNextTier(17), b22 = DebtLoanConfig.RoomsUntilNextTier(22);
+            bool tBadge = b0 == 10 && b10 == 7 && b17 == 5 && b22 == 0;
+            W($"  assert badge: r0={b0}(10) r10={b10}(7) r17={b17}(5) r22={b22}(0/max) -> {tBadge}");
+            all &= tBadge;
+            // Per-relic hover: DynamicDescription fills {borrowed}/{paid} + the choose() per-tier curse name.
+            // Verify the choose() actually resolved (no leftover "{cards"/"choose(" token in the rendered text).
+            string hoverT4 = "";
+            try { hoverT4 = LoanService.LedgerRelicOf(player)?.DynamicDescription.GetFormattedText() ?? "";
+                  W($"  ledger hover (tier 4): {hoverT4}"); }
             catch (Exception e) { W("  hover read failed: " + e.Message); }
+            bool tChoose = hoverT4.Length > 0 && !hoverT4.Contains("{cards") && !hoverT4.Contains("choose(");
+            W($"  assert choose render (per-tier name resolved): {tChoose}");
+            all &= tChoose;
 
             // C) Persistence round-trip (numeric state on the relic).
             Step("save/load persistence");

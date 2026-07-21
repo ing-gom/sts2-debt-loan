@@ -38,6 +38,7 @@ internal static class TurnStartInjectPatch
 
             // Inject every active loan's escalating curse SET into this player's draw pile (run-wide contagion).
             await LoanService.InjectAllDebtsForCombat(player, player.RunState);
+            LoanService.RefreshRelicDisplay(player);   // keep the ledger hover's per-tier text current (display-only)
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] turn-start injection failed: {e.Message}"); }
     }

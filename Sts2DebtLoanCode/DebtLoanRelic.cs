@@ -46,11 +46,21 @@ public sealed class DebtLoanRelic : RelicModel
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public bool Active { get => _active; set { AssertMutable(); _active = value; InvokeDisplayAmountChanged(); } }
 
-    /// <summary>Live badge: the gold you currently owe (hidden once the loan is settled).</summary>
-    public override int DisplayAmount => _active ? _principal : 0;
+    /// <summary>Live badge: rooms remaining until the NEXT escalation ("N rooms until it gets worse"),
+    /// computed live from the current floor so it ticks down as you walk the map. 0 once at the top tier
+    /// (badge hidden — see ShowCounter). Owner is set while the relic is carried.</summary>
+    public override int DisplayAmount
+    {
+        get
+        {
+            if (!_active || Owner?.RunState == null) return 0;
+            return DebtLoanConfig.RoomsUntilNextTier(Owner.RunState.TotalFloor - _loanFloor);
+        }
+    }
 
-    /// <summary>NRelic renders the amount badge only when this is true — show it while a loan is active.</summary>
-    public override bool ShowCounter => _active;
+    /// <summary>Show the countdown only while a loan is active AND there's a next escalation to count down to
+    /// (hidden at the top tier, so it reads as "—" rather than a stuck 0).</summary>
+    public override bool ShowCounter => _active && DisplayAmount > 0;
 
     // Per-relic dynamic hover: the loc description is the static template "Borrowed [gold]{borrowed} Gold[/gold]…
     // Paid [gold]{paid} Gold[/gold]…", and these DynamicVars fill {borrowed}/{paid} from THIS relic's own

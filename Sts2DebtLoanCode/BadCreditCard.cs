@@ -28,6 +28,10 @@ public sealed class BadCreditCard : CardModel
     public override int MaxUpgradeLevel => 0;
     public override IEnumerable<CardKeyword> CanonicalKeywords => new[] { CardKeyword.Unplayable };
 
+    // Custom curse art from the mod pck.
+    public override string PortraitPath => "res://Sts2DebtLoan/card_art/bad_credit.png";
+    public override string BetaPortraitPath => PortraitPath;
+
     public BadCreditCard() : base(-1, CardType.Curse, CardRarity.Curse, TargetType.None) { }
 
     public override async Task AfterPlayerTurnStart(PlayerChoiceContext choiceContext, Player player)

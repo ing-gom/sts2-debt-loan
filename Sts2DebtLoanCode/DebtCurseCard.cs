@@ -7,6 +7,7 @@ using MegaCrit.Sts2.Core.GameActions.Multiplayer;     // PlayerChoiceContext
 using MegaCrit.Sts2.Core.Localization.DynamicVars;    // DynamicVar
 using MegaCrit.Sts2.Core.Models;                      // CardModel, CardPoolModel, ModelDb
 using MegaCrit.Sts2.Core.Models.CardPools;            // CurseCardPool
+using MegaCrit.Sts2.Core.Models.Powers;               // PlatingPower
 
 namespace Sts2DebtLoan;
 
@@ -30,15 +31,22 @@ public sealed class DebtCurseCard : CardModel
 
     public override int MaxUpgradeLevel => 1;   // base vs '+' (over-cap) form
 
+    // Custom curse art from the mod pck (base vs '+'). Renderer reads Model.Portrait => Load(PortraitPath).
+    public override string PortraitPath =>
+        IsUpgraded ? "res://Sts2DebtLoan/card_art/debt_dunning_plus.png"
+                   : "res://Sts2DebtLoan/card_art/debt_dunning.png";
+    public override string BetaPortraitPath => PortraitPath;
+
     // Ethereal = exhausts at end of turn if left in hand; Exhaust = also leaves after being played.
     // NOT Unplayable — the player may choose to play it (to repay faster).
     public override IEnumerable<CardKeyword> CanonicalKeywords => new[] { CardKeyword.Ethereal, CardKeyword.Exhaust };
 
     private int DrawCost => IsUpgraded ? 15 : 10;   // the passive turn-end collection ({draw} in loc)
     private int PlayCost => IsUpgraded ? 30 : 20;
+    private int PlateAmount => IsUpgraded ? 5 : 3;  // "diligent payer" reward: Plating (판금) on play
 
     protected override IEnumerable<DynamicVar> CanonicalVars =>
-        new[] { new DynamicVar("draw", DrawCost), new DynamicVar("play", PlayCost) };
+        new[] { new DynamicVar("draw", DrawCost), new DynamicVar("play", PlayCost), new DynamicVar("plate", PlateAmount) };
 
     public override bool HasTurnEndInHandEffect => true;
 
@@ -59,15 +67,17 @@ public sealed class DebtCurseCard : CardModel
         await LoanService.AccrueInterest(Owner, drain);            // 20% principal (passive)
     }
 
-    /// <summary>Playing it: pay PlayCost gold at a 50% principal split — voluntary FAST repayment. The
-    /// Exhaust keyword removes it afterward. IsPlayable already guaranteed the gold is present.</summary>
+    /// <summary>Playing it: pay PlayCost gold at a 50% principal split — voluntary FAST repayment — AND gain
+    /// Plating (판금) as the "diligent payer" reward (3, or 5 when upgraded). The Exhaust keyword removes it
+    /// afterward. IsPlayable already guaranteed the gold is present. Self-applier → co-op re-entry safe.</summary>
     protected override async Task OnPlay(PlayerChoiceContext choiceContext, CardPlay cardPlay)
     {
-        if (Owner == null) return;
+        if (Owner?.Creature == null) return;
         int drain = Mathf.Min(PlayCost, (int)Owner.Gold);
         if (drain <= 0) return;
         await PlayerCmd.LoseGold(drain, Owner);
         await LoanService.AccrueInterest(Owner, drain, principalShareOverride: 0.5);   // 50% principal
+        await PowerCmd.Apply<PlatingPower>(choiceContext, Owner.Creature, PlateAmount, Owner.Creature, null);
     }
 
     protected override void OnUpgrade()
@@ -75,5 +85,6 @@ public sealed class DebtCurseCard : CardModel
         base.OnUpgrade();
         DynamicVars["draw"].BaseValue = DrawCost;
         DynamicVars["play"].BaseValue = PlayCost;
+        DynamicVars["plate"].BaseValue = PlateAmount;
     }
 }
