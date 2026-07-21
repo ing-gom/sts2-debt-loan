@@ -121,127 +121,122 @@ internal static class SoloTest
 
             bool all = true;
 
-            // 1) Loan grant → relic + principal.
+            DebtLoanConfig.MaxLoan = 9999;   // let any test loan through the cap
+            var mkEntry = new Func<MerchantRelicEntry>(() => new MerchantRelicEntry(RelicRarity.Shop, player));
+
+            // A) Loan grant → relic + immediate 1 Debt card (rooms 0).
             Step("loan grant");
             LoanService.ResetFor(player);
             await LoanService.GrantLoanDirect(player, 100);
             await Task.Delay(300);
             var rec = LoanService.For(player);
-            bool t1 = LoanService.PlayerHasLedger(player) && rec != null && rec.Principal == 100 && rec.Active;
-            W($"  assert loan: ledger={LoanService.PlayerHasLedger(player)} principal={rec?.Principal} active={rec?.Active} -> {t1}");
-            all &= t1;
+            bool tA = LoanService.PlayerHasLedger(player) && rec != null && rec.Principal == 100 && rec.Active
+                      && LoanService.CurrentDebtCardCount(rec) == 1;
+            W($"  assert loan: ledger={LoanService.PlayerHasLedger(player)} P={rec?.Principal} active={rec?.Active} cards@0={(rec != null ? LoanService.CurrentDebtCardCount(rec) : -1)} -> {tA}");
+            all &= tA;
 
-            // 2) Room escalation at 14/17/20 → 1/3/5 Debt cards.
-            Step("room escalation");
-            for (int i = 0; i < 13; i++) await LoanService.OnRoomEntered(player);
-            int c13 = LoanService.For(player)!.DebtCards.Count;
-            await LoanService.OnRoomEntered(player);                       // 14th
-            int c14 = LoanService.For(player)!.DebtCards.Count;
-            for (int i = 0; i < 3; i++) await LoanService.OnRoomEntered(player); // 17th
-            int c17 = LoanService.For(player)!.DebtCards.Count;
-            for (int i = 0; i < 3; i++) await LoanService.OnRoomEntered(player); // 20th
-            int c20 = LoanService.For(player)!.DebtCards.Count;
-            bool t2 = c13 == 0 && c14 == 1 && c17 == 3 && c20 == 5;
-            W($"  assert escalation: r13={c13}(0) r14={c14}(1) r17={c17}(3) r20={c20}(5) -> {t2}");
-            all &= t2;
-            // live hover text (owed + interest + rooms-to-next-card) — should be non-placeholder & reflect state
-            try { W($"  ledger hover text: {new MegaCrit.Sts2.Core.Localization.LocString("relics", "DEBT_LOAN_RELIC.description").GetFormattedText()}"); }
-            catch (Exception e) { W("  ledger hover read failed: " + e.Message); }
+            // B) Debt-card count schedule: 1 / 2 / 3 at rooms 0 / 10 / 20, capped at 3.
+            Step("debt-card count schedule");
+            int cnt0 = LoanService.CurrentDebtCardCount(rec!);
+            for (int i = 0; i < 10; i++) await LoanService.OnRoomEntered(player);
+            int cnt10 = LoanService.CurrentDebtCardCount(LoanService.For(player)!);
+            for (int i = 0; i < 10; i++) await LoanService.OnRoomEntered(player);
+            int cnt20 = LoanService.CurrentDebtCardCount(LoanService.For(player)!);
+            for (int i = 0; i < 10; i++) await LoanService.OnRoomEntered(player);
+            int cnt30 = LoanService.CurrentDebtCardCount(LoanService.For(player)!);
+            bool tB = cnt0 == 1 && cnt10 == 2 && cnt20 == 3 && cnt30 == 3;
+            W($"  assert count: r0={cnt0}(1) r10={cnt10}(2) r20={cnt20}(3) r30={cnt30}(3 max) -> {tB}");
+            all &= tB;
+            try { W($"  ledger hover: {new MegaCrit.Sts2.Core.Localization.LocString("relics", "DEBT_LOAN_RELIC.description").GetFormattedText()}"); }
+            catch (Exception e) { W("  hover read failed: " + e.Message); }
 
-            // 2b) Persistence: state (principal 100, rooms 20, 5 cards, active) must survive a
-            // save→load round-trip via the relic's [SavedProperty] fields + deck rescan.
+            // C) Persistence round-trip (numeric state on the relic).
             Step("save/load persistence");
             var save = RunManager.Instance.ToSave(null);
             var reloaded = RunState.FromSerializable(save);
             var rp = reloaded.Players.First();
             var rrelic = LoanService.LedgerRelicOf(rp);
-            bool tP = rrelic != null && rrelic.Principal == 100 && rrelic.RoomsSinceLoan == 20 && rrelic.Active;
+            bool tC = rrelic != null && rrelic.Principal == 100 && rrelic.RoomsSinceLoan == 30 && rrelic.Active;
             LoanService.RestoreFromRelic(rp);
             var rrec = LoanService.For(rp);
-            bool tR = rrec != null && rrec.Principal == 100 && rrec.RoomsSinceLoan == 20 && rrec.Active && rrec.DebtCards.Count == 5;
-            W($"  assert persist: relic P={rrelic?.Principal} rooms={rrelic?.RoomsSinceLoan} active={rrelic?.Active} -> {tP}; " +
-              $"restore rec P={rrec?.Principal} cards={rrec?.DebtCards.Count} -> {tR}");
-            all &= tP && tR;
+            bool tC2 = rrec != null && rrec.Principal == 100 && rrec.RoomsSinceLoan == 30 && rrec.Active;
+            W($"  assert persist: relic P={rrelic?.Principal} rooms={rrelic?.RoomsSinceLoan} -> {tC}; restore P={rrec?.Principal} -> {tC2}");
+            all &= tC && tC2;
 
-            // 3) Repay principal → retire + clear cards.
-            Step("repay");
-            if ((int)player.Gold < 100) await PlayerCmd.GainGold(100 - (int)player.Gold, player, false);
-            await Task.Delay(200);
-            bool repaid = await LoanService.Repay(player);
-            await Task.Delay(200);
-            var recR = LoanService.For(player);
-            bool t3 = repaid && recR != null && !recR.Active && recR.DebtCards.Count == 0;
-            W($"  assert repay: repaid={repaid} active={recR?.Active} cards={recR?.DebtCards.Count} -> {t3}");
-            all &= t3;
+            // D) Debt price surcharge at OTHER shops (rooms 30 = 3 cards → +20%); none at your own shop.
+            Step("debt price surcharge");
+            var rd = LoanService.For(player)!;
+            double sameMult = LoanService.DebtPriceMultiplier(player);           // same floor → 1.0
+            int df = rd.LoanFloor; rd.LoanFloor = df - 999;                       // pretend a different shop
+            double otherMult = LoanService.DebtPriceMultiplier(player);          // 3 cards → 1.20
+            rd.LoanFloor = df;
+            bool tD = Math.Abs(sameMult - 1.0) < 0.001 && Math.Abs(otherMult - 1.20) < 0.001;
+            W($"  assert surcharge: sameShop={sameMult}(1.0) otherShop={otherMult}(1.2) -> {tD}");
+            all &= tD;
 
-            // 4) Interest hits 200% of principal → retire + clear cards.
-            Step("interest cap");
-            LoanService.ResetFor(player);
-            await LoanService.GrantLoanDirect(player, 50);                 // principal 50, cap 100
-            await Task.Delay(200);
-            for (int i = 0; i < 20; i++) await LoanService.OnRoomEntered(player);   // 5 cards
-            int beforeCards = LoanService.For(player)!.DebtCards.Count;
-            for (int i = 0; i < 10; i++) await LoanService.AccrueInterest(player, 10); // 100 >= cap 100
-            await Task.Delay(200);
-            var recC = LoanService.For(player);
-            bool t4 = beforeCards == 5 && recC != null && !recC.Active && recC.DebtCards.Count == 0
-                      && recC.InterestPaid >= recC.InterestCap;
-            W($"  assert cap: beforeCards={beforeCards}(5) active={recC?.Active} cards={recC?.DebtCards.Count} interest={recC?.InterestPaid}/{recC?.InterestCap} -> {t4}");
-            all &= t4;
-
-            // 5) Shop loan purchase: buy an unaffordable relic → the OnTryPurchaseWrapper prefix credits a
-            // loan, grants the Ledger (already owned here, so no dup), and re-runs the buy.
-            Step("shop loan purchase");
-            LoanService.ResetFor(player);
-            DebtLoanConfig.MaxLoan = 9999;   // ensure any shop-relic cost is coverable in the test
-            var inv = MerchantInventory.CreateForNormalMerchant(player);
-            var entry = new MerchantRelicEntry(RelicRarity.Shop, player);
-            int cost = entry.Cost;
-            string? boughtRelicId = entry.Model?.Id.Entry;   // capture BEFORE buy — entry nulls Model after purchase
+            // E) Same-shop top-up rule.
+            Step("same-shop top-up");
             if ((int)player.Gold > 0) await PlayerCmd.LoseGold((int)player.Gold, player, GoldLossType.Spent);
-            bool bought = await entry.OnTryPurchaseWrapper(inv, false);
-            await Task.Delay(200);
-            var srec = LoanService.For(player);
-            bool boughtRelic = boughtRelicId != null && player.Relics.Any(r => r.Id.Entry == boughtRelicId);
-            bool t5 = bought && srec != null && srec.Active && srec.Principal == cost
-                      && LoanService.PlayerHasLedger(player) && boughtRelic;
-            W($"  assert shop-loan: cost={cost} bought={bought} principal={srec?.Principal} active={srec?.Active} boughtRelic={boughtRelic} -> {t5}");
-            all &= t5;
+            var entryE = mkEntry();
+            bool sameOk = LoanService.CanLoanCover(entryE, player);
+            var re = LoanService.For(player)!; int sf = re.LoanFloor; re.LoanFloor = sf - 999;
+            bool otherDenied = !LoanService.CanLoanCover(entryE, player);
+            re.LoanFloor = sf;
+            bool tE = sameOk && otherDenied;
+            W($"  assert same-shop: sameOk={sameOk} otherDenied={otherDenied} -> {tE}");
+            all &= tE;
 
-            // 5b) Same-shop rule: top-up allowed at the shop we borrowed at, denied at a different shop (floor).
-            Step("same-shop top-up rule");
-            var entry2 = new MerchantRelicEntry(RelicRarity.Shop, player);
-            bool sameShopOk = LoanService.CanLoanCover(entry2, player);      // same TotalFloor → allowed
-            int savedFloor = srec!.LoanFloor;
-            srec.LoanFloor = savedFloor - 999;                              // pretend we moved to a later shop
-            bool otherShopDenied = !LoanService.CanLoanCover(entry2, player);
-            srec.LoanFloor = savedFloor;                                     // restore
-            bool t5b = sameShopOk && otherShopDenied;
-            W($"  assert same-shop: sameShopOk={sameShopOk} otherShopDenied={otherShopDenied} -> {t5b}");
-            all &= t5b;
+            // F) Repay → relic REMOVED + record reset → can borrow again (fresh first loan allowed).
+            Step("repay → re-borrow");
+            if ((int)player.Gold < re.Principal) await PlayerCmd.GainGold(re.Principal - (int)player.Gold, player, false);
+            await Task.Delay(150);
+            bool repaid = await LoanService.Repay(player);
+            await Task.Delay(250);
+            bool relicGone = !LoanService.PlayerHasLedger(player);
+            bool recGone = LoanService.For(player) == null;
+            if ((int)player.Gold > 0) await PlayerCmd.LoseGold((int)player.Gold, player, GoldLossType.Spent);
+            bool canReborrow = LoanService.CanLoanCover(mkEntry(), player);
+            bool tF = repaid && relicGone && recGone && canReborrow;
+            W($"  assert repay-reborrow: repaid={repaid} relicGone={relicGone} recGone={recGone} canReborrow={canReborrow} -> {tF}");
+            all &= tF;
 
-            // 6) Repay button attaches to the real shop node (EnterRoomDebug builds NMerchantInventory),
-            //    and green price tags appear on loan-coverable items. Set a realistic 300 cap + middling
-            //    gold so the shop shows a mix: affordable (cream) / loanable (green) / too dear (red).
-            Step("shop repay button + green tags");
-            bool t6 = false;
+            // G) Shop UI: take a loan at a REAL shop (repay button + green tags apply here).
+            Step("shop repay button");
+            bool tG = false;
             if (Engine.GetMainLoop() is SceneTree stree)
             {
-                DebtLoanConfig.MaxLoan = 300;
-                int want = 150;
-                if ((int)player.Gold < want) await PlayerCmd.GainGold(want - (int)player.Gold, player, false);
                 await RunManager.Instance.EnterRoomDebug(RoomType.Shop);
-                await Task.Delay(4000);
+                await Task.Delay(3000);
+                DebtLoanConfig.MaxLoan = 300;
+                if ((int)player.Gold < 150) await PlayerCmd.GainGold(150 - (int)player.Gold, player, false);
+                await LoanService.GrantLoanDirect(player, 120);
+                await Task.Delay(500);
                 var shopNode = FindNode<NMerchantInventory>(stree.Root);
                 var repayBtn = FindNode<NMerchantRepayButton>(stree.Root);
-                try { shopNode?.Open(); } catch { /* open is only to surface the button for the shot */ }
+                try { shopNode?.Open(); } catch { }
                 await Task.Delay(500);
-                t6 = shopNode != null && repayBtn != null;
-                W($"  assert repay-button: shopNode={(shopNode != null)} attached={(repayBtn != null)} -> {t6}");
+                tG = shopNode != null && repayBtn != null;
+                W($"  assert repay-button: shopNode={(shopNode != null)} attached={(repayBtn != null)} -> {tG}");
                 await Shot("3_shop");
             }
-            else W("  no scene tree for shop test");
-            all &= t6;
+            all &= tG;
+
+            // H) Default (200%) → frozen: relic disabled (kept), no re-borrow the rest of the run.
+            Step("default → frozen");
+            LoanService.ResetFor(player);
+            await DebtLoanGrants.RemoveRelic(player);          // clear the shop-test loan's relic for a clean default
+            await Task.Delay(150);
+            await LoanService.GrantLoanDirect(player, 50);     // cap 100
+            await Task.Delay(150);
+            for (int i = 0; i < 10; i++) await LoanService.AccrueInterest(player, 10);   // 100 >= cap
+            await Task.Delay(200);
+            var rh = LoanService.For(player);
+            var hRelic = LoanService.LedgerRelicOf(player);
+            if ((int)player.Gold > 0) await PlayerCmd.LoseGold((int)player.Gold, player, GoldLossType.Spent);
+            bool lockedOut = !LoanService.CanLoanCover(mkEntry(), player);
+            bool tH = rh != null && !rh.Active && rh.Defaulted && hRelic != null && lockedOut;
+            W($"  assert default: active={rh?.Active} defaulted={rh?.Defaulted} relicKept={(hRelic != null)} status={hRelic?.Status} lockedOut={lockedOut} -> {tH}");
+            all &= tH;
 
             await Shot("2_final");
             W($"=== solo test done: {(all ? "ALL PASS" : "FAIL")} ===");

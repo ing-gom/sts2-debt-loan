@@ -21,18 +21,14 @@ internal static class DebtLoanConfig
     /// <summary>By default loans are only offered in Act 1. Option to allow every act.</summary>
     internal static bool AllowLoansOutsideAct1 = false;
 
-    /// <summary>Rooms visited (after taking the first loan) before the first Debt card seeps in.
-    /// Also the deadline for additional top-up loans. Spec: 14th room ⇒ penalties begin.</summary>
-    internal static int PenaltyStartRoom = 14;
-
-    // The escalation schedule: (roomThreshold, totalDebtCards). Crossing a threshold tops the
-    // deck up to that many Debt cards. Spec: 14→1, 17→3, 20→5 (capped). Kept as a field so a
-    // future config surface can expose it; the room numbers above key off the first entry.
+    // Debt-card schedule: (roomsSinceLoan, cardsInjectedPerCombat). Taking the loan injects 1 immediately
+    // (room 0); every 10 further rooms adds one, capped at 3. These cards are injected fresh into the draw
+    // pile at the START of each combat (temporary — they vanish at combat end), NOT added to the deck.
     internal static readonly (int Room, int Cards)[] Schedule =
     {
-        (14, 1),
-        (17, 3),
-        (20, 5),
+        (0, 1),
+        (10, 2),
+        (20, 3),
     };
 
     /// <summary>Target Debt-card count for a given rooms-since-loan count.</summary>
