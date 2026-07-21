@@ -25,6 +25,10 @@ public sealed class SeizureCard : CardModel
     public override int MaxUpgradeLevel => 0;
     public override IEnumerable<CardKeyword> CanonicalKeywords => new[] { CardKeyword.Unplayable };
 
+    // Custom curse art from the mod pck.
+    public override string PortraitPath => "res://Sts2DebtLoan/card_art/seizure.png";
+    public override string BetaPortraitPath => PortraitPath;
+
     public SeizureCard() : base(-1, CardType.Curse, CardRarity.Curse, TargetType.None) { }
 
     /// <summary>Record the first card type the owner plays this turn (idempotent per turn).</summary>
