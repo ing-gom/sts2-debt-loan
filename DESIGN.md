@@ -109,7 +109,9 @@ Retire: 유물 비활성(Active=false) + 빚 카드 전부 RemoveFromDeck
 3. ✅ **[완료] 초록 가격표** — 대출 가능(살 수 없지만 loan-coverable) 아이템 가격 라벨을 초록으로.
    `MerchantPriceColorPatch` = 각 슬롯 subtype `UpdateVisual` 포스트픽스, `CanLoanCover` 시
    `_costLabel.Modulate=StsColors.green` (EnoughGold 불변). solo-verify 육안 확인.
-4. **[구현] 유물 라이브 텍스트** — 원금/잔여한도/다음 빚카드까지 노드/이자 vs 상한. `RefreshDisplay` 스텁.
+4. ✅ **[완료] 유물 라이브 배지** — 장부 유물 아이콘에 현재 빚 원금 배지. `DisplayAmount`=원금 +
+   `ShowCounter`=활성, `[SavedProperty]` 세터가 `InvokeDisplayAmountChanged` 호출. per-relic라 co-op-safe.
+   (전체 이자/노드 breakdown 호버는 per-relic DynamicVars 필요 — 추후 확장.)
 5. ✅ **[완료] grant-only 유물** — Ledger를 `RelicRarity.Event`로 (보상/상점 풀은 Common/Uncommon/
    Rare/Shop만 롤 → 랜덤 드롭 불가, 대출로만 획득). solo-verify 지급 정상 확인.
 6. ✅ **[완료] 세이브/로드 지속성** — DebtLoanRelic `[SavedProperty]` 4개(자동 왕복) +

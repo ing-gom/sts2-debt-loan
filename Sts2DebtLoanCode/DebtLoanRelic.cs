@@ -35,7 +35,7 @@ public sealed class DebtLoanRelic : RelicModel
     private bool _active;
 
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
-    public int Principal { get => _principal; set { AssertMutable(); _principal = value; } }
+    public int Principal { get => _principal; set { AssertMutable(); _principal = value; InvokeDisplayAmountChanged(); } }
 
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public int InterestPaid { get => _interestPaid; set { AssertMutable(); _interestPaid = value; } }
@@ -44,7 +44,13 @@ public sealed class DebtLoanRelic : RelicModel
     public int RoomsSinceLoan { get => _roomsSinceLoan; set { AssertMutable(); _roomsSinceLoan = value; } }
 
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
-    public bool Active { get => _active; set { AssertMutable(); _active = value; } }
+    public bool Active { get => _active; set { AssertMutable(); _active = value; InvokeDisplayAmountChanged(); } }
+
+    /// <summary>Live badge on the relic icon: the gold you currently owe (hidden once the loan is settled).</summary>
+    public override int DisplayAmount => _active ? _principal : 0;
+
+    /// <summary>NRelic only renders the amount badge when this is true — show it while a loan is outstanding.</summary>
+    public override bool ShowCounter => _active;
 
     /// <summary>Nudge the relic's on-screen state after the loan changes (retire, top-up).
     /// TODO: rebuild the dynamic hover text / flash the relic. Stub for now.</summary>
