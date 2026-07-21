@@ -40,12 +40,14 @@ internal static class DebtLoanConfig
     // Debt-curse ESCALATION tier by rooms-since-loan. Each tier UNLOCKS a new curse in the injected set (see
     // LoanService.InjectAllDebtsForCombat): 1=빚 독촉(Dunning), 2=+연체(Delinquency), 3=+차압(Seizure),
     // 4=+신용 불량(Bad Credit). Injected fresh into the draw pile each combat (temporary — gone at combat end).
+    // ACCELERATING gaps (10 → 7 → 5): a 10-room grace period, then the spiral snowballs — once you're
+    // delinquent the collections come faster and faster (full spiral by ~1 act after borrowing).
     internal static readonly (int Room, int Cards)[] Schedule =
     {
         (0, 1),
         (10, 2),
-        (20, 3),
-        (30, 4),
+        (17, 3),
+        (22, 4),
     };
 
     /// <summary>Target Debt-card count for a given rooms-since-loan count.</summary>

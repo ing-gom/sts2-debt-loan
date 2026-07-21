@@ -146,18 +146,22 @@ internal static class SoloTest
             W($"  assert loan: ledger={LoanService.PlayerHasLedger(player)} borrowed={rec?.Borrowed} owed={rec?.Principal} active={rec?.Active} cards@0={LoanService.DebtCardCountFor(player)} -> {tA}");
             all &= tA;
 
-            // B) Debt-curse TIER schedule: 1/2/3/4 at rooms 0/10/20/30 (each tier unlocks a new curse), capped
-            //    at 4. Rooms are COMPUTED as TotalFloor − LoanFloor, so we simulate progress by back-dating.
-            Step("debt-curse tier schedule");
+            // B) Debt-curse TIER schedule: accelerating gaps 0/10/17/22 (each tier unlocks a new curse),
+            //    capped at 4. Rooms are COMPUTED as TotalFloor − LoanFloor, so we simulate by back-dating.
+            //    Check the exact boundaries incl. just-below (16→2, 21→3) to prove the thresholds.
+            Step("debt-curse tier schedule (10/17/22)");
             int baseFloor = player.RunState.TotalFloor;
             var recB = LoanService.For(player)!;
             recB.LoanFloor = baseFloor;        int cnt0  = LoanService.DebtCardCountFor(player);   // rooms 0  → 1
             recB.LoanFloor = baseFloor - 10;   int cnt10 = LoanService.DebtCardCountFor(player);   // rooms 10 → 2
-            recB.LoanFloor = baseFloor - 20;   int cnt20 = LoanService.DebtCardCountFor(player);   // rooms 20 → 3
+            recB.LoanFloor = baseFloor - 16;   int cnt16 = LoanService.DebtCardCountFor(player);   // rooms 16 → 2 (below 17)
+            recB.LoanFloor = baseFloor - 17;   int cnt17 = LoanService.DebtCardCountFor(player);   // rooms 17 → 3
+            recB.LoanFloor = baseFloor - 21;   int cnt21 = LoanService.DebtCardCountFor(player);   // rooms 21 → 3 (below 22)
+            recB.LoanFloor = baseFloor - 22;   int cnt22 = LoanService.DebtCardCountFor(player);   // rooms 22 → 4
             recB.LoanFloor = baseFloor - 30;   int cnt30 = LoanService.DebtCardCountFor(player);   // rooms 30 → 4 (cap)
             LoanService.SyncToRelic(player);         // persist LoanFloor=baseFloor-30 onto the relic for the C round-trip
-            bool tB = cnt0 == 1 && cnt10 == 2 && cnt20 == 3 && cnt30 == 4;
-            W($"  assert tier: r0={cnt0}(1) r10={cnt10}(2) r20={cnt20}(3) r30={cnt30}(4 max) -> {tB}");
+            bool tB = cnt0 == 1 && cnt10 == 2 && cnt16 == 2 && cnt17 == 3 && cnt21 == 3 && cnt22 == 4 && cnt30 == 4;
+            W($"  assert tier: r0={cnt0}(1) r10={cnt10}(2) r16={cnt16}(2) r17={cnt17}(3) r21={cnt21}(3) r22={cnt22}(4) r30={cnt30}(4) -> {tB}");
             all &= tB;
             // Per-relic hover: DynamicDescription fills {borrowed}/{paid} from THIS relic's DynamicVars.
             try { W($"  ledger hover (per-relic): {LoanService.LedgerRelicOf(player)?.DynamicDescription.GetFormattedText()}"); }
