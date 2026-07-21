@@ -31,7 +31,7 @@ public sealed class DebtLoanRelic : RelicModel
     // round-trip through RelicModel.ToSerializable/FromSerializable automatically — no serialization
     // Harmony patch needed. On load, LoanService.RestoreFromRelic rebuilds the transient LoanRecord
     // from these. SaveIfNotTypeDefault keeps a vanilla/retired relic's save clean.
-    private int _principal, _interestPaid, _roomsSinceLoan;
+    private int _principal, _interestPaid, _roomsSinceLoan, _loanFloor;
     private bool _active;
 
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
@@ -42,6 +42,9 @@ public sealed class DebtLoanRelic : RelicModel
 
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public int RoomsSinceLoan { get => _roomsSinceLoan; set { AssertMutable(); _roomsSinceLoan = value; } }
+
+    [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
+    public int LoanFloor { get => _loanFloor; set { AssertMutable(); _loanFloor = value; } }
 
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public bool Active { get => _active; set { AssertMutable(); _active = value; InvokeDisplayAmountChanged(); } }

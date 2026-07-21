@@ -136,7 +136,7 @@ internal sealed partial class NMerchantRepayButton : Control
         Control? board = _shop._slotsContainer;
         if (board == null) return;
 
-        float minLeft = float.MaxValue, gridBottom = float.MinValue;
+        float maxRight = float.MinValue, gridBottom = float.MinValue;
         int count = 0;
         foreach (var c in new[] { _shop._relicContainer, _shop._potionContainer })
         {
@@ -145,7 +145,7 @@ internal sealed partial class NMerchantRepayButton : Control
             {
                 Rect2 r = slot.GetGlobalRect();
                 if (r.Size.X < 2f) continue;
-                minLeft = Math.Min(minLeft, r.Position.X);
+                maxRight = Math.Max(maxRight, r.End.X);
                 gridBottom = Math.Max(gridBottom, r.End.Y);
                 count++;
             }
@@ -153,7 +153,9 @@ internal sealed partial class NMerchantRepayButton : Control
         if (count == 0) return;
 
         float iconW = _icon.Size.X > 0 ? _icon.Size.X : IconSize;
-        float iconCx = minLeft + iconW / 2f - LeftNudge;
+        // Below the grid, RIGHT-aligned to the grid's right edge. RelicForge's reforge/cleanse buttons
+        // sit below-grid LEFT (minLeft), so this keeps us in the shop-action row without overlapping them.
+        float iconCx = maxRight - iconW / 2f - LeftNudge;
         float iconCy = gridBottom + BelowGap + _iconH / 2f;
 
         Transform2D inv = board.GetGlobalTransform().AffineInverse();

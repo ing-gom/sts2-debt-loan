@@ -208,6 +208,18 @@ internal static class SoloTest
             W($"  assert shop-loan: cost={cost} bought={bought} principal={srec?.Principal} active={srec?.Active} boughtRelic={boughtRelic} -> {t5}");
             all &= t5;
 
+            // 5b) Same-shop rule: top-up allowed at the shop we borrowed at, denied at a different shop (floor).
+            Step("same-shop top-up rule");
+            var entry2 = new MerchantRelicEntry(RelicRarity.Shop, player);
+            bool sameShopOk = LoanService.CanLoanCover(entry2, player);      // same TotalFloor → allowed
+            int savedFloor = srec!.LoanFloor;
+            srec.LoanFloor = savedFloor - 999;                              // pretend we moved to a later shop
+            bool otherShopDenied = !LoanService.CanLoanCover(entry2, player);
+            srec.LoanFloor = savedFloor;                                     // restore
+            bool t5b = sameShopOk && otherShopDenied;
+            W($"  assert same-shop: sameShopOk={sameShopOk} otherShopDenied={otherShopDenied} -> {t5b}");
+            all &= t5b;
+
             // 6) Repay button attaches to the real shop node (EnterRoomDebug builds NMerchantInventory),
             //    and green price tags appear on loan-coverable items. Set a realistic 300 cap + middling
             //    gold so the shop shows a mix: affordable (cream) / loanable (green) / too dear (red).

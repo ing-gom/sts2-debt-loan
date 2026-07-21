@@ -29,6 +29,10 @@ internal sealed class LoanRecord
     /// <summary>Map rooms entered since the FIRST loan (drives the Debt-card schedule).</summary>
     internal int RoomsSinceLoan;
 
+    /// <summary>TotalFloor of the shop where the loan was first taken. Top-up loans are only allowed
+    /// while still at THAT shop — once you leave, later shops won't extend more credit.</summary>
+    internal int LoanFloor = -1;
+
     /// <summary>Debt-card instances we injected, so we can remove exactly them on retire.</summary>
     internal readonly List<CardModel> DebtCards = new();
 
@@ -98,6 +102,7 @@ internal static class LoanService
             relic.Principal = rec.Principal;
             relic.InterestPaid = rec.InterestPaid;
             relic.RoomsSinceLoan = rec.RoomsSinceLoan;
+            relic.LoanFloor = rec.LoanFloor;
             relic.Active = rec.Active;
             LocInjectionPatch.SetLedgerDescription(BuildLedgerText(rec));
         }
@@ -132,6 +137,7 @@ internal static class LoanService
         rec.Principal = relic.Principal;
         rec.InterestPaid = relic.InterestPaid;
         rec.RoomsSinceLoan = relic.RoomsSinceLoan;
+        rec.LoanFloor = relic.LoanFloor;
         rec.Active = relic.Active;
         rec.RelicGranted = true;
         rec.DebtCards.Clear();
@@ -183,7 +189,7 @@ internal static class LoanService
         var rec = For(player);
         if (rec == null || !rec.RelicGranted) return true;   // FIRST loan — always OK in Act 1
         if (!rec.Active) return false;                       // retired loan → no more borrowing
-        return rec.RoomsSinceLoan < DebtLoanConfig.PenaltyStartRoom; // top-up only before the deadline
+        return player.RunState.TotalFloor == rec.LoanFloor;  // top-up ONLY at the same shop you first borrowed at
     }
 
     /// <summary>Loan needed to buy <paramref name="entry"/> (shortfall, capped to headroom).</summary>
@@ -221,8 +227,9 @@ internal static class LoanService
         if (!rec.RelicGranted)
         {
             rec.RelicGranted = true;
-            rec.RoomsSinceLoan = 0;               // the room counter starts now
-            if (!PlayerHasLedger(player))         // never double-grant (fresh record after repay / load)
+            rec.RoomsSinceLoan = 0;                        // the room counter starts now
+            rec.LoanFloor = player.RunState.TotalFloor;    // lock top-ups to this shop
+            if (!PlayerHasLedger(player))                  // never double-grant (fresh record after repay / load)
                 await DebtLoanGrants.GrantRelic(player);
         }
 
