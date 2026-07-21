@@ -168,27 +168,27 @@ internal sealed partial class NMerchantRepayButton : Control
     /// pck, else a vanilla fallback.</summary>
     private static Texture2D? LoadRepayIcon()
     {
+        // Load the ledger art the SAME way RelicModel.Icon does — ResourceLoader.Load with Reuse
+        // (decomp 294521). This resolves the mounted mod-pck path; ResourceLoader.Exists returns false
+        // for it, so we must NOT guard on Exists (that was why the previous GD.Load was skipped).
+        try
+        {
+            var tex = ResourceLoader.Load<Texture2D>("res://Sts2DebtLoan/icons/debt_loan_relic.png", null, ResourceLoader.CacheMode.Reuse);
+            if (tex != null) return tex;
+        }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] repay icon pck load failed: {e.Message}"); }
+        // Dev override: a loose PNG next to the DLL.
         try
         {
             string? dir = System.IO.Path.GetDirectoryName(typeof(NMerchantRepayButton).Assembly.Location);
-            if (!string.IsNullOrEmpty(dir))
+            string? file = dir != null ? System.IO.Path.Combine(dir, "repay_shop_icon.png") : null;
+            if (file != null && System.IO.File.Exists(file))
             {
-                string file = System.IO.Path.Combine(dir, "repay_shop_icon.png");
-                if (System.IO.File.Exists(file))
-                {
-                    var img = Image.LoadFromFile(file);
-                    if (img != null) return ImageTexture.CreateFromImage(img);
-                }
-            }
-            // Load our ledger art straight from the mounted mod pck (PreloadManager.Cache only holds
-            // the game's own preloaded assets, not mod-pck resources — so it returned null here).
-            if (ResourceLoader.Exists("res://Sts2DebtLoan/icons/debt_loan_relic.png"))
-            {
-                var tex = GD.Load<Texture2D>("res://Sts2DebtLoan/icons/debt_loan_relic.png");
-                if (tex != null) return tex;
+                var img = Image.LoadFromFile(file);
+                if (img != null) return ImageTexture.CreateFromImage(img);
             }
         }
-        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] repay icon load failed: {e.Message}"); }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] repay icon loose load failed: {e.Message}"); }
         return PreloadManager.Cache.GetTexture2D("res://images/ui/rest_site/option_reforge.png");
     }
 
