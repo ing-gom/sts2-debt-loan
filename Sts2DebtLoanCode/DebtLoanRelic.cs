@@ -3,7 +3,8 @@ using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Commands;                // RelicCmd, CardPileCmd
 using MegaCrit.Sts2.Core.Entities.Cards;          // PileType, CardPilePosition
 using MegaCrit.Sts2.Core.Entities.Players;
-using MegaCrit.Sts2.Core.Entities.Relics;         // RelicRarity, RelicStatus
+using MegaCrit.Sts2.Core.Entities.Relics;         // RelicRarity
+using MegaCrit.Sts2.Core.Localization.DynamicVars; // DynamicVar (per-relic hover values)
 using MegaCrit.Sts2.Core.Models;                  // RelicModel, ModelDb
 using MegaCrit.Sts2.Core.Saves.Runs;              // SavedProperty, SerializationCondition
 
@@ -24,14 +25,17 @@ public sealed class DebtLoanRelic : RelicModel
     protected override string PackedIconOutlinePath => "res://Sts2DebtLoan/icons/debt_loan_relic_outline.png";
     protected override string BigIconPath => "res://Sts2DebtLoan/icons/debt_loan_relic.png";
 
-    private int _principal, _interestPaid, _loanFloor;
-    private bool _active, _defaulted;
+    private int _borrowed, _principal, _totalPaid, _loanFloor;
+    private bool _active;
+
+    [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
+    public int Borrowed { get => _borrowed; set { AssertMutable(); _borrowed = value; } }
 
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public int Principal { get => _principal; set { AssertMutable(); _principal = value; InvokeDisplayAmountChanged(); } }
 
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
-    public int InterestPaid { get => _interestPaid; set { AssertMutable(); _interestPaid = value; } }
+    public int TotalPaid { get => _totalPaid; set { AssertMutable(); _totalPaid = value; } }
 
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public int LoanFloor { get => _loanFloor; set { AssertMutable(); _loanFloor = value; } }
@@ -39,20 +43,32 @@ public sealed class DebtLoanRelic : RelicModel
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public bool Active { get => _active; set { AssertMutable(); _active = value; InvokeDisplayAmountChanged(); } }
 
-    [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
-    public bool Defaulted { get => _defaulted; set { AssertMutable(); _defaulted = value; } }
-
     /// <summary>Live badge: the gold you currently owe (hidden once the loan is settled).</summary>
     public override int DisplayAmount => _active ? _principal : 0;
 
     /// <summary>NRelic renders the amount badge only when this is true — show it while a loan is active.</summary>
     public override bool ShowCounter => _active;
 
-    // Combat-start Debt-card injection now lives in CombatStartInjectPatch (a global Hook.BeforeCombatStart
-    // patch) so it can inject the RUN-WIDE total into EVERY player — in co-op one player's debt spreads to
-    // the partner's combats too. See LoanService.RunWideDebtTotal / InjectDebtCardsForCombat.
+    // Per-relic dynamic hover: the loc description is the static template "Borrowed [gold]{borrowed} Gold[/gold]…
+    // Paid [gold]{paid} Gold[/gold]…", and these DynamicVars fill {borrowed}/{paid} from THIS relic's own
+    // state. RelicModel.DynamicDescription applies DynamicVars per-instance, so two players' Ledgers each show
+    // their own numbers — unlike the old global loc-table overwrite (which was a co-op display bug).
+    protected override System.Collections.Generic.IEnumerable<DynamicVar> CanonicalVars =>
+        new[] { new DynamicVar("borrowed", _borrowed), new DynamicVar("paid", _totalPaid) };
 
-    internal static void RefreshDisplay(Player player) { /* badge/desc refresh handled by the setters + loc update */ }
+    /// <summary>Push the current borrowed/paid values into the cached DynamicVars so the hover shows live,
+    /// per-relic numbers. Called by LoanService.SyncToRelic on every state change. (DynamicVars is built
+    /// lazily from CanonicalVars and then cached, so we must update the vars in place.)</summary>
+    internal void RefreshVars()
+    {
+        try
+        {
+            var vars = DynamicVars;
+            if (vars.TryGetValue("borrowed", out var b)) b.BaseValue = _borrowed;
+            if (vars.TryGetValue("paid", out var p)) p.BaseValue = _totalPaid;
+        }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] ledger var refresh failed: {e.Message}"); }
+    }
 }
 
 /// <summary>Grant/remove/disable helpers, kept out of the model so it stays a pure data type.</summary>
@@ -79,12 +95,5 @@ internal static class DebtLoanGrants
             if (relic != null) { await RelicCmd.Remove(relic); MainFile.Logger.Info($"[{MainFile.ModId}] removed Ledger relic (repaid)."); }
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] relic remove failed: {e.Message}"); }
-    }
-
-    /// <summary>Default path: grey the relic out (kept as a frozen-credit marker) rather than removing it.</summary>
-    internal static void DisableRelic(RelicModel relic)
-    {
-        try { relic.Status = RelicStatus.Disabled; }
-        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] relic disable failed: {e.Message}"); }
     }
 }

@@ -6,45 +6,20 @@ using MegaCrit.Sts2.Core.Localization;
 namespace Sts2DebtLoan;
 
 /// <summary>
-/// Injects the custom relic + Debt card strings into the live "relics" and "cards" LocTables at
-/// runtime. Same workaround as Sts2RelicPoc: loose mod files are never mounted into res://, so we
-/// merge straight into the already-loaded tables. Re-runs on every language (re)load. English only
-/// for now (Korean is a follow-up; see [[feedback_workshop_changenote_lang]] for the lang policy).
+/// Injects the Ledger relic + Debt card strings into the live "relics" and "cards" LocTables at runtime,
+/// in the CURRENT language (all 13 shipped languages + English — see <see cref="DebtLoanLoc"/>). Loose mod
+/// files are never mounted into res://, so we merge straight into the already-loaded tables. Re-runs on
+/// every language (re)load, so switching language in-game updates the strings too.
+///
+/// The relic description is a static per-language TEMPLATE with {borrowed}/{paid} placeholders; the numbers
+/// are filled per-relic from each relic's own DynamicVars (DebtLoanRelic), so it is co-op-safe (no global
+/// per-player overwrite).
 /// </summary>
 [HarmonyPatch(typeof(LocManager), "SetLanguageInternal")]
 internal static class LocInjectionPatch
 {
-    private static readonly Dictionary<string, string> RelicStrings = new()
-    {
-        ["DEBT_LOAN_RELIC.title"] = "Merchant's Ledger",
-        ["DEBT_LOAN_RELIC.description"] = "You borrowed [gold]Gold[/gold] from the merchant. Leave it unpaid and Debt cards seep into your deck — 1 after 14 rooms, 3 after 17, 5 after 20 — each draining [gold]Gold[/gold] at the end of your turn as interest. Repay the principal at any shop, or once interest reaches 200% of the loan the ledger settles itself. Either way, every Debt card is then removed.",
-        ["DEBT_LOAN_RELIC.flavor"] = "Every signature is a small surrender.",
-    };
-
-    // The card FACE renders from ".description" (and ".smartDescription" if present) with SmartFormat +
-    // BBCode markup — a plain string leaves the RichTextLabel on its scene default ("If you can read this,
-    // there is a bug."). Mirror the vanilla Debt curse: [gold] markup + the {Gold:diff()} var (our GoldVar).
-    private const string DebtCardText =
-        "If this card is in your [gold]Hand[/gold] at the end of your turn, lose {Gold:diff()} [gold]Gold[/gold].";
-
-    private static readonly Dictionary<string, string> CardStrings = new()
-    {
-        ["DEBT_CURSE_CARD.title"] = "Debt",
-        ["DEBT_CURSE_CARD.description"] = DebtCardText,
-        ["DEBT_CURSE_CARD.smartDescription"] = DebtCardText,
-    };
-
     [HarmonyPostfix]
     private static void Postfix(LocManager __instance) => Inject(__instance);
-
-    /// <summary>Live-update the Ledger relic's hover description with the current loan status. Safe as a
-    /// global loc write because loans are single-player only (see LoanService co-op gate) — one player,
-    /// one table, no divergence. The relic rebuilds its LocString on each hover, so this shows current.</summary>
-    internal static void SetLedgerDescription(string text)
-    {
-        try { LocManager.Instance?.GetTable("relics")?.MergeWith(new Dictionary<string, string> { ["DEBT_LOAN_RELIC.description"] = text }); }
-        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] ledger description update failed: {e.Message}"); }
-    }
 
     internal static void Inject(LocManager? manager)
     {
@@ -52,8 +27,24 @@ internal static class LocInjectionPatch
         {
             manager ??= LocManager.Instance;
             if (manager == null) return;
-            manager.GetTable("relics").MergeWith(RelicStrings);
-            manager.GetTable("cards").MergeWith(CardStrings);
+
+            var s = DebtLoanLoc.For(manager.Language);
+
+            manager.GetTable("relics").MergeWith(new Dictionary<string, string>
+            {
+                ["DEBT_LOAN_RELIC.title"] = s.RelicTitle,
+                ["DEBT_LOAN_RELIC.description"] = s.RelicDesc,
+                ["DEBT_LOAN_RELIC.flavor"] = s.RelicFlavor,
+            });
+
+            // The card FACE renders from ".description" (+ ".smartDescription" if present) with SmartFormat +
+            // BBCode markup; a plain default leaves the RichTextLabel on "If you can read this, there is a bug."
+            manager.GetTable("cards").MergeWith(new Dictionary<string, string>
+            {
+                ["DEBT_CURSE_CARD.title"] = s.CardTitle,
+                ["DEBT_CURSE_CARD.description"] = s.CardDesc,
+                ["DEBT_CURSE_CARD.smartDescription"] = s.CardDesc,
+            });
         }
         catch (Exception ex)
         {

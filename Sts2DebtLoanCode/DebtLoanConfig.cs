@@ -14,9 +14,10 @@ internal static class DebtLoanConfig
     /// Spec default matches the vanilla Debt curse (10). Config-adjustable.</summary>
     internal static int InterestPerDraw = 10;
 
-    /// <summary>Interest ceiling as a multiple of principal; reaching it retires the relic
-    /// and clears the Debt cards (spec: 200% ⇒ 2.0).</summary>
-    internal static double InterestCapMultiplier = 2.0;
+    /// <summary>Share of every Debt-card payment that goes toward paying DOWN the principal (the rest is
+    /// interest). At 0.2, a 10-gold drain retires 2 gold of the loan and 8 counts as interest — so the debt
+    /// slowly amortizes and the shop repay cost shrinks over time.</summary>
+    internal static double PrincipalRepayShare = 0.2;
 
     /// <summary>By default loans are only offered in Act 1. Option to allow every act.</summary>
     internal static bool AllowLoansOutsideAct1 = false;
@@ -38,13 +39,5 @@ internal static class DebtLoanConfig
         foreach (var (room, cards) in Schedule)
             if (roomsSinceLoan >= room) target = cards;
         return target;
-    }
-
-    /// <summary>The next room threshold that adds Debt cards, or -1 if already at the last one.</summary>
-    internal static int NextThresholdRoom(int roomsSinceLoan)
-    {
-        foreach (var (room, _) in Schedule)
-            if (roomsSinceLoan < room) return room;
-        return -1;
     }
 }

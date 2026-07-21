@@ -116,7 +116,7 @@ internal static class SoloTest
             // Deterministic config for the scenario.
             DebtLoanConfig.MaxLoan = 300;
             DebtLoanConfig.InterestPerDraw = 10;
-            DebtLoanConfig.InterestCapMultiplier = 2.0;
+            DebtLoanConfig.PrincipalRepayShare = 0.2;
             DebtLoanConfig.AllowLoansOutsideAct1 = true;
 
             bool all = true;
@@ -130,9 +130,9 @@ internal static class SoloTest
             await LoanService.GrantLoanDirect(player, 100);
             await Task.Delay(300);
             var rec = LoanService.For(player);
-            bool tA = LoanService.PlayerHasLedger(player) && rec != null && rec.Principal == 100 && rec.Active
-                      && LoanService.DebtCardCountFor(player) == 1;
-            W($"  assert loan: ledger={LoanService.PlayerHasLedger(player)} P={rec?.Principal} active={rec?.Active} cards@0={LoanService.DebtCardCountFor(player)} -> {tA}");
+            bool tA = LoanService.PlayerHasLedger(player) && rec != null && rec.Borrowed == 100 && rec.Principal == 100
+                      && rec.Active && LoanService.DebtCardCountFor(player) == 1;
+            W($"  assert loan: ledger={LoanService.PlayerHasLedger(player)} borrowed={rec?.Borrowed} owed={rec?.Principal} active={rec?.Active} cards@0={LoanService.DebtCardCountFor(player)} -> {tA}");
             all &= tA;
 
             // B) Debt-card count schedule: 1 / 2 / 3 at rooms 0 / 10 / 20, capped at 3. Rooms are now COMPUTED
@@ -148,7 +148,8 @@ internal static class SoloTest
             bool tB = cnt0 == 1 && cnt10 == 2 && cnt20 == 3 && cnt30 == 3;
             W($"  assert count: r0={cnt0}(1) r10={cnt10}(2) r20={cnt20}(3) r30={cnt30}(3 max) -> {tB}");
             all &= tB;
-            try { W($"  ledger hover: {new MegaCrit.Sts2.Core.Localization.LocString("relics", "DEBT_LOAN_RELIC.description").GetFormattedText()}"); }
+            // Per-relic hover: DynamicDescription fills {borrowed}/{paid} from THIS relic's DynamicVars.
+            try { W($"  ledger hover (per-relic): {LoanService.LedgerRelicOf(player)?.DynamicDescription.GetFormattedText()}"); }
             catch (Exception e) { W("  hover read failed: " + e.Message); }
 
             // C) Persistence round-trip (numeric state on the relic).
@@ -157,13 +158,13 @@ internal static class SoloTest
             var reloaded = RunState.FromSerializable(save);
             var rp = reloaded.Players.First();
             var rrelic = LoanService.LedgerRelicOf(rp);
-            bool tC = rrelic != null && rrelic.Principal == 100 && rrelic.LoanFloor == baseFloor - 30 && rrelic.Active;
+            bool tC = rrelic != null && rrelic.Borrowed == 100 && rrelic.Principal == 100 && rrelic.LoanFloor == baseFloor - 30 && rrelic.Active;
             LoanService.RestoreFromRelic(rp);
             var rrec = LoanService.For(rp);
             // rooms-since-loan (30 → 3 cards) is re-derived from the restored LoanFloor, not stored.
-            bool tC2 = rrec != null && rrec.Principal == 100 && rrec.LoanFloor == baseFloor - 30 && rrec.Active
+            bool tC2 = rrec != null && rrec.Borrowed == 100 && rrec.Principal == 100 && rrec.LoanFloor == baseFloor - 30 && rrec.Active
                        && LoanService.DebtCardCountFor(rp) == 3;
-            W($"  assert persist: relic P={rrelic?.Principal} loanFloor={rrelic?.LoanFloor} -> {tC}; restore P={rrec?.Principal} cards={LoanService.DebtCardCountFor(rp)}(3) -> {tC2}");
+            W($"  assert persist: relic borrowed={rrelic?.Borrowed} owed={rrelic?.Principal} loanFloor={rrelic?.LoanFloor} -> {tC}; restore owed={rrec?.Principal} cards={LoanService.DebtCardCountFor(rp)}(3) -> {tC2}");
             all &= tC && tC2;
 
             // D) Debt price surcharge at OTHER shops (rooms 30 = 3 cards → +20%); none at your own shop.
@@ -228,21 +229,26 @@ internal static class SoloTest
             }
             all &= tG;
 
-            // H) Default (200%) → frozen: relic disabled (kept), no re-borrow the rest of the run.
-            Step("default → frozen");
+            // H) Amortization: each Debt-card payment splits 20% principal / 80% interest, so the owed
+            //    amount drops and the total-paid rises. 5 drains of 10 → owed 100-5×2=90, paid 50.
+            Step("amortization (20% to principal)");
             LoanService.ResetFor(player);
-            await DebtLoanGrants.RemoveRelic(player);          // clear the shop-test loan's relic for a clean default
+            await DebtLoanGrants.RemoveRelic(player);
             await Task.Delay(150);
-            await LoanService.GrantLoanDirect(player, 50);     // cap 100
+            DebtLoanConfig.PrincipalRepayShare = 0.2;
+            await LoanService.GrantLoanDirect(player, 100);
             await Task.Delay(150);
-            for (int i = 0; i < 10; i++) await LoanService.AccrueInterest(player, 10);   // 100 >= cap
+            for (int i = 0; i < 5; i++) await LoanService.AccrueInterest(player, 10);   // 5 × (2 principal, 8 interest)
             await Task.Delay(200);
             var rh = LoanService.For(player);
             var hRelic = LoanService.LedgerRelicOf(player);
-            if ((int)player.Gold > 0) await PlayerCmd.LoseGold((int)player.Gold, player, GoldLossType.Spent);
-            bool lockedOut = !LoanService.CanLoanCover(mkEntry(), player);
-            bool tH = rh != null && !rh.Active && rh.Defaulted && hRelic != null && lockedOut;
-            W($"  assert default: active={rh?.Active} defaulted={rh?.Defaulted} relicKept={(hRelic != null)} status={hRelic?.Status} lockedOut={lockedOut} -> {tH}");
+            // owed 90, paid 50; relic KEPT + still active (no default mechanic anymore); hover reflects it.
+            bool tH = rh != null && rh.Active && rh.Borrowed == 100 && rh.Principal == 90 && rh.TotalPaid == 50
+                      && hRelic != null && hRelic.Principal == 90 && hRelic.TotalPaid == 50;
+            string hover = "";
+            try { hover = hRelic?.DynamicDescription.GetFormattedText() ?? ""; } catch { }
+            W($"  assert amortize: borrowed={rh?.Borrowed}(100) owed={rh?.Principal}(90) paid={rh?.TotalPaid}(50) relicOwed={hRelic?.Principal} -> {tH}");
+            W($"  amortized hover: {hover}");
             all &= tH;
 
             // I) Combat-start injection: a fresh loan (count 1) → entering a Monster room fires

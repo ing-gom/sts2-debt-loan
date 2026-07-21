@@ -29,7 +29,7 @@ public sealed class DebtLoanNetCmd : AbstractConsoleCmd
     public const string Verb = "dl_sync";
 
     public override string CmdName => Verb;
-    public override string Args => "<active|repaid> <principal> <interest> <loanFloor>";
+    public override string Args => "<active|repaid> <borrowed> <principal> <totalPaid> <loanFloor>";
     public override string Description =>
         "Internal (networked): replicate a player's merchant loan (Ledger relic + state) to every co-op peer.";
     public override bool IsNetworked => true;   // routes through the synchronized action queue
@@ -41,20 +41,23 @@ public sealed class DebtLoanNetCmd : AbstractConsoleCmd
         // host AND every client; the applied state is idempotent, so re-delivery / the initiator's own
         // replay are harmless.
         if (issuingPlayer == null) return new CmdResult(success: false, "dl_sync: no active player.");
-        if (args.Length < 4)      return new CmdResult(success: false, "dl_sync: expected 4 args.");
+        if (args.Length < 1)       return new CmdResult(success: false, "dl_sync: expected a state.");
 
         var inv = CultureInfo.InvariantCulture;
         string state = args[0];
-        int.TryParse(args[1], NumberStyles.Integer, inv, out int principal);
-        int.TryParse(args[2], NumberStyles.Integer, inv, out int interest);
-        int.TryParse(args[3], NumberStyles.Integer, inv, out int loanFloor);
-
         if (state == "repaid")
+        {
             TaskHelper.RunSafely(LoanService.ApplyRepay(issuingPlayer));
-        else
-            TaskHelper.RunSafely(LoanService.ApplyActiveLoan(issuingPlayer, principal, interest, loanFloor));
+            return new CmdResult(success: true, "dl_sync repaid.");
+        }
 
-        return new CmdResult(success: true, $"dl_sync {state} p={principal} i={interest} floor={loanFloor}.");
+        if (args.Length < 5) return new CmdResult(success: false, "dl_sync active: expected 5 args.");
+        int.TryParse(args[1], NumberStyles.Integer, inv, out int borrowed);
+        int.TryParse(args[2], NumberStyles.Integer, inv, out int principal);
+        int.TryParse(args[3], NumberStyles.Integer, inv, out int totalPaid);
+        int.TryParse(args[4], NumberStyles.Integer, inv, out int loanFloor);
+        TaskHelper.RunSafely(LoanService.ApplyActiveLoan(issuingPlayer, borrowed, principal, totalPaid, loanFloor));
+        return new CmdResult(success: true, $"dl_sync active b={borrowed} p={principal} paid={totalPaid} floor={loanFloor}.");
     }
 }
 
@@ -62,8 +65,8 @@ public sealed class DebtLoanNetCmd : AbstractConsoleCmd
 /// on every peer. Shop-only events, never in combat, so <c>inCombat</c> is false.</summary>
 internal static class DebtLoanNet
 {
-    internal static void BroadcastLoan(Player owner, int principal, int interestPaid, int loanFloor)
-        => Dispatch(owner, $"{DebtLoanNetCmd.Verb} active {principal} {interestPaid} {loanFloor}");
+    internal static void BroadcastLoan(Player owner, int borrowed, int principal, int totalPaid, int loanFloor)
+        => Dispatch(owner, $"{DebtLoanNetCmd.Verb} active {borrowed} {principal} {totalPaid} {loanFloor}");
 
     internal static void BroadcastRepay(Player owner)
         => Dispatch(owner, $"{DebtLoanNetCmd.Verb} repaid 0 0 0");

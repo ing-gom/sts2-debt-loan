@@ -19,7 +19,7 @@ public class MainFile
 
     private const string KeyMaxLoan = "maxLoan";
     private const string KeyInterest = "interestPerDraw";
-    private const string KeyCapPct = "interestCapPct";
+    private const string KeyRepayPct = "principalRepayPct";
     private const string KeyOtherActs = "allowOtherActs";
 
     public static readonly MegaCrit.Sts2.Core.Logging.Logger Logger = ModBootstrap.CreateLogger(ModId);
@@ -67,11 +67,11 @@ public class MainFile
                 .Description("Gold each Debt card drains when it triggers. Higher = interest piles up faster. 10 matches the vanilla Debt curse.");
             Loc(b, "빚 카드당 이자 (골드)", "빚 카드가 발동할 때마다 빠지는 골드. 클수록 이자가 빨리 쌓입니다. 10 = 바닐라 Debt 저주와 동일.");
 
-            b.Slider(KeyCapPct, "Interest ceiling (% of loan)", defaultValue: 200.0,
-                    onChanged: v => DebtLoanConfig.InterestCapMultiplier = v / 100.0)
-                .Range(100f, 400f, 50f, format: "F0")
-                .Description("When total interest paid reaches this share of the principal, the loan is retired: the relic goes inert and all Debt cards are removed.");
-            Loc(b, "이자 상한 (원금 대비 %)", "누적 이자가 원금의 이 비율에 도달하면 대출이 종료됩니다: 유물이 비활성화되고 모든 빚 카드가 제거됩니다.");
+            b.Slider(KeyRepayPct, "Payment toward principal (%)", defaultValue: 20.0,
+                    onChanged: v => DebtLoanConfig.PrincipalRepayShare = v / 100.0)
+                .Range(0f, 100f, 10f, format: "F0")
+                .Description("Share of each Debt-card payment that pays DOWN the loan (the rest is interest). Higher = the debt amortizes faster and the shop repay cost shrinks sooner.");
+            Loc(b, "원금 상환 비율 (%)", "빚 카드가 걷어가는 골드 중 원금 상환에 쓰이는 비율 (나머지는 이자). 높을수록 빚이 빨리 줄고 상점 상환액도 빨리 낮아집니다.");
 
             b.Toggle(KeyOtherActs, "Allow loans outside Act 1", defaultValue: false,
                     onChanged: v => DebtLoanConfig.AllowLoansOutsideAct1 = v)
@@ -82,10 +82,10 @@ public class MainFile
 
             DebtLoanConfig.MaxLoan = (int)ModConfigBridge.GetValue<double>(ModId, KeyMaxLoan, 300.0);
             DebtLoanConfig.InterestPerDraw = (int)ModConfigBridge.GetValue<double>(ModId, KeyInterest, 10.0);
-            DebtLoanConfig.InterestCapMultiplier = ModConfigBridge.GetValue<double>(ModId, KeyCapPct, 200.0) / 100.0;
+            DebtLoanConfig.PrincipalRepayShare = ModConfigBridge.GetValue<double>(ModId, KeyRepayPct, 20.0) / 100.0;
             DebtLoanConfig.AllowLoansOutsideAct1 = ModConfigBridge.GetValue<bool>(ModId, KeyOtherActs, false);
 
-            Logger.Info($"[{ModId}] config: maxLoan {DebtLoanConfig.MaxLoan}g, interest {DebtLoanConfig.InterestPerDraw}g/draw, cap {DebtLoanConfig.InterestCapMultiplier:P0}, act1-only {!DebtLoanConfig.AllowLoansOutsideAct1}.");
+            Logger.Info($"[{ModId}] config: maxLoan {DebtLoanConfig.MaxLoan}g, interest {DebtLoanConfig.InterestPerDraw}g/draw, principal-repay {DebtLoanConfig.PrincipalRepayShare:P0}, act1-only {!DebtLoanConfig.AllowLoansOutsideAct1}.");
         }
         catch (Exception e) { Logger.Warn($"[{ModId}] config registration failed: {e.Message}"); }
     }

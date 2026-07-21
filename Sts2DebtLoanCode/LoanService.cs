@@ -17,27 +17,25 @@ namespace Sts2DebtLoan;
 /// this only tracks the numeric state, which is persisted onto the relic as [SavedProperty] fields.</summary>
 internal sealed class LoanRecord
 {
-    /// <summary>Total gold borrowed so far this run (≤ <see cref="DebtLoanConfig.MaxLoan"/>).</summary>
+    /// <summary>Total gold ever borrowed this run (fixed once taken; rises on a top-up). Shown in the
+    /// hover as "borrowed X" — does NOT shrink as the loan amortizes (that's <see cref="Principal"/>).</summary>
+    internal int Borrowed;
+
+    /// <summary>Gold still owed = the shop repay cost + the relic's badge. Starts equal to
+    /// <see cref="Borrowed"/> and shrinks as each Debt-card payment retires a share of it (amortization).</summary>
     internal int Principal;
 
-    /// <summary>Cumulative gold drained by Debt cards = interest paid.</summary>
-    internal int InterestPaid;
+    /// <summary>Cumulative gold the Debt cards have drained = total paid so far (interest + amortized principal).</summary>
+    internal int TotalPaid;
 
     /// <summary>TotalFloor of the shop where the loan was taken. Top-ups are allowed only at THAT shop.
     /// Rooms-since-loan (which drives the Debt-card count) is computed as TotalFloor − LoanFloor.</summary>
     internal int LoanFloor = -1;
 
-    /// <summary>False once settled (repaid, or defaulted at 200%).</summary>
+    /// <summary>False once settled (repaid in full).</summary>
     internal bool Active = true;
 
-    /// <summary>True once interest hit 200% (default): the ledger is frozen for the rest of the run —
-    /// the relic is disabled and no new loan can be taken.</summary>
-    internal bool Defaulted;
-
     internal bool RelicGranted;
-
-    /// <summary>Interest ceiling in gold: principal × multiplier (200% by default).</summary>
-    internal int InterestCap => (int)Math.Round(Principal * DebtLoanConfig.InterestCapMultiplier);
 }
 
 /// <summary>
@@ -61,7 +59,7 @@ internal static class LoanService
     internal static int DebtCardCountFor(Player? p)
     {
         var rec = For(p);
-        if (rec == null || !rec.Active || p?.RunState == null) return 0;
+        if (rec == null || !rec.Active || rec.Principal <= 0 || p?.RunState == null) return 0;
         return DebtLoanConfig.TargetDebtCards(p.RunState.TotalFloor - rec.LoanFloor);
     }
 
@@ -120,50 +118,36 @@ internal static class LoanService
         if (rec == null || relic == null) return;
         try
         {
+            relic.Borrowed = rec.Borrowed;
             relic.Principal = rec.Principal;
-            relic.InterestPaid = rec.InterestPaid;
+            relic.TotalPaid = rec.TotalPaid;
             relic.LoanFloor = rec.LoanFloor;
             relic.Active = rec.Active;
-            relic.Defaulted = rec.Defaulted;
-            LocInjectionPatch.SetLedgerDescription(BuildLedgerText(player, rec));
+            relic.RefreshVars();          // push borrowed/paid into the relic's own DynamicVars (per-relic hover)
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] relic sync failed: {e.Message}"); }
     }
 
-    /// <summary>Live hover text for the Ledger relic.</summary>
-    private static string BuildLedgerText(Player player, LoanRecord rec)
-    {
-        if (rec.Defaulted)
-            return "DEFAULTED — interest reached 200% of the loan. The ledger is frozen for the rest of the run; the merchant will not lend to you again.";
-        if (!rec.Active)
-            return "The debt is settled.";
-
-        int owed = rec.Principal, interest = rec.InterestPaid, cap = rec.InterestCap;
-        int rooms = (player?.RunState?.TotalFloor ?? rec.LoanFloor) - rec.LoanFloor;
-        int cards = DebtCardCountFor(player);
-        int nextRoom = DebtLoanConfig.NextThresholdRoom(rooms);
-        string next = nextRoom < 0
-            ? $"[b]{cards}[/b] Debt card(s) injected each combat (max)."
-            : $"[b]{cards}[/b] Debt card(s) injected each combat — next in [b]{nextRoom - rooms}[/b] room(s).";
-        return $"You owe [gold]{owed} Gold[/gold].  Interest paid [b]{interest}[/b] / [b]{cap}[/b].\n{next}\n" +
-               "Repay the principal at a shop (credit restored), or hit 200% interest (default, frozen).";
-    }
+    // The hover text is no longer built here: it's a per-language STATIC template ("Borrowed {borrowed} …
+    // Paid {paid} …") injected once by LocInjectionPatch, with the numbers filled from each relic's OWN
+    // DynamicVars (see DebtLoanRelic.CanonicalVars / RefreshVars). That makes the hover per-relic, which is
+    // co-op-safe — the old global loc-table overwrite showed the last-synced player's status on both relics.
 
     /// <summary>Rebuild the transient record from the relic on load. A repaid loan removed the relic, so
-    /// no relic ⇒ no record ⇒ free to borrow again; a defaulted relic restores the frozen state.</summary>
+    /// no relic ⇒ no record ⇒ free to borrow again.</summary>
     internal static void RestoreFromRelic(Player player)
     {
         var relic = LedgerRelicOf(player);
         if (relic == null) return;
         var rec = GetOrCreate(player);
+        rec.Borrowed = relic.Borrowed;
         rec.Principal = relic.Principal;
-        rec.InterestPaid = relic.InterestPaid;
+        rec.TotalPaid = relic.TotalPaid;
         rec.LoanFloor = relic.LoanFloor;
         rec.Active = relic.Active;
-        rec.Defaulted = relic.Defaulted;
         rec.RelicGranted = true;
-        if (rec.Defaulted) DebtLoanGrants.DisableRelic(relic);
-        MainFile.Logger.Info($"[{MainFile.ModId}] restored loan: principal {rec.Principal}, interest {rec.InterestPaid}, loanFloor {rec.LoanFloor}, active {rec.Active}, defaulted {rec.Defaulted}.");
+        relic.RefreshVars();
+        MainFile.Logger.Info($"[{MainFile.ModId}] restored loan: borrowed {rec.Borrowed}, owed {rec.Principal}, paid {rec.TotalPaid}, loanFloor {rec.LoanFloor}, active {rec.Active}.");
     }
 
     // ── Eligibility ──────────────────────────────────────────────────────────
@@ -174,12 +158,12 @@ internal static class LoanService
     internal static int RemainingRoom(Player player)
     {
         var rec = For(player);
-        int used = rec?.Principal ?? 0;
+        int used = rec?.Borrowed ?? 0;      // cap is on lifetime borrowed, not the amortized outstanding
         return Math.Max(0, DebtLoanConfig.MaxLoan - used);
     }
 
     /// <summary>Can this merchant item be bought on loan now? First loan: any Act-1 shop. Top-up: only at
-    /// the same shop. Blocked entirely once you've DEFAULTED this run.</summary>
+    /// the same shop (until the borrow cap is reached).</summary>
     internal static bool CanLoanCover(MerchantEntry entry, Player player)
     {
         if (entry == null || player == null) return false;
@@ -190,7 +174,6 @@ internal static class LoanService
         if (!ActAllowsLoan(player)) return false;
 
         var rec = For(player);
-        if (rec != null && rec.Defaulted) return false;      // defaulted this run → credit frozen
 
         int cost = entry.Cost;
         int shortfall = cost - (int)player.Gold;
@@ -241,47 +224,48 @@ internal static class LoanService
         run?.RewardSynchronizer?.SyncLocalObtainedGold(amount);
 
         var existing = For(player);
-        int principal = (existing?.Principal ?? 0) + amount;
-        int interest  = existing?.InterestPaid ?? 0;
+        int borrowed  = (existing?.Borrowed ?? 0) + amount;    // lifetime borrowed (drives the cap + hover)
+        int principal = (existing?.Principal ?? 0) + amount;    // outstanding
+        int totalPaid = existing?.TotalPaid ?? 0;
         int loanFloor = (existing != null && existing.RelicGranted)
                         ? existing.LoanFloor                   // top-up keeps the original shop floor
                         : player.RunState.TotalFloor;          // first loan: rooms = TotalFloor − here (0 → 1 card)
 
-        if (sp) await ApplyActiveLoan(player, principal, interest, loanFloor);
-        else    DebtLoanNet.BroadcastLoan(player, principal, interest, loanFloor);
+        if (sp) await ApplyActiveLoan(player, borrowed, principal, totalPaid, loanFloor);
+        else    DebtLoanNet.BroadcastLoan(player, borrowed, principal, totalPaid, loanFloor);
 
-        MainFile.Logger.Info($"[{MainFile.ModId}] loan +{amount}g (principal {principal}/{DebtLoanConfig.MaxLoan}).");
+        MainFile.Logger.Info($"[{MainFile.ModId}] loan +{amount}g (borrowed {borrowed}/{DebtLoanConfig.MaxLoan}, owed {principal}).");
     }
 
     /// <summary>Apply an ACTIVE loan state locally: set the record, grant the Ledger relic if the player
     /// doesn't have it, and write the state through to the relic. Runs on EACH peer — directly in SP, or
     /// once per peer via the networked <c>dl_sync</c> replay in co-op (idempotent: re-grants only if missing).</summary>
-    internal static async Task ApplyActiveLoan(Player player, int principal, int interestPaid, int loanFloor)
+    internal static async Task ApplyActiveLoan(Player player, int borrowed, int principal, int totalPaid, int loanFloor)
     {
         var rec = GetOrCreate(player);
+        rec.Borrowed     = borrowed;
         rec.Principal    = principal;
-        rec.InterestPaid = interestPaid;
+        rec.TotalPaid    = totalPaid;
         rec.LoanFloor    = loanFloor;
         rec.Active       = true;
-        rec.Defaulted    = false;
         rec.RelicGranted = true;
         if (!PlayerHasLedger(player))
             await DebtLoanGrants.GrantRelic(player);
         SyncToRelic(player);
     }
 
-    /// <summary>A Debt card drained gold — book it as interest and DEFAULT the loan at the 200% ceiling.</summary>
+    /// <summary>A Debt card drained gold. The payment splits: a share (<see cref="DebtLoanConfig.PrincipalRepayShare"/>)
+    /// pays DOWN the principal, the rest is interest — so the loan slowly amortizes and the shop repay cost
+    /// shrinks. Pure record math; runs deterministically on both co-op peers in the lockstep combat.</summary>
     internal static async Task AccrueInterest(Player player, int drained)
     {
         var rec = For(player);
         if (rec == null || !rec.Active || drained <= 0) return;
-        rec.InterestPaid += drained;
+        rec.TotalPaid += drained;
+        int principalCut = Math.Min(rec.Principal, (int)Math.Round(drained * DebtLoanConfig.PrincipalRepayShare));
+        rec.Principal = Math.Max(0, rec.Principal - principalCut);
         SyncToRelic(player);
-        if (rec.InterestPaid >= rec.InterestCap)
-        {
-            MainFile.Logger.Info($"[{MainFile.ModId}] interest {rec.InterestPaid}g ≥ cap {rec.InterestCap}g — DEFAULT.");
-            await SettleByDefault(player, rec);
-        }
+        await Task.CompletedTask;
     }
 
     /// <summary>Repay the outstanding principal at a shop → good credit: relic removed, borrow again later.</summary>
@@ -313,17 +297,5 @@ internal static class LoanService
         if (rec != null) { rec.Active = false; SyncToRelic(player); }   // reflect "settled" for one frame
         await DebtLoanGrants.RemoveRelic(player);                        // clean slate — no inert relic left behind
         ResetFor(player);                                               // record gone → next loan is a fresh first loan
-    }
-
-    /// <summary>Default settle (200%): freeze the ledger for the rest of the run and DISABLE the relic
-    /// (kept, not removed). No re-borrowing until the run ends.</summary>
-    private static async Task SettleByDefault(Player player, LoanRecord rec)
-    {
-        rec.Active = false;
-        rec.Defaulted = true;
-        var relic = LedgerRelicOf(player);
-        if (relic != null) DebtLoanGrants.DisableRelic(relic);
-        SyncToRelic(player);
-        await Task.CompletedTask;
     }
 }
