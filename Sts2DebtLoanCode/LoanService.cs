@@ -80,23 +80,21 @@ internal static class LoanService
         var combat = player?.Creature?.CombatState;
         if (combat == null) return;   // only inside a live combat
 
-        int made = 0;
+        var cards = new List<CardModel>();
         for (int i = 0; i < count; i++)
         {
             var card = combat.CreateCard<DebtCurseCard>(player);
-            if (card == null) continue;
-
-            // Show the card visibly flying INTO the draw pile using the game's native pile-to-pile shuffle
-            // VFX (NCardFlyShuffleVfx). Adding a generated card DIRECTLY to the draw pile is silent, and the
-            // "reveal" path (PreviewCardPileAdd / NCard.Create) trips a test-only engine guard for custom card
-            // types. So we drop the card into the discard pile (silent), then MOVE it to the draw pile — a
-            // pile→pile move that plays the fly-into-pile VFX WITHOUT building a card node (which is what
-            // throws). Net gameplay is unchanged: the Debt card ends up in the draw pile.
-            await CardPileCmd.AddGeneratedCardToCombat(card, PileType.Discard, player, CardPilePosition.Bottom);
-            await CardPileCmd.Add(card, PileType.Draw, CardPilePosition.Random);
-            made++;
+            if (card != null) cards.Add(card);
         }
-        if (made > 0) MainFile.Logger.Info($"[{MainFile.ModId}] injected {made} Debt card(s) into the draw pile.");
+        if (cards.Count == 0) return;
+
+        // Add the Debt cards to the draw pile, then run the game's native reveal — exactly how vanilla
+        // Soot/Soul do it: each card pops up in the CENTRE of the screen and flies into the player's draw
+        // pile. PreviewCardPileAdd is local-player-gated (LocalContext.IsMine), so in co-op each player sees
+        // only their own reveal. (Requires DebtCurseCard.Pool to resolve to a real pool — see that card.)
+        var results = await CardPileCmd.AddGeneratedCardsToCombat(cards, PileType.Draw, player, CardPilePosition.Random);
+        CardCmd.PreviewCardPileAdd(results);
+        MainFile.Logger.Info($"[{MainFile.ModId}] injected {cards.Count} Debt card(s) into the draw pile.");
     }
 
     /// <summary>True if the player already carries the Merchant's Ledger relic.</summary>

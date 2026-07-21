@@ -24,6 +24,15 @@ public sealed class DebtCurseCard : CardModel
 {
     public override int MaxUpgradeLevel => 0;
 
+    // Our generated card belongs to no registered card pool, so CardModel.Pool's search finds nothing and
+    // falls through to probing the MockCardPool test fallback — reading whose AllCardIds generates mock
+    // cards and throws "You monster!" the instant ANYTHING reads our Pool (NCard preview, EnergyIcon, …).
+    // Return the shared curse pool directly, CACHED — an uncached full pool-search on every Pool access is
+    // O(N²) during the run's card enumeration and hangs run-start.
+    private static CardPoolModel? _cursePool;
+    public override CardPoolModel Pool =>
+        _cursePool ??= ModelDb.CardPool<MegaCrit.Sts2.Core.Models.CardPools.CurseCardPool>();
+
     public override IEnumerable<CardKeyword> CanonicalKeywords => new[] { CardKeyword.Unplayable };
 
     protected override IEnumerable<DynamicVar> CanonicalVars =>
