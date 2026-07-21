@@ -19,6 +19,7 @@ using MegaCrit.Sts2.Core.Entities.Players;                // Player
 using MegaCrit.Sts2.Core.Helpers;                         // TaskHelper
 using MegaCrit.Sts2.Core.Models;                          // ModelDb, ActModel, ModifierModel
 using MegaCrit.Sts2.Core.Nodes;                           // NGame
+using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;          // NMainMenu (run-start readiness gate)
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;          // NOverlayStack
 using MegaCrit.Sts2.Core.Random;                          // Rng
 using MegaCrit.Sts2.Core.Runs;                            // RunManager, GameMode
@@ -68,6 +69,11 @@ internal static class SoloTest
         {
             if (NGame.Instance == null) { W("waiting for NGame…"); return; }
             if (ModelCount() == 0) { W("waiting for ModelDb to populate…"); return; }
+            // ★ Wait for the MAIN MENU to actually be up before starting a run. In a heavy modded env
+            // ModelDb populates long before the menu finishes loading, so gating only on ModelDb fired
+            // StartNewSingleplayerRun too early — the run never entered (259 log lines before the menu
+            // was 'loaded (complete)'). NMainMenu present = the game is ready to start a run.
+            if (FindNode<NMainMenu>(tree.Root) == null) { W("waiting for main menu…"); return; }
             _started = true;
             Step("starting single-player run");
             TaskHelper.RunSafely(StartRunThenTest());
