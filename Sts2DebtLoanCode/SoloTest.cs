@@ -205,11 +205,16 @@ internal static class SoloTest
             W($"  assert shop-loan: cost={cost} bought={bought} principal={srec?.Principal} active={srec?.Active} boughtRelic={boughtRelic} -> {t5}");
             all &= t5;
 
-            // 6) Repay button attaches to the real shop node (EnterRoomDebug builds NMerchantInventory).
-            Step("shop repay button");
+            // 6) Repay button attaches to the real shop node (EnterRoomDebug builds NMerchantInventory),
+            //    and green price tags appear on loan-coverable items. Set a realistic 300 cap + middling
+            //    gold so the shop shows a mix: affordable (cream) / loanable (green) / too dear (red).
+            Step("shop repay button + green tags");
             bool t6 = false;
             if (Engine.GetMainLoop() is SceneTree stree)
             {
+                DebtLoanConfig.MaxLoan = 300;
+                int want = 150;
+                if ((int)player.Gold < want) await PlayerCmd.GainGold(want - (int)player.Gold, player, false);
                 await RunManager.Instance.EnterRoomDebug(RoomType.Shop);
                 await Task.Delay(4000);
                 var shopNode = FindNode<NMerchantInventory>(stree.Root);

@@ -106,10 +106,12 @@ Retire: 유물 비활성(Active=false) + 빚 카드 전부 RemoveFromDeck
 2. ✅ **[완료] 상점 결제 인터셉트 + 상환 버튼** — solo-verify 상점 페이즈로 실측: 살 수 없는
    유물을 대출로 구매(cost=201→대출 충당→유물 획득), `NMerchantRepayButton`이 실제 shop 노드에
    attach + cost=원금 표시 확인. (버튼 아이콘=loose png 배선, 멀티모드 상점서 육안 확정만 남음)
-3. **[구현] 노란 가격표** — 로더블 아이템 가격 라벨을 노랑으로. `NMerchantRelic`(decomp `120153`),
-   카드(`117396`), 포션(`119866`) `_costLabel.Modulate`. `EnoughGold` 건드리지 말 것.
+3. ✅ **[완료] 초록 가격표** — 대출 가능(살 수 없지만 loan-coverable) 아이템 가격 라벨을 초록으로.
+   `MerchantPriceColorPatch` = 각 슬롯 subtype `UpdateVisual` 포스트픽스, `CanLoanCover` 시
+   `_costLabel.Modulate=StsColors.green` (EnoughGold 불변). solo-verify 육안 확인.
 4. **[구현] 유물 라이브 텍스트** — 원금/잔여한도/다음 빚카드까지 노드/이자 vs 상한. `RefreshDisplay` 스텁.
-5. **[구현] grant-only 유물** — 랜덤 유물 보상으로 안 뜨게 (풀 제외 또는 non-droppable rarity).
+5. ✅ **[완료] grant-only 유물** — Ledger를 `RelicRarity.Event`로 (보상/상점 풀은 Common/Uncommon/
+   Rare/Shop만 롤 → 랜덤 드롭 불가, 대출로만 획득). solo-verify 지급 정상 확인.
 6. ✅ **[완료] 세이브/로드 지속성** — DebtLoanRelic `[SavedProperty]` 4개(자동 왕복) +
    LoanService write-through/RestoreFromRelic + `NGame.LoadRun` 훅. solo-verify save/load PASS.
 7. ✅ **[완료] 유물 아이콘** — gem 스프라이트 pck 빌드+인게임 렌더 확인.
