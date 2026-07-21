@@ -36,9 +36,8 @@ internal static class TurnStartInjectPatch
             if (player?.PlayerCombatState == null || player.PlayerCombatState.TurnNumber != 1) return;
             if (player.RunState == null) return;
 
-            int total = LoanService.RunWideDebtTotal(player.RunState);
-            if (total <= 0) return;
-            await LoanService.InjectDebtCardsForCombat(player, total);
+            // Inject every active loan's escalating curse SET into this player's draw pile (run-wide contagion).
+            await LoanService.InjectAllDebtsForCombat(player, player.RunState);
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] turn-start injection failed: {e.Message}"); }
     }

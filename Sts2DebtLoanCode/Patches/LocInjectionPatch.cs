@@ -37,13 +37,20 @@ internal static class LocInjectionPatch
                 ["DEBT_LOAN_RELIC.flavor"] = s.RelicFlavor,
             });
 
-            // The card FACE renders from ".description" (+ ".smartDescription" if present) with SmartFormat +
-            // BBCode markup; a plain default leaves the RichTextLabel on "If you can read this, there is a bug."
+            // The card FACE renders from ".description" (+ ".smartDescription") with SmartFormat + BBCode.
+            // Class name → Id.Entry: DebtCurseCard=DEBT_CURSE_CARD (빚 독촉), DelinquencyCard=DELINQUENCY_CARD
+            // (연체), SeizureCard=SEIZURE_CARD (차압).
             manager.GetTable("cards").MergeWith(new Dictionary<string, string>
             {
-                ["DEBT_CURSE_CARD.title"] = s.CardTitle,
-                ["DEBT_CURSE_CARD.description"] = s.CardDesc,
-                ["DEBT_CURSE_CARD.smartDescription"] = s.CardDesc,
+                ["DEBT_CURSE_CARD.title"] = s.DunTitle,
+                ["DEBT_CURSE_CARD.description"] = s.DunDesc,
+                ["DEBT_CURSE_CARD.smartDescription"] = s.DunDesc,
+                ["DELINQUENCY_CARD.title"] = s.DelTitle,
+                ["DELINQUENCY_CARD.description"] = s.DelDesc,
+                ["DELINQUENCY_CARD.smartDescription"] = s.DelDesc,
+                ["SEIZURE_CARD.title"] = s.SeiTitle,
+                ["SEIZURE_CARD.description"] = s.SeiDesc,
+                ["SEIZURE_CARD.smartDescription"] = s.SeiDesc,
             });
         }
         catch (Exception ex)

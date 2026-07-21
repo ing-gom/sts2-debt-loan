@@ -2,52 +2,74 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Godot;                                          // Mathf
 using MegaCrit.Sts2.Core.Commands;                    // PlayerCmd
+using MegaCrit.Sts2.Core.Entities.Cards;              // CardType, CardRarity, TargetType, CardKeyword, CardPlay
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;     // PlayerChoiceContext
-using MegaCrit.Sts2.Core.Entities.Cards;              // CardType, CardRarity, TargetType, CardKeyword
-using MegaCrit.Sts2.Core.Localization.DynamicVars;    // DynamicVar, GoldVar
-using MegaCrit.Sts2.Core.Models;                      // CardModel
+using MegaCrit.Sts2.Core.Localization.DynamicVars;    // DynamicVar
+using MegaCrit.Sts2.Core.Models;                      // CardModel, CardPoolModel, ModelDb
+using MegaCrit.Sts2.Core.Models.CardPools;            // CurseCardPool
 
 namespace Sts2DebtLoan;
 
 /// <summary>
-/// The Debt card the loan seeps into your deck. A near-verbatim copy of the base-game
-/// <c>Debt</c> curse (Unplayable; at end of turn while in hand, lose gold), with two changes:
-///   • the drained amount is <see cref="DebtLoanConfig.InterestPerDraw"/> (config-tunable), and
-///   • the drain is booked as interest via <see cref="LoanService.AccrueInterest"/>, which retires
-///     the loan once the 200% ceiling is reached.
-///
-/// Auto-registered: the game reflects over mod assemblies for <c>CardModel</c> subtypes and assigns
-/// a ModelId (Entry = "DEBT_CURSE_CARD"); localization is injected at runtime by LocInjectionPatch.
-/// Like the vanilla Debt, it needs no custom art — it uses the shared Curse frame.
+/// 빚 독촉 (Dunning) — the base Debt curse the loan seeps into combat. Unlike a plain unplayable curse, this
+/// gives the player AGENCY:
+///   • ON DRAW it collects 10 gold (20% toward principal, the rest interest) — the unavoidable collection tax.
+///   • It is ETHEREAL — if you don't play it, it exhausts at end of turn (you paid only the draw tax).
+///   • You may PLAY it (energy cost 1) to pay 20 more gold, split 50/50 principal/interest — VOLUNTARY faster
+///     repayment. But you can only play it if you actually have the gold (IsPlayable gates on gold).
+/// The UPGRADED form (빚 독촉+, injected once your lifetime borrowing exceeds the soft cap) hits harder:
+/// 15 on draw / 30 on play. Auto-registered; localization injected by LocInjectionPatch.
 /// </summary>
 public sealed class DebtCurseCard : CardModel
 {
-    public override int MaxUpgradeLevel => 0;
-
-    // Our generated card belongs to no registered card pool, so CardModel.Pool's search finds nothing and
-    // falls through to probing the MockCardPool test fallback — reading whose AllCardIds generates mock
-    // cards and throws "You monster!" the instant ANYTHING reads our Pool (NCard preview, EnergyIcon, …).
-    // Return the shared curse pool directly, cached. (Confirmed NOT the cause of the heavy-mod-env test
-    // harness run-start hang — removing this override does not change that; isolated runs always pass.)
     private static CardPoolModel? _cursePool;
-    public override CardPoolModel Pool =>
-        _cursePool ??= ModelDb.CardPool<MegaCrit.Sts2.Core.Models.CardPools.CurseCardPool>();
+    // Belongs to no pool → CardModel.Pool would hit the MockCardPool fallback ("You monster!"); borrow the
+    // shared curse pool, cached. (Same fix as before, needed here too for the card preview/EnergyIcon path.)
+    public override CardPoolModel Pool => _cursePool ??= ModelDb.CardPool<CurseCardPool>();
 
-    public override IEnumerable<CardKeyword> CanonicalKeywords => new[] { CardKeyword.Unplayable };
+    public override int MaxUpgradeLevel => 1;   // base vs '+' (over-cap) form
+
+    // Ethereal = exhausts at end of turn if left in hand; Exhaust = also leaves after being played.
+    // NOT Unplayable — the player may choose to play it (to repay faster).
+    public override IEnumerable<CardKeyword> CanonicalKeywords => new[] { CardKeyword.Ethereal, CardKeyword.Exhaust };
+
+    private int DrawCost => IsUpgraded ? 15 : 10;
+    private int PlayCost => IsUpgraded ? 30 : 20;
 
     protected override IEnumerable<DynamicVar> CanonicalVars =>
-        new DynamicVar[] { new GoldVar(DebtLoanConfig.InterestPerDraw) };
+        new[] { new DynamicVar("draw", DrawCost), new DynamicVar("play", PlayCost) };
 
-    public override bool HasTurnEndInHandEffect => true;
+    public DebtCurseCard() : base(canonicalEnergyCost: 1, CardType.Curse, CardRarity.Curse, TargetType.None) { }
 
-    public DebtCurseCard() : base(-1, CardType.Curse, CardRarity.Curse, TargetType.None) { }
+    /// <summary>Gold gate: you can't play it unless you can actually pay the play cost (energy alone isn't
+    /// enough). Grayed out when broke (BlockedByCardLogic), like Grand Finale's draw-pile check.</summary>
+    protected override bool IsPlayable => Owner != null && (int)Owner.Gold >= PlayCost;
 
-    protected override async Task OnTurnEndInHand(PlayerChoiceContext choiceContext)
+    /// <summary>The collection tax on DRAW: lose DrawCost gold (20% toward principal).</summary>
+    public override async Task AfterCardDrawn(PlayerChoiceContext choiceContext, CardModel card, bool fromHandDraw)
     {
-        // Spec: at 0 gold there is nothing to drain, so no interest is paid this trigger.
-        int drain = Mathf.Min(DynamicVars.Gold.IntValue, Owner.Gold);
+        if (!ReferenceEquals(card, this) || Owner == null) return;
+        int drain = Mathf.Min(DrawCost, (int)Owner.Gold);
         if (drain <= 0) return;
         await PlayerCmd.LoseGold(drain, Owner);
-        await LoanService.AccrueInterest(Owner, drain);
+        await LoanService.AccrueInterest(Owner, drain);            // 20% principal (passive)
+    }
+
+    /// <summary>Playing it: pay PlayCost gold at a 50% principal split — voluntary FAST repayment. The
+    /// Exhaust keyword removes it afterward. IsPlayable already guaranteed the gold is present.</summary>
+    protected override async Task OnPlay(PlayerChoiceContext choiceContext, CardPlay cardPlay)
+    {
+        if (Owner == null) return;
+        int drain = Mathf.Min(PlayCost, (int)Owner.Gold);
+        if (drain <= 0) return;
+        await PlayerCmd.LoseGold(drain, Owner);
+        await LoanService.AccrueInterest(Owner, drain, principalShareOverride: 0.5);   // 50% principal
+    }
+
+    protected override void OnUpgrade()
+    {
+        base.OnUpgrade();
+        DynamicVars["draw"].BaseValue = DrawCost;
+        DynamicVars["play"].BaseValue = PlayCost;
     }
 }

@@ -61,13 +61,11 @@ internal static class LoanService
     {
         var rec = For(p);
         if (rec == null || !rec.Active || rec.Principal <= 0 || p?.RunState == null) return 0;
-        int count = DebtLoanConfig.TargetDebtCards(p.RunState.TotalFloor - rec.LoanFloor);
-        if (rec.Borrowed > DebtLoanConfig.MaxLoan) count = Math.Min(3, count + 1);   // over the soft cap → start at 2
-        return count;
+        return DebtLoanConfig.TargetDebtCards(p.RunState.TotalFloor - rec.LoanFloor);   // 1 / 2 / 3 by rooms
     }
 
-    /// <summary>Total Debt cards injected per combat = the SUM of every player's active-loan count. In
-    /// co-op this makes one player's debt spread into the partner's combats too, and stack if both borrow.</summary>
+    /// <summary>Kept for the shop surcharge + relic tooltip: the highest per-combat curse-tier across all
+    /// active loans (1/2/3). The injection itself composes per-loan (see <see cref="InjectAllDebtsForCombat"/>).</summary>
     internal static int RunWideDebtTotal(IRunState run)
     {
         if (run?.Players == null) return 0;
@@ -76,27 +74,39 @@ internal static class LoanService
         return total;
     }
 
-    /// <summary>Inject <paramref name="count"/> temporary Debt cards into a player's combat draw pile.</summary>
-    internal static async Task InjectDebtCardsForCombat(Player player, int count)
+    /// <summary>Inject the DISTINCT Debt curse cards for EVERY active loan in the run into one player's draw
+    /// pile — the run-wide contagion (a partner's loan seeps into your combat too; multiple loans stack).
+    /// Each loan contributes an escalating SET by rooms-since-loan: 빚 독촉 (Dunning, upgraded to '+' once
+    /// that loan is over the soft cap) always; +연체 (Delinquency) at 10 rooms; +차압 (Seizure) at 20. The
+    /// cards pop into the centre of the screen and fly into the draw pile (native PreviewCardPileAdd, local-
+    /// player-gated). Temporary — gone at combat end.</summary>
+    internal static async Task InjectAllDebtsForCombat(Player injectee, IRunState run)
     {
-        var combat = player?.Creature?.CombatState;
-        if (combat == null) return;   // only inside a live combat
+        var combat = injectee?.Creature?.CombatState;
+        if (combat == null || run?.Players == null) return;
 
         var cards = new List<CardModel>();
-        for (int i = 0; i < count; i++)
+        foreach (var owner in run.Players)
         {
-            var card = combat.CreateCard<DebtCurseCard>(player);
-            if (card != null) cards.Add(card);
+            var rec = For(owner);
+            if (rec == null || !rec.Active || rec.Principal <= 0 || owner.RunState == null) continue;
+            int tier = DebtLoanConfig.TargetDebtCards(owner.RunState.TotalFloor - rec.LoanFloor);   // 1/2/3
+            bool overCap = rec.Borrowed > DebtLoanConfig.MaxLoan;
+
+            var dunning = combat.CreateCard<DebtCurseCard>(injectee);
+            if (dunning != null)
+            {
+                if (overCap) { dunning.UpgradeInternal(); dunning.FinalizeUpgradeInternal(); }   // 빚 독촉+
+                cards.Add(dunning);
+            }
+            if (tier >= 2) { var c = combat.CreateCard<DelinquencyCard>(injectee); if (c != null) cards.Add(c); }
+            if (tier >= 3) { var c = combat.CreateCard<SeizureCard>(injectee);     if (c != null) cards.Add(c); }
         }
         if (cards.Count == 0) return;
 
-        // Add the Debt cards to the draw pile, then run the game's native reveal — exactly how vanilla
-        // Soot/Soul do it: each card pops up in the CENTRE of the screen and flies into the player's draw
-        // pile. PreviewCardPileAdd is local-player-gated (LocalContext.IsMine), so in co-op each player sees
-        // only their own reveal. (Requires DebtCurseCard.Pool to resolve to a real pool — see that card.)
-        var results = await CardPileCmd.AddGeneratedCardsToCombat(cards, PileType.Draw, player, CardPilePosition.Random);
+        var results = await CardPileCmd.AddGeneratedCardsToCombat(cards, PileType.Draw, injectee, CardPilePosition.Random);
         CardCmd.PreviewCardPileAdd(results);
-        MainFile.Logger.Info($"[{MainFile.ModId}] injected {cards.Count} Debt card(s) into the draw pile.");
+        MainFile.Logger.Info($"[{MainFile.ModId}] injected {cards.Count} Debt curse card(s) into the draw pile.");
     }
 
     /// <summary>True if the player already carries the Merchant's Ledger relic.</summary>
@@ -273,15 +283,18 @@ internal static class LoanService
         SyncToRelic(player);
     }
 
-    /// <summary>A Debt card drained gold. The payment splits: a share (<see cref="DebtLoanConfig.PrincipalRepayShare"/>)
-    /// pays DOWN the principal, the rest is interest — so the loan slowly amortizes and the shop repay cost
-    /// shrinks. Pure record math; runs deterministically on both co-op peers in the lockstep combat.</summary>
-    internal static async Task AccrueInterest(Player player, int drained)
+    /// <summary>A Debt card drained gold. The payment splits: a share pays DOWN the principal, the rest is
+    /// interest — so the loan amortizes and the shop repay cost shrinks. The share is
+    /// <see cref="DebtLoanConfig.PrincipalRepayShare"/> (20%) for the passive on-draw drain, or an override
+    /// (50% when the player voluntarily PLAYS a Dunning card = faster repayment). Pure record math; runs
+    /// deterministically on both co-op peers in the lockstep combat.</summary>
+    internal static async Task AccrueInterest(Player player, int drained, double? principalShareOverride = null)
     {
         var rec = For(player);
         if (rec == null || !rec.Active || drained <= 0) return;
         rec.TotalPaid += drained;
-        int principalCut = Math.Min(rec.Principal, (int)Math.Round(drained * DebtLoanConfig.PrincipalRepayShare));
+        double share = principalShareOverride ?? DebtLoanConfig.PrincipalRepayShare;
+        int principalCut = Math.Min(rec.Principal, (int)Math.Round(drained * share));
         rec.Principal = Math.Max(0, rec.Principal - principalCut);
         SyncToRelic(player);
         await Task.CompletedTask;
