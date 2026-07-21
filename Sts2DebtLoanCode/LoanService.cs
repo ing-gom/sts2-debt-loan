@@ -185,10 +185,15 @@ internal static class LoanService
         return player.RunState.TotalFloor == rec.LoanFloor;  // top-up ONLY at the same shop
     }
 
+    /// <summary>How much a loan advances for this item: at least <see cref="DebtLoanConfig.MinLoan"/> (so a
+    /// tiny shortfall still borrows a meaningful amount), never below the actual shortfall, and capped by the
+    /// remaining borrow room. The extra over the shortfall lands in the player's pocket as change.</summary>
     internal static int LoanAmountFor(MerchantEntry entry, Player player)
     {
         int shortfall = entry.Cost - (int)player.Gold;
-        return Math.Max(0, Math.Min(shortfall, RemainingRoom(player)));
+        if (shortfall <= 0) return 0;
+        int want = Math.Max(shortfall, DebtLoanConfig.MinLoan);
+        return Math.Max(0, Math.Min(want, RemainingRoom(player)));
     }
 
     /// <summary>Price multiplier the merchant applies to a player carrying debt at a DIFFERENT shop than

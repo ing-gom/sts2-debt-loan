@@ -18,6 +18,7 @@ public class MainFile
     public const string ModId = "Sts2DebtLoan";
 
     private const string KeyMaxLoan = "maxLoan";
+    private const string KeyMinLoan = "minLoan";
     private const string KeyInterest = "interestPerDraw";
     private const string KeyRepayPct = "principalRepayPct";
     private const string KeyOtherActs = "allowOtherActs";
@@ -61,6 +62,12 @@ public class MainFile
                 .Description("The most total gold you can borrow in a run (across the first loan and any top-ups).");
             Loc(b, "최대 대출액 (골드)", "한 런에서 빌릴 수 있는 총 골드 상한 (최초 대출 + 추가 대출 합계).");
 
+            b.Slider(KeyMinLoan, "Min loan (gold)", defaultValue: 100.0,
+                    onChanged: v => DebtLoanConfig.MinLoan = (int)v)
+                .Range(0f, 300f, 25f, format: "F0")
+                .Description("A loan always advances at least this much (capped by the remaining room), so being just short doesn't create a trivial tiny debt — you borrow a meaningful amount and keep the change.");
+            Loc(b, "최소 대출액 (골드)", "대출은 항상 최소 이 금액만큼 나갑니다(잔여 한도 내). 조금만 모자라도 1골드짜리 하찮은 빚이 생기지 않고, 의미 있는 금액을 빌리고 잔돈은 가집니다.");
+
             b.Slider(KeyInterest, "Interest per Debt card (gold)", defaultValue: 10.0,
                     onChanged: v => DebtLoanConfig.InterestPerDraw = (int)v)
                 .Range(0f, 50f, 5f, format: "F0")
@@ -81,11 +88,12 @@ public class MainFile
             b.Register();
 
             DebtLoanConfig.MaxLoan = (int)ModConfigBridge.GetValue<double>(ModId, KeyMaxLoan, 300.0);
+            DebtLoanConfig.MinLoan = (int)ModConfigBridge.GetValue<double>(ModId, KeyMinLoan, 100.0);
             DebtLoanConfig.InterestPerDraw = (int)ModConfigBridge.GetValue<double>(ModId, KeyInterest, 10.0);
             DebtLoanConfig.PrincipalRepayShare = ModConfigBridge.GetValue<double>(ModId, KeyRepayPct, 20.0) / 100.0;
             DebtLoanConfig.AllowLoansOutsideAct1 = ModConfigBridge.GetValue<bool>(ModId, KeyOtherActs, false);
 
-            Logger.Info($"[{ModId}] config: maxLoan {DebtLoanConfig.MaxLoan}g, interest {DebtLoanConfig.InterestPerDraw}g/draw, principal-repay {DebtLoanConfig.PrincipalRepayShare:P0}, act1-only {!DebtLoanConfig.AllowLoansOutsideAct1}.");
+            Logger.Info($"[{ModId}] config: maxLoan {DebtLoanConfig.MaxLoan}g, minLoan {DebtLoanConfig.MinLoan}g, interest {DebtLoanConfig.InterestPerDraw}g/draw, principal-repay {DebtLoanConfig.PrincipalRepayShare:P0}, act1-only {!DebtLoanConfig.AllowLoansOutsideAct1}.");
         }
         catch (Exception e) { Logger.Warn($"[{ModId}] config registration failed: {e.Message}"); }
     }

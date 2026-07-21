@@ -10,6 +10,11 @@ internal static class DebtLoanConfig
     /// <summary>Hard cap on the total principal a run can borrow (spec: 300).</summary>
     internal static int MaxLoan = 300;
 
+    /// <summary>Floor on a single loan. A loan always advances at least this much (capped by the remaining
+    /// borrow room), so being 1 gold short doesn't create a trivial 1-gold debt — you borrow a meaningful
+    /// amount and keep the change. Spec: 100.</summary>
+    internal static int MinLoan = 100;
+
     /// <summary>Gold each Debt card drains when it triggers = the interest rate.
     /// Spec default matches the vanilla Debt curse (10). Config-adjustable.</summary>
     internal static int InterestPerDraw = 10;

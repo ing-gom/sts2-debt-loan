@@ -252,7 +252,7 @@ internal static class SoloTest
             all &= tH;
 
             // I) Combat-start injection: a fresh loan (count 1) → entering a Monster room fires
-            //    BeforeCombatStart, which must put the Debt card(s) into the combat piles.
+            //    the first player turn (AfterPlayerTurnStart), which must put the Debt card(s) into the piles.
             Step("combat-start injection");
             LoanService.ResetFor(player);
             await DebtLoanGrants.RemoveRelic(player);
@@ -263,7 +263,7 @@ internal static class SoloTest
             if (Engine.GetMainLoop() is SceneTree)
             {
                 await RunManager.Instance.EnterRoomDebug(RoomType.Monster);
-                await Task.Delay(4000);                            // combat setup + BeforeCombatStart
+                await Task.Delay(4000);                            // combat setup + first turn start (injection)
                 int debtInCombat = 0;
                 foreach (var pt in new[] { PileType.Draw, PileType.Hand, PileType.Discard })
                 {
@@ -276,6 +276,24 @@ internal static class SoloTest
                 await Shot("4_combat");
             }
             all &= tI;
+
+            // J) Min-loan floor: a 1-gold shortfall still borrows at least MinLoan (100), not 1.
+            Step("min-loan floor");
+            DebtLoanConfig.MinLoan = 100;
+            DebtLoanConfig.MaxLoan = 9999;
+            LoanService.ResetFor(player);
+            await DebtLoanGrants.RemoveRelic(player);
+            await Task.Delay(120);
+            var jEntry = mkEntry();
+            int jCost = jEntry.Cost;
+            int jGold = (int)player.Gold, jTarget = Math.Max(0, jCost - 1);   // shortfall = 1
+            if (jGold > jTarget) await PlayerCmd.LoseGold(jGold - jTarget, player, GoldLossType.Spent);
+            else if (jGold < jTarget) await PlayerCmd.GainGold(jTarget - jGold, player, false);
+            await Task.Delay(120);
+            int jAmt = LoanService.LoanAmountFor(jEntry, player);
+            bool tJ = jAmt == 100;
+            W($"  assert min-loan: cost={jCost} gold={(int)player.Gold} shortfall={jCost-(int)player.Gold} -> amount={jAmt}(100) -> {tJ}");
+            all &= tJ;
 
             await Shot("2_final");
             W($"=== solo test done: {(all ? "ALL PASS" : "FAIL")} ===");
