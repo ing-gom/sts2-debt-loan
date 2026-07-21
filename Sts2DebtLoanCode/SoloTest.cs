@@ -144,6 +144,9 @@ internal static class SoloTest
             bool t2 = c13 == 0 && c14 == 1 && c17 == 3 && c20 == 5;
             W($"  assert escalation: r13={c13}(0) r14={c14}(1) r17={c17}(3) r20={c20}(5) -> {t2}");
             all &= t2;
+            // live hover text (owed + interest + rooms-to-next-card) — should be non-placeholder & reflect state
+            try { W($"  ledger hover text: {new MegaCrit.Sts2.Core.Localization.LocString("relics", "DEBT_LOAN_RELIC.description").GetFormattedText()}"); }
+            catch (Exception e) { W("  ledger hover read failed: " + e.Message); }
 
             // 2b) Persistence: state (principal 100, rooms 20, 5 cards, active) must survive a
             // save→load round-trip via the relic's [SavedProperty] fields + deck rescan.

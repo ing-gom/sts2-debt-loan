@@ -99,8 +99,28 @@ internal static class LoanService
             relic.InterestPaid = rec.InterestPaid;
             relic.RoomsSinceLoan = rec.RoomsSinceLoan;
             relic.Active = rec.Active;
+            LocInjectionPatch.SetLedgerDescription(BuildLedgerText(rec));
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] relic sync failed: {e.Message}"); }
+    }
+
+    /// <summary>Live hover text for the Ledger relic: owed principal, interest vs the settlement cap, and
+    /// how many rooms remain until the next Debt card is injected.</summary>
+    private static string BuildLedgerText(LoanRecord rec)
+    {
+        if (!rec.Active)
+            return "The debt is settled — this ledger is closed.";
+
+        int owed = rec.Principal, interest = rec.InterestPaid, cap = rec.InterestCap;
+        int cards = rec.DebtCards.Count, rooms = rec.RoomsSinceLoan;
+        int nextRoom = DebtLoanConfig.NextThresholdRoom(rooms);
+        string next = nextRoom < 0
+            ? $"[b]{cards}[/b] Debt cards in your deck (max)."
+            : cards == 0
+                ? $"First Debt card enters your deck in [b]{nextRoom - rooms}[/b] room(s)."
+                : $"[b]{cards}[/b] Debt card(s) in your deck — next in [b]{nextRoom - rooms}[/b] room(s).";
+        return $"You owe [gold]{owed} Gold[/gold].  Interest paid [b]{interest}[/b] / [b]{cap}[/b].\n{next}\n" +
+               "Repay the principal at a shop, or reach 200% interest, to clear the debt.";
     }
 
     /// <summary>Rebuild the transient LoanRecord from the (loaded) relic + deck. Called on run load.</summary>

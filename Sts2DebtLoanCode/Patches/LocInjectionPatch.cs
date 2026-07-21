@@ -37,6 +37,15 @@ internal static class LocInjectionPatch
     [HarmonyPostfix]
     private static void Postfix(LocManager __instance) => Inject(__instance);
 
+    /// <summary>Live-update the Ledger relic's hover description with the current loan status. Safe as a
+    /// global loc write because loans are single-player only (see LoanService co-op gate) — one player,
+    /// one table, no divergence. The relic rebuilds its LocString on each hover, so this shows current.</summary>
+    internal static void SetLedgerDescription(string text)
+    {
+        try { LocManager.Instance?.GetTable("relics")?.MergeWith(new Dictionary<string, string> { ["DEBT_LOAN_RELIC.description"] = text }); }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] ledger description update failed: {e.Message}"); }
+    }
+
     internal static void Inject(LocManager? manager)
     {
         try

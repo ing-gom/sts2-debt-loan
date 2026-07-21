@@ -43,4 +43,12 @@ internal static class DebtLoanConfig
             if (roomsSinceLoan >= room) target = cards;
         return target;
     }
+
+    /// <summary>The next room threshold that adds Debt cards, or -1 if already at the last one.</summary>
+    internal static int NextThresholdRoom(int roomsSinceLoan)
+    {
+        foreach (var (room, _) in Schedule)
+            if (roomsSinceLoan < room) return room;
+        return -1;
+    }
 }
