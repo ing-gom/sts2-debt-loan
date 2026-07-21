@@ -153,7 +153,7 @@ internal static class LoanService
     // ── Eligibility ──────────────────────────────────────────────────────────
 
     private static bool ActAllowsLoan(Player player)
-        => DebtLoanConfig.AllowLoansOutsideAct1 || player.RunState.CurrentActIndex == 0;
+        => player.RunState.CurrentActIndex <= DebtLoanConfig.MaxLoanActIndex;
 
     internal static int RemainingRoom(Player player)
     {

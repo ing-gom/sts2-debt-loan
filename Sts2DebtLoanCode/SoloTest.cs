@@ -117,7 +117,7 @@ internal static class SoloTest
             DebtLoanConfig.MaxLoan = 300;
             DebtLoanConfig.InterestPerDraw = 10;
             DebtLoanConfig.PrincipalRepayShare = 0.2;
-            DebtLoanConfig.AllowLoansOutsideAct1 = true;
+            DebtLoanConfig.MaxLoanActIndex = 2;   // allow loans in every act for the test
 
             bool all = true;
 

@@ -24,8 +24,9 @@ internal static class DebtLoanConfig
     /// slowly amortizes and the shop repay cost shrinks over time.</summary>
     internal static double PrincipalRepayShare = 0.2;
 
-    /// <summary>By default loans are only offered in Act 1. Option to allow every act.</summary>
-    internal static bool AllowLoansOutsideAct1 = false;
+    /// <summary>Highest act (0-based) where the merchant still lends: 0 = Act 1 only (default), 1 = through
+    /// Act 2, 2 = through Act 3. Compared against <c>RunState.CurrentActIndex</c>.</summary>
+    internal static int MaxLoanActIndex = 0;
 
     // Debt-card schedule: (roomsSinceLoan, cardsInjectedPerCombat). Taking the loan injects 1 immediately
     // (room 0); every 10 further rooms adds one, capped at 3. These cards are injected fresh into the draw
