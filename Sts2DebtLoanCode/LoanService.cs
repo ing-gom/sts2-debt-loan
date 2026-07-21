@@ -123,7 +123,7 @@ internal static class LoanService
             relic.TotalPaid = rec.TotalPaid;
             relic.LoanFloor = rec.LoanFloor;
             relic.Active = rec.Active;
-            relic.RefreshVars();          // push borrowed/paid into the relic's own DynamicVars (per-relic hover)
+            relic.RefreshVars(DebtCardCountFor(player));   // borrowed/paid/cards into the relic's own DynamicVars (per-relic hover)
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] relic sync failed: {e.Message}"); }
     }
@@ -146,7 +146,7 @@ internal static class LoanService
         rec.LoanFloor = relic.LoanFloor;
         rec.Active = relic.Active;
         rec.RelicGranted = true;
-        relic.RefreshVars();
+        relic.RefreshVars(DebtCardCountFor(player));
         MainFile.Logger.Info($"[{MainFile.ModId}] restored loan: borrowed {rec.Borrowed}, owed {rec.Principal}, paid {rec.TotalPaid}, loanFloor {rec.LoanFloor}, active {rec.Active}.");
     }
 

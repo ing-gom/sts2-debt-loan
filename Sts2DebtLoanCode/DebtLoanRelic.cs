@@ -27,6 +27,7 @@ public sealed class DebtLoanRelic : RelicModel
 
     private int _borrowed, _principal, _totalPaid, _loanFloor;
     private bool _active;
+    private int _cards;   // transient (not saved): current per-combat Debt-card count, for the hover {cards}
 
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public int Borrowed { get => _borrowed; set { AssertMutable(); _borrowed = value; } }
@@ -54,18 +55,21 @@ public sealed class DebtLoanRelic : RelicModel
     // state. RelicModel.DynamicDescription applies DynamicVars per-instance, so two players' Ledgers each show
     // their own numbers — unlike the old global loc-table overwrite (which was a co-op display bug).
     protected override System.Collections.Generic.IEnumerable<DynamicVar> CanonicalVars =>
-        new[] { new DynamicVar("borrowed", _borrowed), new DynamicVar("paid", _totalPaid) };
+        new[] { new DynamicVar("borrowed", _borrowed), new DynamicVar("paid", _totalPaid), new DynamicVar("cards", _cards) };
 
-    /// <summary>Push the current borrowed/paid values into the cached DynamicVars so the hover shows live,
-    /// per-relic numbers. Called by LoanService.SyncToRelic on every state change. (DynamicVars is built
-    /// lazily from CanonicalVars and then cached, so we must update the vars in place.)</summary>
-    internal void RefreshVars()
+    /// <summary>Push the current borrowed/paid values + per-combat Debt-card count into the cached DynamicVars
+    /// so the hover shows live, per-relic numbers. Called by LoanService.SyncToRelic on every state change
+    /// (<paramref name="cards"/> is the current injection count, computed from rooms-since-loan). DynamicVars
+    /// is built lazily from CanonicalVars and then cached, so we update the vars in place.</summary>
+    internal void RefreshVars(int cards)
     {
+        _cards = cards;
         try
         {
             var vars = DynamicVars;
             if (vars.TryGetValue("borrowed", out var b)) b.BaseValue = _borrowed;
             if (vars.TryGetValue("paid", out var p)) p.BaseValue = _totalPaid;
+            if (vars.TryGetValue("cards", out var c)) c.BaseValue = _cards;
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] ledger var refresh failed: {e.Message}"); }
     }
