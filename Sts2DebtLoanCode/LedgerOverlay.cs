@@ -39,10 +39,14 @@ internal static class LedgerOverlay
                 {
                     Name = OverlayName,
                     MouseFilter = Control.MouseFilterEnum.Ignore,     // never steal hover from the relic
+                    // ★ IgnoreSize: without it a TextureRect's minimum size = the texture's NATIVE size (256px+),
+                    // so the overlay ignored the anchors and rendered huge. IgnoreSize makes it follow its
+                    // layout rect (the icon) instead. Set BEFORE the size/anchor preset (order matters in Godot).
+                    ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
                     StretchMode = TextureRect.StretchModeEnum.Scale,
                 };
-                ov.SetAnchorsPreset(Control.LayoutPreset.FullRect);   // cover the icon, move/scale with it
                 icon.AddChild(ov);                                    // last child → drawn over the base icon
+                ov.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);   // fill the icon EXACTLY (anchors + offsets)
                 if (!_hosts.Contains(relic)) _hosts.Add(relic);
             }
             Apply(relic, ov);
@@ -67,6 +71,10 @@ internal static class LedgerOverlay
         rm.RoomEntered += RefreshAll;
         _subscribed = true;
     }
+
+    /// <summary>Force an immediate re-evaluation of every live overlay (used by the dl_tier debug command,
+    /// which changes the tier without a room transition).</summary>
+    internal static void Refresh() => RefreshAll();
 
     /// <summary>On every room change, re-evaluate the tier for each live overlay so the ledger visibly evolves
     /// as the debt escalates (dropping any widgets that have since been freed).</summary>

@@ -8,7 +8,9 @@ using MegaCrit.Sts2.Core.Entities.Cards;      // PileType, CardPilePosition
 using MegaCrit.Sts2.Core.Entities.Gold;       // GoldLossType
 using MegaCrit.Sts2.Core.Entities.Merchant;   // MerchantEntry
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.GameActions.Multiplayer;   // PlayerChoiceContext
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Rooms;               // RoomType
 using MegaCrit.Sts2.Core.Runs;
 
 namespace Sts2DebtLoan;
@@ -37,6 +39,14 @@ internal sealed class LoanRecord
     internal bool Active = true;
 
     internal bool RelicGranted;
+
+    /// <summary>Whether the 독촉장 (Dunning Letter) leverage card has been handed to the deck this loan (once,
+    /// on the first visit to a shop other than the loan shop). Persisted on the relic so a reload keeps it.</summary>
+    internal bool DunningLetterGranted;
+
+    /// <summary>How many of the 7 debt event cards have been handed out (one per shop-revisit). Drives the fixed
+    /// order — 1st = 독촉장, 5th = 취업알선, the rest a per-run shuffle of the payment cards. Persisted.</summary>
+    internal int EventGrantCount;
 
     /// <summary>PER-COMBAT transient: the 신용 불량 (Bad Credit) collection level 0..3. Reset to 0 at each
     /// combat start (by the injector) and ratcheted up by BadCreditCard every turn it sits in hand. Not
@@ -90,20 +100,20 @@ internal static class LoanService
         var combat = injectee?.Creature?.CombatState;
         if (combat == null || run?.Players == null) return;
 
+        ResetPaymentsThisCombat(injectee!);   // fresh 납부 counter each combat (drives 정산/청구서 scaling)
+
         var cards = new List<CardModel>();
         foreach (var owner in run.Players)
         {
             var rec = For(owner);
             if (rec == null || !rec.Active || rec.Principal <= 0 || owner.RunState == null) continue;
             int tier = DebtLoanConfig.TargetDebtCards(owner.RunState.TotalFloor - rec.LoanFloor);   // 1/2/3
-            bool overCap = rec.Borrowed > DebtLoanConfig.MaxLoan;
 
+            // Forced-injected Debt cards are ALWAYS the base 빚 독촉 (leverage nuke). The upgraded 빚 독촉+ form
+            // (0-cost, no AoE) is exclusively what the 독촉장+ (Dunning Letter) power injects — it's a payoff,
+            // not a penalty, so it must NOT appear as debt escalation (that would make deep debt milder).
             var dunning = combat.CreateCard<DebtCurseCard>(injectee);
-            if (dunning != null)
-            {
-                if (overCap) { dunning.UpgradeInternal(); dunning.FinalizeUpgradeInternal(); }   // 빚 독촉+
-                cards.Add(dunning);
-            }
+            if (dunning != null) cards.Add(dunning);
             if (tier >= 2) { var c = combat.CreateCard<DelinquencyCard>(injectee); if (c != null) cards.Add(c); }
             if (tier >= 3) { var c = combat.CreateCard<SeizureCard>(injectee);     if (c != null) cards.Add(c); }
             if (tier >= 4)
@@ -157,6 +167,8 @@ internal static class LoanService
             relic.TotalPaid = rec.TotalPaid;
             relic.LoanFloor = rec.LoanFloor;
             relic.Active = rec.Active;
+            relic.DunningLetterGranted = rec.DunningLetterGranted;
+            relic.EventGrantCount = rec.EventGrantCount;
             relic.RefreshVars(DebtCardCountFor(player));   // borrowed/paid/cards into the relic's own DynamicVars (per-relic hover)
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] relic sync failed: {e.Message}"); }
@@ -179,9 +191,28 @@ internal static class LoanService
         rec.TotalPaid = relic.TotalPaid;
         rec.LoanFloor = relic.LoanFloor;
         rec.Active = relic.Active;
+        rec.DunningLetterGranted = relic.DunningLetterGranted;
+        rec.EventGrantCount = relic.EventGrantCount;
         rec.RelicGranted = true;
+        EnsureRoomWatch();   // resubscribe the shop-revisit grant watcher after a load
         relic.RefreshVars(DebtCardCountFor(player));
         MainFile.Logger.Info($"[{MainFile.ModId}] restored loan: borrowed {rec.Borrowed}, owed {rec.Principal}, paid {rec.TotalPaid}, loanFloor {rec.LoanFloor}, active {rec.Active}.");
+    }
+
+    /// <summary>DEBUG (dl_tier console cmd): force the loan to a given rooms-since-loan so the Ledger shows a
+    /// target escalation tier — grants a starter loan if none exists, back-dates LoanFloor to hit the tier,
+    /// then refreshes badge + hover + the evolving-icon overlay. SP/preview only; not for real play.</summary>
+    internal static async Task DebugSetTier(Player player, int rooms)
+    {
+        if (player?.RunState == null) return;
+        var rec = For(player);
+        if (rec == null || !rec.Active) { await GrantLoanDirect(player, 200); rec = For(player); }
+        if (rec == null) return;
+        rec.LoanFloor = player.RunState.TotalFloor - rooms;   // rooms-since-loan = TotalFloor − LoanFloor
+        if (rec.Principal <= 0) rec.Principal = 200;
+        SyncToRelic(player);
+        RefreshRelicDisplay(player);
+        LedgerOverlay.Refresh();
     }
 
     /// <summary>Display-only: push the current tier count into the relic's DynamicVars so the hover's per-tier
@@ -273,8 +304,12 @@ internal static class LoanService
         run?.RewardSynchronizer?.SyncLocalObtainedGold(amount);
 
         var existing = For(player);
-        int borrowed  = (existing?.Borrowed ?? 0) + amount;    // lifetime borrowed (drives the cap + hover)
-        int principal = (existing?.Principal ?? 0) + amount;    // outstanding
+        int oldBorrowed = existing?.Borrowed ?? 0;
+        int borrowed  = oldBorrowed + amount;                  // lifetime borrowed (drives the cap + hover)
+        // Repayable > borrowed: you owe the gold you took PLUS a 30% surcharge. Borrowed is what you received
+        // (drives the cap); Principal is what you must repay (drives the shop cost + badge), amortized by cards.
+        int surcharge = (int)Math.Round(amount * DebtLoanConfig.RepaySurcharge);
+        int principal = (existing?.Principal ?? 0) + amount + surcharge;
         int totalPaid = existing?.TotalPaid ?? 0;
         int loanFloor = (existing != null && existing.RelicGranted)
                         ? existing.LoanFloor                   // top-up keeps the original shop floor
@@ -283,7 +318,12 @@ internal static class LoanService
         if (sp) await ApplyActiveLoan(player, borrowed, principal, totalPaid, loanFloor);
         else    DebtLoanNet.BroadcastLoan(player, borrowed, principal, totalPaid, loanFloor);
 
-        MainFile.Logger.Info($"[{MainFile.ModId}] loan +{amount}g (borrowed {borrowed}/{DebtLoanConfig.MaxLoan}, owed {principal}).");
+        MainFile.Logger.Info($"[{MainFile.ModId}] loan +{amount}g (borrowed {borrowed}/{DebtLoanConfig.MaxLoan}, owed {principal}=+30%).");
+
+        // Merchant flavor for the borrower: first loan / crossing 200 / crossing 300 (lifetime borrowed).
+        if (oldBorrowed == 0)                             MerchantBark.SayFirst();
+        else if (oldBorrowed <= 300 && borrowed > 300)   MerchantBark.Say300();
+        else if (oldBorrowed <= 200 && borrowed > 200)   MerchantBark.Say200();
     }
 
     /// <summary>Apply an ACTIVE loan state locally: set the record, grant the Ledger relic if the player
@@ -300,6 +340,80 @@ internal static class LoanService
         rec.RelicGranted = true;
         if (!PlayerHasLedger(player))
             await DebtLoanGrants.GrantRelic(player);
+        EnsureRoomWatch();   // start watching for the shop-revisit that grants the 독촉장 card
+        SyncToRelic(player);
+    }
+
+    // ── 독촉장 (Dunning Letter) shop-revisit grant ─────────────────────────────
+    private static bool _roomWatchSubscribed;
+
+    /// <summary>Subscribe (once) to room changes so we can hand the 독촉장 leverage card to a debtor the first
+    /// time they shop somewhere OTHER than where they borrowed. Fires per-peer (like the ledger overlay's own
+    /// RoomEntered hook); the grant is flag-guarded + deterministic from synced loan state → converges in co-op.
+    /// ⚠️ co-op: verify with coop-verify before release (local deck mutation off a per-peer event).</summary>
+    internal static void EnsureRoomWatch()
+    {
+        if (_roomWatchSubscribed) return;
+        var rm = RunManager.Instance;
+        if (rm == null) return;
+        rm.RoomEntered += OnRoomEntered;
+        _roomWatchSubscribed = true;
+    }
+
+    private static void OnRoomEntered()
+    {
+        try
+        {
+            var run = RunManager.Instance?.State;
+            if (run?.Players == null) return;
+            // Every room: refresh each ledger's badge (rooms-until-next-tier) so it visibly counts DOWN as you
+            // walk the map — TotalFloor changed, so the live DisplayAmount must be re-pushed to the widget.
+            foreach (var p in run.Players) RefreshRelicDisplay(p);
+            if (run.CurrentRoom?.RoomType != RoomType.Shop) return;
+            foreach (var p in run.Players) TryGrantDunningLetter(p);
+        }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] room-watch grant failed: {e.Message}"); }
+    }
+
+    /// <summary>Grant the 독촉장 once per loan, when the debtor enters a shop that isn't the one they borrowed
+    /// at (TotalFloor != LoanFloor). Deck mutation is local + deterministic → the same card lands on each peer.</summary>
+    // The 5 payment-payoff cards that fill the shuffled slots (shop-revisits 2/3/4/6/7). Shops 1 and 5 are the
+    // FIXED grants (독촉장 / 취업알선). 7 cards over 7 revisits, each exactly once.
+    private static readonly System.Type[] PaymentPool =
+    {
+        typeof(PaymentBenefitCard), typeof(RefundCard), typeof(SettlementCard), typeof(InvoiceCard), typeof(BloodPaymentCard),
+    };
+
+    /// <summary>Deterministic per-run shuffle of the 5 payment cards (seeded from the loan floor, so both co-op
+    /// peers get the same order with no networking).</summary>
+    private static System.Type[] ShuffledPaymentPool(int seed)
+    {
+        var arr = (System.Type[])PaymentPool.Clone();
+        var rng = new System.Random(seed);
+        for (int i = arr.Length - 1; i > 0; i--) { int j = rng.Next(i + 1); (arr[i], arr[j]) = (arr[j], arr[i]); }
+        return arr;
+    }
+
+    private static void TryGrantDunningLetter(Player player)
+    {
+        var rec = For(player);
+        if (rec == null || !rec.Active || rec.Principal <= 0 || player.RunState == null) return;
+        if (player.RunState.TotalFloor == rec.LoanFloor) return;   // still the loan shop → not a "revisit"
+        if (rec.EventGrantCount >= 7) return;                       // all 7 event cards handed out
+
+        int pos = rec.EventGrantCount;   // 0-based revisit index
+        System.Type cardType;
+        if (pos == 0) cardType = typeof(DunningLetterCard);        // shop 1: 독촉장 (fixed)
+        else if (pos == 4) cardType = typeof(JobPlacementCard);   // shop 5: 취업알선 (fixed)
+        else                                                       // shops 2/3/4/6/7: shuffled payment cards
+        {
+            int payIdx = pos < 4 ? pos - 1 : pos - 2;             // pos 1,2,3 → 0,1,2 ; pos 5,6 → 3,4
+            cardType = ShuffledPaymentPool(rec.LoanFloor)[payIdx];
+        }
+
+        rec.EventGrantCount++;
+        if (cardType == typeof(DunningLetterCard)) rec.DunningLetterGranted = true;   // repay-vanish still keys on this
+        _ = DebtLoanGrants.GrantCard(player, cardType);
         SyncToRelic(player);
     }
 
@@ -318,6 +432,44 @@ internal static class LoanService
         rec.Principal = Math.Max(0, rec.Principal - principalCut);
         SyncToRelic(player);
         await Task.CompletedTask;
+    }
+
+    /// <summary>취업알선 (Job Placement) fee: borrow <paramref name="amount"/> gold IN COMBAT — you gain the gold
+    /// now but it's added to the loan (borrowed + a surcharge onto the principal, like a shop top-up). Needs an
+    /// active loan. ⚠️ co-op: gold + principal mutation off a lockstep card play — verify with coop-verify.</summary>
+    internal static async Task AddCombatDebt(Player player, int amount)
+    {
+        var rec = For(player);
+        if (rec == null || !rec.Active || amount <= 0) return;
+        await PlayerCmd.GainGold(amount, player, false);
+        rec.Borrowed += amount;
+        rec.Principal += amount + (int)Math.Round(amount * DebtLoanConfig.RepaySurcharge);
+        SyncToRelic(player);
+    }
+
+    // ── 납부 (Payment) trigger system ──────────────────────────────────────────
+    private static readonly ConditionalWeakTable<Player, int[]> _paymentsThisCombat = new();
+
+    /// <summary>Times a Debt card has made a 납부 (Payment) this combat — read by the 정산 (block × payments) and
+    /// 청구서 (damage × payments) cards. Reset at combat start by the injector.</summary>
+    internal static int PaymentsThisCombat(Player? p)
+        => p != null && _paymentsThisCombat.TryGetValue(p, out var a) ? a[0] : 0;
+
+    internal static void ResetPaymentsThisCombat(Player p) => _paymentsThisCombat.GetValue(p, _ => new int[1])[0] = 0;
+
+    /// <summary>The unified 납부 (Payment) entry: amortize the loan (50/50 split), bump the per-combat payment
+    /// counter, then fire the payment-reactive powers (납부 혜택 → Plating, 환급 → a 성실 납부 card). Called by the
+    /// Debt cards after the gold is taken (or, for the HP-payment card, after the HP loss). The AccrueInterest
+    /// math is deterministic on both peers; the power effects are self-appliers → co-op safe.</summary>
+    internal static async Task RecordPayment(Player player, PlayerChoiceContext cc, int amount)
+    {
+        await AccrueInterest(player, amount, principalShareOverride: 0.5);
+        _paymentsThisCombat.GetValue(player, _ => new int[1])[0]++;
+        if (player?.Creature == null) return;
+        var benefit = player.Creature.GetPower<PaymentBenefitPower>();
+        if (benefit != null) await benefit.OnPayment(cc, player);
+        var refund = player.Creature.GetPower<RefundPower>();
+        if (refund != null) await refund.OnPayment(cc, player);
     }
 
     /// <summary>The 강제 징수 (Forced Collection) writes principal off DIRECTLY — no gold, it's paid in HP. So
@@ -346,12 +498,14 @@ internal static class LoanService
         bool sp = run?.IsSingleplayerOrFakeMultiplayer ?? true;
         if (!(sp || LocalContext.IsMe(player))) return false;
 
+        int tier = DebtCardCountFor(player);   // how deep in debt they were → tier-specific repay bark
         await PlayerCmd.LoseGold(rec.Principal, player, GoldLossType.Spent);
         run?.RewardSynchronizer?.SyncLocalGoldLost(rec.Principal);
         MainFile.Logger.Info($"[{MainFile.ModId}] repaid principal {rec.Principal}g — credit restored.");
 
         if (sp) await ApplyRepay(player);
         else    DebtLoanNet.BroadcastRepay(player);
+        MerchantBark.SayRepay(tier);           // merchant reacts to being paid off (varies by how deep you were)
         return true;
     }
 
@@ -362,6 +516,7 @@ internal static class LoanService
     {
         var rec = For(player);
         if (rec != null) { rec.Active = false; SyncToRelic(player); }   // reflect "settled" for one frame
+        await DebtLoanGrants.RemoveDunningLetter(player);                // the leverage tool evaporates with the debt
         await DebtLoanGrants.RemoveRelic(player);                        // clean slate — no inert relic left behind
         ResetFor(player);                                               // record gone → next loan is a fresh first loan
     }

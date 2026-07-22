@@ -46,6 +46,19 @@ public sealed class DebtLoanRelic : RelicModel
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public bool Active { get => _active; set { AssertMutable(); _active = value; InvokeDisplayAmountChanged(); } }
 
+    private bool _dunningLetterGranted;
+    /// <summary>Whether the 독촉장 (Dunning Letter) leverage card has already been handed to the deck this loan
+    /// (granted once, on the first visit to a shop OTHER than the loan shop). Persisted so a reload doesn't
+    /// re-grant it. Cleared with the loan on repay (the card is removed alongside the relic).</summary>
+    [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
+    public bool DunningLetterGranted { get => _dunningLetterGranted; set { AssertMutable(); _dunningLetterGranted = value; } }
+
+    private int _eventGrantCount;
+    /// <summary>How many of the 7 debt event cards have been handed out (one per shop-revisit). Persisted so the
+    /// fixed order (1st=독촉장, 5th=취업알선) survives reloads.</summary>
+    [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
+    public int EventGrantCount { get => _eventGrantCount; set { AssertMutable(); _eventGrantCount = value; } }
+
     /// <summary>Live badge: rooms remaining until the NEXT escalation ("N rooms until it gets worse"),
     /// computed live from the current floor so it ticks down as you walk the map. 0 once at the top tier
     /// (badge hidden — see ShowCounter). Owner is set while the relic is carried.</summary>
@@ -93,6 +106,10 @@ public sealed class DebtLoanRelic : RelicModel
             if (vars.TryGetValue("borrowed", out var b)) b.BaseValue = _borrowed;
             if (vars.TryGetValue("paid", out var p)) p.BaseValue = _totalPaid;
             if (vars.TryGetValue("cards", out var c)) c.BaseValue = _cards;
+            // The badge (DisplayAmount = rooms-until-next-tier) is computed live from TotalFloor, but the widget
+            // only re-reads it when notified. Walking a node changes TotalFloor without a setter firing, so poke
+            // it here → the badge counts DOWN as you move (this is called on every room via RefreshRelicDisplay).
+            InvokeDisplayAmountChanged();
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] ledger var refresh failed: {e.Message}"); }
     }
@@ -122,5 +139,48 @@ internal static class DebtLoanGrants
             if (relic != null) { await RelicCmd.Remove(relic); MainFile.Logger.Info($"[{MainFile.ModId}] removed Ledger relic (repaid)."); }
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] relic remove failed: {e.Message}"); }
+    }
+
+    /// <summary>Add the 독촉장 (Dunning Letter) leverage card to the player's deck (shop-revisit reward). Uses
+    /// the deck-pile command (CardPileCmd.Add) so the card actually lands in the Deck pile — raw RunState.AddCard
+    /// only touches the master list, not the pile the game reads. Local mutation, applied per-peer.</summary>
+    internal static async Task GrantDunningLetter(Player player)
+    {
+        try
+        {
+            var card = player.RunState.CreateCard<DunningLetterCard>(player);
+            // PreviewCardPileAdd plays the "card flies into the deck" animation (vanilla card-reward feel) —
+            // without it the card just silently appears in the deck. Local-gated → co-op safe.
+            CardCmd.PreviewCardPileAdd(await CardPileCmd.Add(card, PileType.Deck));
+            MainFile.Logger.Info($"[{MainFile.ModId}] granted 독촉장 (Dunning Letter) card to the deck.");
+        }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] Dunning Letter grant failed: {e.Message}"); }
+    }
+
+    /// <summary>Add a debt event card to the deck by canonical type (품삯 / 납부 혜택 / 환급 / 정산 / 청구서 /
+    /// 혈납), with the fly-in animation. Same deck-pile path as the 독촉장 grant.</summary>
+    internal static async Task GrantCard(Player player, System.Type cardType)
+    {
+        try
+        {
+            var model = ModelDb.GetByIdOrNull<CardModel>(ModelDb.GetId(cardType));
+            if (model == null) { MainFile.Logger.Warn($"[{MainFile.ModId}] card model not found: {cardType.Name}."); return; }
+            var card = player.RunState.CreateCard(model, player);
+            CardCmd.PreviewCardPileAdd(await CardPileCmd.Add(card, PileType.Deck));
+            MainFile.Logger.Info($"[{MainFile.ModId}] granted {cardType.Name} to the deck.");
+        }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] card grant failed ({cardType.Name}): {e.Message}"); }
+    }
+
+    /// <summary>Repay path: strip every 독촉장 (base or +) from the deck — the leverage tool evaporates with
+    /// the debt. Uses CardPileCmd.RemoveFromDeck so the Deck pile updates too. Local, applied per-peer.</summary>
+    internal static async Task RemoveDunningLetter(Player player)
+    {
+        try
+        {
+            foreach (var card in new List<CardModel>(player.Deck.Cards))
+                if (card is DunningLetterCard) await CardPileCmd.RemoveFromDeck(card);
+        }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] Dunning Letter remove failed: {e.Message}"); }
     }
 }

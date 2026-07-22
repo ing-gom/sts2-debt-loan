@@ -33,9 +33,21 @@ internal static class DebtLoanConfig
     /// slowly amortizes and the shop repay cost shrinks over time.</summary>
     internal static double PrincipalRepayShare = 0.2;
 
+    /// <summary>Interest surcharge baked into the outstanding principal at loan time: you must repay the gold
+    /// you borrowed PLUS this fraction of it. At 0.3, borrowing 200 means owing 260 at the shop (before any
+    /// amortization). This is what separates "borrowed" (the cap-driving amount you received) from the higher
+    /// "repayable" principal shown on the Ledger badge / repay button.</summary>
+    internal static double RepaySurcharge = 0.3;
+
     /// <summary>Highest act (0-based) where the merchant still lends: 0 = Act 1 only (default), 1 = through
     /// Act 2, 2 = through Act 3. Compared against <c>RunState.CurrentActIndex</c>.</summary>
     internal static int MaxLoanActIndex = 0;
+
+    // ── Debt LEVERAGE (독촉장 / Dunning Letter payoff) ───────────────────────────────────────────────
+    /// <summary>Plating (판금) granted when a 빚 독촉 is played WHILE the 독촉장 (Dunning Letter) power is active.
+    /// The reward lives on the power, not the curse — a plain forced Debt card gives no Plating. The 독촉장
+    /// feeds you a 빚 독촉 each turn, so this is a repeatable defensive/repayment engine (no offense).</summary>
+    internal static int LeveragePlating = 3;
 
     // Debt-curse ESCALATION tier by rooms-since-loan. Each tier UNLOCKS a new curse in the injected set (see
     // LoanService.InjectAllDebtsForCombat): 1=빚 독촉(Dunning), 2=+연체(Delinquency), 3=+차압(Seizure),

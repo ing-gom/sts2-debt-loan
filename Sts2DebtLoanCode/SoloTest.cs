@@ -19,6 +19,7 @@ using MegaCrit.Sts2.Core.Entities.Players;                // Player
 using MegaCrit.Sts2.Core.Helpers;                         // TaskHelper
 using MegaCrit.Sts2.Core.Models;                          // ModelDb, ActModel, ModifierModel
 using MegaCrit.Sts2.Core.Nodes;                           // NGame
+using MegaCrit.Sts2.Core.Nodes.Cards;                     // NCard (frame-recolor render check)
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;          // NMainMenu (run-start readiness gate)
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;          // NOverlayStack
 using MegaCrit.Sts2.Core.Random;                          // Rng
@@ -158,7 +159,7 @@ internal static class SoloTest
             await LoanService.GrantLoanDirect(player, 100);
             await Task.Delay(300);
             var rec = LoanService.For(player);
-            bool tA = LoanService.PlayerHasLedger(player) && rec != null && rec.Borrowed == 100 && rec.Principal == 100
+            bool tA = LoanService.PlayerHasLedger(player) && rec != null && rec.Borrowed == 100 && rec.Principal == 130 // 100 + 30% surcharge
                       && rec.Active && LoanService.DebtCardCountFor(player) == 1;
             W($"  assert loan: ledger={LoanService.PlayerHasLedger(player)} borrowed={rec?.Borrowed} owed={rec?.Principal} active={rec?.Active} cards@0={LoanService.DebtCardCountFor(player)} -> {tA}");
             all &= tA;
@@ -202,11 +203,11 @@ internal static class SoloTest
             var reloaded = RunState.FromSerializable(save);
             var rp = reloaded.Players.First();
             var rrelic = LoanService.LedgerRelicOf(rp);
-            bool tC = rrelic != null && rrelic.Borrowed == 100 && rrelic.Principal == 100 && rrelic.LoanFloor == baseFloor - 30 && rrelic.Active;
+            bool tC = rrelic != null && rrelic.Borrowed == 100 && rrelic.Principal == 130 && rrelic.LoanFloor == baseFloor - 30 && rrelic.Active;
             LoanService.RestoreFromRelic(rp);
             var rrec = LoanService.For(rp);
             // rooms-since-loan (30 → tier 4) is re-derived from the restored LoanFloor, not stored.
-            bool tC2 = rrec != null && rrec.Borrowed == 100 && rrec.Principal == 100 && rrec.LoanFloor == baseFloor - 30 && rrec.Active
+            bool tC2 = rrec != null && rrec.Borrowed == 100 && rrec.Principal == 130 && rrec.LoanFloor == baseFloor - 30 && rrec.Active
                        && LoanService.DebtCardCountFor(rp) == 4;
             W($"  assert persist: relic borrowed={rrelic?.Borrowed} owed={rrelic?.Principal} loanFloor={rrelic?.LoanFloor} -> {tC}; restore owed={rrec?.Principal} cards={LoanService.DebtCardCountFor(rp)}(4) -> {tC2}");
             all &= tC && tC2;
@@ -273,25 +274,25 @@ internal static class SoloTest
             }
             all &= tG;
 
-            // H) Amortization: each Debt-card payment splits 20% principal / 80% interest, so the owed
-            //    amount drops and the total-paid rises. 5 drains of 10 → owed 100-5×2=90, paid 50.
-            Step("amortization (20% to principal)");
+            // H) Amortization: borrow 100 → owe 130 (100 + 30% surcharge). Each Debt-card payment splits 20%
+            //    principal / 80% interest, so the owed amount drops. 5 drains of 10 → 130 − 5×2 = 120, paid 50.
+            Step("amortization (20% to principal, on 130 owed)");
             LoanService.ResetFor(player);
             await DebtLoanGrants.RemoveRelic(player);
             await Task.Delay(150);
             DebtLoanConfig.PrincipalRepayShare = 0.2;
-            await LoanService.GrantLoanDirect(player, 100);
+            await LoanService.GrantLoanDirect(player, 100);   // borrowed 100 → principal 130
             await Task.Delay(150);
             for (int i = 0; i < 5; i++) await LoanService.AccrueInterest(player, 10);   // 5 × (2 principal, 8 interest)
             await Task.Delay(200);
             var rh = LoanService.For(player);
             var hRelic = LoanService.LedgerRelicOf(player);
-            // owed 90, paid 50; relic KEPT + still active (no default mechanic anymore); hover reflects it.
-            bool tH = rh != null && rh.Active && rh.Borrowed == 100 && rh.Principal == 90 && rh.TotalPaid == 50
-                      && hRelic != null && hRelic.Principal == 90 && hRelic.TotalPaid == 50;
+            // owed 120, paid 50; relic KEPT + still active (no default mechanic anymore); hover reflects it.
+            bool tH = rh != null && rh.Active && rh.Borrowed == 100 && rh.Principal == 120 && rh.TotalPaid == 50
+                      && hRelic != null && hRelic.Principal == 120 && hRelic.TotalPaid == 50;
             string hover = "";
             try { hover = hRelic?.DynamicDescription.GetFormattedText() ?? ""; } catch { }
-            W($"  assert amortize: borrowed={rh?.Borrowed}(100) owed={rh?.Principal}(90) paid={rh?.TotalPaid}(50) relicOwed={hRelic?.Principal} -> {tH}");
+            W($"  assert amortize: borrowed={rh?.Borrowed}(100) owed={rh?.Principal}(120) paid={rh?.TotalPaid}(50) relicOwed={hRelic?.Principal} -> {tH}");
             W($"  amortized hover: {hover}");
             all &= tH;
 
@@ -339,10 +340,9 @@ internal static class SoloTest
             W($"  assert min-loan: cost={jCost} gold={(int)player.Gold} shortfall={jCost-(int)player.Gold} -> amount={jAmt}(100) -> {tJ}");
             all &= tJ;
 
-            // K) Over-soft-cap: borrowing past MaxLoan up to HardCap is allowed; over the soft cap the Dunning
-            //    card is injected UPGRADED (빚 독촉+), but the card COUNT stays tier-by-rooms (over-cap no longer
-            //    adds a card). We verify the cap math + the over-cap flag here; the '+' upgrade is exercised in
-            //    the combat-inject path / real play.
+            // K) Over-soft-cap: borrowing past MaxLoan up to HardCap is allowed; the card COUNT stays tier-by-
+            //    rooms (over-cap no longer upgrades the injected Dunning — 빚 독촉+ is now exclusively the 독촉장+
+            //    power's card). We verify the cap math + the over-cap flag here.
             Step("over-cap borrowing (soft 300 / hard 400)");
             DebtLoanConfig.MaxLoan = 300; DebtLoanConfig.OverCapAllowance = 100;   // soft 300 / hard 400
             LoanService.ResetFor(player);
@@ -374,9 +374,10 @@ internal static class SoloTest
             await DebtLoanGrants.RemoveRelic(player);
             await Task.Delay(120);
             DebtLoanConfig.MaxLoan = 300;
-            await LoanService.GrantLoanDirect(player, 125);          // principal 125 = exactly 5+10+30+80
+            await LoanService.GrantLoanDirect(player, 125);          // (grants a loan; surcharge would make it 163)
             await Task.Delay(120);
             var recL = LoanService.For(player)!;
+            recL.Principal = 125;                                     // pin to a clean value = exactly 5+10+30+80 for this focused test
             int p0 = recL.Principal;                                  // 125
             LoanService.ForceRepayPrincipal(player, 5);   int p1 = recL.Principal;   // L0 → 120
             LoanService.ForceRepayPrincipal(player, 10);  int p2 = recL.Principal;   // L1 → 110
@@ -387,6 +388,99 @@ internal static class SoloTest
             bool tL = p0 == 125 && p1 == 120 && p2 == 110 && p3 == 80 && p4 == 0 && p5 == 0 && settledL;
             W($"  assert forced: 125→{p1}(120)→{p2}(110)→{p3}(80)→{p4}(0) paid={recL.TotalPaid}(125) active={recL.Active}(false) -> {tL}");
             all &= tL;
+
+            // M) 독촉장 (Dunning Letter): granted once when the debtor shops somewhere OTHER than the loan shop
+            //    (RoomEntered watch), and removed from the deck when the loan is repaid. Registration + grant +
+            //    vanish, all outside combat (deck mutations).
+            Step("dunning letter grant + repay-vanish");
+            LoanService.ResetFor(player);
+            await DebtLoanGrants.RemoveDunningLetter(player);
+            await DebtLoanGrants.RemoveRelic(player);
+            await Task.Delay(120);
+            bool dlModel = ModelDb.GetByIdOrNull<CardModel>(ModelDb.GetId(typeof(DunningLetterCard))) != null;
+            await LoanService.GrantLoanDirect(player, 150);
+            await Task.Delay(120);
+            var recM = LoanService.For(player)!;
+            recM.LoanFloor = -50;                                     // pretend we borrowed elsewhere → this shop is a "revisit"
+            int deckBefore = player.Deck.Cards.Count(c => c is DunningLetterCard);
+            await RunManager.Instance.EnterRoomDebug(RoomType.Shop);  // fires RoomEntered → the grant watcher
+            await Task.Delay(500);
+            int afterGrant = player.Deck.Cards.Count(c => c is DunningLetterCard);
+            bool granted = afterGrant == 1 && recM.DunningLetterGranted;
+            if ((int)player.Gold < recM.Principal) await PlayerCmd.GainGold(recM.Principal - (int)player.Gold, player, false);
+            await LoanService.Repay(player);                          // repay → card evaporates with the debt
+            await Task.Delay(200);
+            int afterRepay = player.Deck.Cards.Count(c => c is DunningLetterCard);
+            bool tM = dlModel && deckBefore == 0 && granted && afterRepay == 0;
+            W($"  assert dunning-letter: model={dlModel} before={deckBefore} afterGrant={afterGrant}(1) flag={recM.DunningLetterGranted} afterRepay={afterRepay}(0) -> {tM}");
+            all &= tM;
+
+            // N) Frame recolor: render an NCard for the 독촉장 and screenshot so the custom slate-lavender frame
+            //    is visible (portrait may be blank until the pck ships the art — we're checking the FRAME here).
+            Step("dunning letter frame render");
+            try
+            {
+                var dlCard = player.RunState.CreateCard<DunningLetterCard>(player);
+                // Probe: does the loc resolve for a fresh card (vs the "If you can read this" placeholder)?
+                // And how many hover tips does it report (tooltips)? Same for 빚 독촉.
+                try
+                {
+                    var dc = player.RunState.CreateCard<DebtCurseCard>(player);
+                    // GetDescriptionForPile = what the card FACE renders (auto-prepends [gold]휘발성[/gold] etc).
+                    string dlFace = dlCard.GetDescriptionForPile(PileType.Hand).Replace("\n", " | ");
+                    string dcFace = dc.GetDescriptionForPile(PileType.Hand).Replace("\n", " | ");
+                    W($"  [loc] 독촉장 FACE='{dlFace}' tips={dlCard.HoverTips.Count()}");
+                    W($"  [loc] 빚독촉 FACE='{dcFace}' tips={dc.HoverTips.Count()}");
+                    // Upgrade check: does 빚 독촉 → 빚 독촉+ (title '+' auto-appended) and cost 1 → 0?
+                    var dcU = player.RunState.CreateCard<DebtCurseCard>(player);
+                    dcU.UpgradeInternal(); dcU.FinalizeUpgradeInternal();
+                    W($"  [upgrade] 빚독촉+ title='{dcU.Title}' upgraded={dcU.IsUpgraded}");
+                    // Upgraded 독촉장+ face should now reference 빚 독촉+ ({card} arg).
+                    var dlU = player.RunState.CreateCard<DunningLetterCard>(player);
+                    dlU.UpgradeInternal(); dlU.FinalizeUpgradeInternal();
+                    string dlUFace = dlU.GetDescriptionForPile(PileType.Hand).Replace("\n", " | ");
+                    W($"  [upgrade] 독촉장+ title='{dlU.Title}' FACE='{dlUFace}'");
+                    // New payment-set cards: registration + loc resolve.
+                    foreach (var t in new[] { typeof(WagesCard), typeof(JobPlacementCard), typeof(PaymentBenefitCard),
+                                              typeof(RefundCard), typeof(DiligentPaymentCard), typeof(SettlementCard),
+                                              typeof(InvoiceCard), typeof(BloodPaymentCard) })
+                    {
+                        var m = ModelDb.GetByIdOrNull<CardModel>(ModelDb.GetId(t));
+                        if (m == null) { W($"  [newcard] {t.Name}: NOT REGISTERED"); continue; }
+                        var c = player.RunState.CreateCard(m, player);
+                        W($"  [newcard] {t.Name}: '{c.Title}' | {c.GetDescriptionForPile(PileType.Hand).Replace("\n", " / ")}");
+                    }
+                }
+                catch (Exception e2) { W("  loc probe failed: " + e2.Message); }
+                var nCard = NCard.Create(dlCard);
+                if (Engine.GetMainLoop() is SceneTree t2 && nCard != null)
+                {
+                    t2.Root.AddChild(nCard);
+                    nCard.Position = new Vector2(720, 200);
+                    nCard.Scale = new Vector2(1.8f, 1.8f);
+                    await Task.Delay(500);
+                    await Shot("5_card");
+                    W("  rendered 독촉장 NCard (frame-color check)");
+                    nCard.QueueFree();
+                }
+            }
+            catch (Exception e) { W("  card render failed: " + e.Message); }
+
+            // O) Ledger tier overlay size: force tier 4 and screenshot the relic tray — the evolving overlay
+            //    must FIT the relic icon (ExpandMode.IgnoreSize), not render at the texture's native size (huge).
+            Step("ledger tier overlay size");
+            try
+            {
+                await LoanService.DebugSetTier(player, 22);   // rooms-since-loan 22 → tier 4
+                if (Engine.GetMainLoop() is SceneTree)
+                {
+                    await RunManager.Instance.EnterRoomDebug(RoomType.Shop);
+                    await Task.Delay(700);
+                    await Shot("6_relic_t4");
+                    W("  rendered relic at tier 4 (overlay size check)");
+                }
+            }
+            catch (Exception e) { W("  overlay check failed: " + e.Message); }
 
             await Shot("2_final");
             W($"=== solo test done: {(all ? "ALL PASS" : "FAIL")} ===");
