@@ -39,7 +39,7 @@ internal sealed partial class NMerchantRepayButton : Control
     private Player? _player;
     private bool _busy;
     private TextureButton _icon = null!;
-    private string _tipTitle = "Repay Loan";
+    private string _tipTitle = DebtLoanLoc.RepayUiFor(MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng").Title;
     private string _tipText = "";
     private Control? _costNode;
     private Tween? _hoverTween;
@@ -222,11 +222,13 @@ internal sealed partial class NMerchantRepayButton : Control
         if (_costNode != null) SetCostText(_costNode, cost.ToString(), affordable ? StsColors.cream : StsColors.red);
         _icon.Modulate = usable ? Colors.White : StsColors.halfTransparentWhite;
 
+        var ui = DebtLoanLoc.RepayUiFor(MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng");
+        _tipTitle = ui.Title;
         _tipText = !hasLoan
-            ? "No loan to repay."
+            ? ui.NoLoan
             : usable
-                ? $"Pay back {cost} gold to retire the Merchant's Ledger and clear all Debt cards."
-                : $"Not enough gold — you owe {cost}.";
+                ? string.Format(ui.PayBack, cost)
+                : string.Format(ui.NotEnough, cost);
     }
 
     private void OnPressed()

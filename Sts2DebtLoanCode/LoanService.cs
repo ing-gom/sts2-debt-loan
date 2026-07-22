@@ -306,7 +306,7 @@ internal static class LoanService
         var existing = For(player);
         int oldBorrowed = existing?.Borrowed ?? 0;
         int borrowed  = oldBorrowed + amount;                  // lifetime borrowed (drives the cap + hover)
-        // Repayable > borrowed: you owe the gold you took PLUS a 30% surcharge. Borrowed is what you received
+        // Repayable > borrowed: you owe the gold you took PLUS a 50% surcharge. Borrowed is what you received
         // (drives the cap); Principal is what you must repay (drives the shop cost + badge), amortized by cards.
         int surcharge = (int)Math.Round(amount * DebtLoanConfig.RepaySurcharge);
         int principal = (existing?.Principal ?? 0) + amount + surcharge;
@@ -457,13 +457,15 @@ internal static class LoanService
 
     internal static void ResetPaymentsThisCombat(Player p) => _paymentsThisCombat.GetValue(p, _ => new int[1])[0] = 0;
 
-    /// <summary>The unified 납부 (Payment) entry: amortize the loan (50/50 split), bump the per-combat payment
-    /// counter, then fire the payment-reactive powers (납부 혜택 → Plating, 환급 → a 성실 납부 card). Called by the
-    /// Debt cards after the gold is taken (or, for the HP-payment card, after the HP loss). The AccrueInterest
-    /// math is deterministic on both peers; the power effects are self-appliers → co-op safe.</summary>
+    /// <summary>The unified 납부 (Payment) entry: pay the loan's PRINCIPAL down 1:1 (the whole payment goes to
+    /// principal — the interest is the up-front 50% surcharge baked in at loan time, not a per-payment cut),
+    /// bump the per-combat payment counter, then fire the payment-reactive powers (납부 혜택 → Plating, 환급 → a
+    /// 성실 납부 card). Called by the Debt cards after the gold is taken (or, for the HP-payment card, after the
+    /// HP loss). The AccrueInterest math is deterministic on both peers; the power effects are self-appliers →
+    /// co-op safe.</summary>
     internal static async Task RecordPayment(Player player, PlayerChoiceContext cc, int amount)
     {
-        await AccrueInterest(player, amount, principalShareOverride: 0.5);
+        await AccrueInterest(player, amount, principalShareOverride: 1.0);   // 100% to principal (interest = the surcharge)
         _paymentsThisCombat.GetValue(player, _ => new int[1])[0]++;
         if (player?.Creature == null) return;
         var benefit = player.Creature.GetPower<PaymentBenefitPower>();
@@ -516,7 +518,7 @@ internal static class LoanService
     {
         var rec = For(player);
         if (rec != null) { rec.Active = false; SyncToRelic(player); }   // reflect "settled" for one frame
-        await DebtLoanGrants.RemoveDunningLetter(player);                // the leverage tool evaporates with the debt
+        await DebtLoanGrants.RemoveAllDebtLoanCards(player);            // the WHOLE debt kit evaporates with the loan
         await DebtLoanGrants.RemoveRelic(player);                        // clean slate — no inert relic left behind
         ResetFor(player);                                               // record gone → next loan is a fresh first loan
     }

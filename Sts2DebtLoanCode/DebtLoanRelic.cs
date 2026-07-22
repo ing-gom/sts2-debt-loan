@@ -80,18 +80,33 @@ public sealed class DebtLoanRelic : RelicModel
     internal int CurrentTier
         => (_active && Owner?.RunState != null) ? DebtLoanConfig.TargetDebtCards(Owner.RunState.TotalFloor - _loanFloor) : 0;
 
-    // Per-relic dynamic hover: the loc description is the static template "Borrowed [gold]{borrowed} Gold[/gold]…
-    // Paid [gold]{paid} Gold[/gold]…", and these DynamicVars fill {borrowed}/{paid} from THIS relic's own
-    // state. RelicModel.DynamicDescription applies DynamicVars per-instance, so two players' Ledgers each show
-    // their own numbers — unlike the old global loc-table overwrite (which was a co-op display bug).
+    // Per-relic dynamic hover: the loc description is the static template "Owed [gold]{owed} Gold[/gold]…
+    // Paid [gold]{paid} Gold[/gold]…". {owed} = the REMAINING repayable principal (borrowed + the 50% surcharge,
+    // amortized down by payments), NOT the raw borrowed amount — this is what you'd pay at a shop right now.
+    // RelicModel.DynamicDescription applies DynamicVars per-instance, so two players' Ledgers each show their own.
     protected override IEnumerable<DynamicVar> CanonicalVars =>
-        new[] { new DynamicVar("borrowed", _borrowed), new DynamicVar("paid", _totalPaid), new DynamicVar("cards", _cards) };
+        new[] { new DynamicVar("owed", _principal), new DynamicVar("paid", _totalPaid), new DynamicVar("cards", _cards) };
 
-    /// <summary>Show a preview of the Debt curse card (plus its keyword tips) in the relic's hover tooltip
-    /// — the same mechanism vanilla Soot uses. So hovering the Ledger reveals exactly what the injected
-    /// Debt cards look like.</summary>
-    protected override IEnumerable<IHoverTip> ExtraHoverTips =>
-        HoverTipFactory.FromCardWithCardHoverTips<DebtCurseCard>();
+    /// <summary>Show a preview of the Debt curse cards (plus their keyword tips) in the relic's hover tooltip
+    /// — the same mechanism vanilla Soot uses. The set MATCHES the live escalation tier, so hovering the
+    /// Ledger reveals EXACTLY which Debt cards will be injected next combat: 빚 독촉 always, +연체 at tier 2,
+    /// +차압 at tier 3, +불량신용 at tier 4. A deepening debt visibly grows its preview (1 → 4 cards). Read off
+    /// the SAME source as the injector (<see cref="LoanService.InjectAllDebtsForCombat"/>) so the two can't drift.</summary>
+    protected override IEnumerable<IHoverTip> ExtraHoverTips
+    {
+        get
+        {
+            // Live tier 1..4 (0 only when Owner/RunState isn't wired yet — fall through to the base card so
+            // the preview is never empty).
+            int tier = CurrentTier;
+            var tips = new List<IHoverTip>();
+            tips.AddRange(HoverTipFactory.FromCardWithCardHoverTips<DebtCurseCard>());
+            if (tier >= 2) tips.AddRange(HoverTipFactory.FromCardWithCardHoverTips<DelinquencyCard>());
+            if (tier >= 3) tips.AddRange(HoverTipFactory.FromCardWithCardHoverTips<SeizureCard>());
+            if (tier >= 4) tips.AddRange(HoverTipFactory.FromCardWithCardHoverTips<BadCreditCard>());
+            return tips;
+        }
+    }
 
     /// <summary>Push the current borrowed/paid values + per-combat Debt-card count into the cached DynamicVars
     /// so the hover shows live, per-relic numbers. Called by LoanService.SyncToRelic on every state change
@@ -103,7 +118,7 @@ public sealed class DebtLoanRelic : RelicModel
         try
         {
             var vars = DynamicVars;
-            if (vars.TryGetValue("borrowed", out var b)) b.BaseValue = _borrowed;
+            if (vars.TryGetValue("owed", out var b)) b.BaseValue = _principal;   // remaining repayable (principal)
             if (vars.TryGetValue("paid", out var p)) p.BaseValue = _totalPaid;
             if (vars.TryGetValue("cards", out var c)) c.BaseValue = _cards;
             // The badge (DisplayAmount = rooms-until-next-tier) is computed live from TotalFloor, but the widget
@@ -182,5 +197,20 @@ internal static class DebtLoanGrants
                 if (card is DunningLetterCard) await CardPileCmd.RemoveFromDeck(card);
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] Dunning Letter remove failed: {e.Message}"); }
+    }
+
+    /// <summary>Repay path: strip EVERY DebtLoan card (독촉장 + 취업알선 + 납부 혜택 + 환급 + 정산 + 청구서 + 혈납 + any
+    /// future deck-granted card) from the deck — the whole debt kit evaporates when you clear the loan. Matches
+    /// by declaring assembly so new cards are covered automatically. Local per-peer mutation (like the relic
+    /// remove), applied inside the settle path → co-op safe.</summary>
+    internal static async Task RemoveAllDebtLoanCards(Player player)
+    {
+        try
+        {
+            var own = typeof(DebtLoanGrants).Assembly;
+            foreach (var card in new List<CardModel>(player.Deck.Cards))
+                if (card.GetType().Assembly == own) await CardPileCmd.RemoveFromDeck(card);
+        }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] DebtLoan card sweep failed: {e.Message}"); }
     }
 }

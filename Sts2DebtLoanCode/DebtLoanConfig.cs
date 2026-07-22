@@ -34,10 +34,10 @@ internal static class DebtLoanConfig
     internal static double PrincipalRepayShare = 0.2;
 
     /// <summary>Interest surcharge baked into the outstanding principal at loan time: you must repay the gold
-    /// you borrowed PLUS this fraction of it. At 0.3, borrowing 200 means owing 260 at the shop (before any
+    /// you borrowed PLUS this fraction of it. At 0.5, borrowing 200 means owing 300 at the shop (before any
     /// amortization). This is what separates "borrowed" (the cap-driving amount you received) from the higher
     /// "repayable" principal shown on the Ledger badge / repay button.</summary>
-    internal static double RepaySurcharge = 0.3;
+    internal static double RepaySurcharge = 0.5;
 
     /// <summary>Highest act (0-based) where the merchant still lends: 0 = Act 1 only (default), 1 = through
     /// Act 2, 2 = through Act 3. Compared against <c>RunState.CurrentActIndex</c>.</summary>
@@ -52,12 +52,13 @@ internal static class DebtLoanConfig
     // Debt-curse ESCALATION tier by rooms-since-loan. Each tier UNLOCKS a new curse in the injected set (see
     // LoanService.InjectAllDebtsForCombat): 1=빚 독촉(Dunning), 2=+연체(Delinquency), 3=+차압(Seizure),
     // 4=+신용 불량(Bad Credit). Injected fresh into the draw pile each combat (temporary — gone at combat end).
-    // ACCELERATING gaps (10 → 7 → 5): a 10-room grace period, then the spiral snowballs — once you're
-    // delinquent the collections come faster and faster (full spiral by ~1 act after borrowing).
+    // A 13-room GRACE (only 빚 독촉), then the spiral: 연체 at 13, 차압 at 17 (a 4-room 연체-only window), 신용
+    // 불량 at 22. The grace softens the early 연체 (+50% incoming) spike; once delinquent, the collections pile
+    // on (full spiral by ~1 act after borrowing).
     internal static readonly (int Room, int Cards)[] Schedule =
     {
         (0, 1),
-        (10, 2),
+        (13, 2),
         (17, 3),
         (22, 4),
     };

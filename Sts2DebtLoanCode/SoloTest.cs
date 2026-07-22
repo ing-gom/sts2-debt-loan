@@ -159,7 +159,7 @@ internal static class SoloTest
             await LoanService.GrantLoanDirect(player, 100);
             await Task.Delay(300);
             var rec = LoanService.For(player);
-            bool tA = LoanService.PlayerHasLedger(player) && rec != null && rec.Borrowed == 100 && rec.Principal == 130 // 100 + 30% surcharge
+            bool tA = LoanService.PlayerHasLedger(player) && rec != null && rec.Borrowed == 100 && rec.Principal == 150 // 100 + 50% surcharge
                       && rec.Active && LoanService.DebtCardCountFor(player) == 1;
             W($"  assert loan: ledger={LoanService.PlayerHasLedger(player)} borrowed={rec?.Borrowed} owed={rec?.Principal} active={rec?.Active} cards@0={LoanService.DebtCardCountFor(player)} -> {tA}");
             all &= tA;
@@ -171,21 +171,22 @@ internal static class SoloTest
             int baseFloor = player.RunState.TotalFloor;
             var recB = LoanService.For(player)!;
             recB.LoanFloor = baseFloor;        int cnt0  = LoanService.DebtCardCountFor(player);   // rooms 0  → 1
-            recB.LoanFloor = baseFloor - 10;   int cnt10 = LoanService.DebtCardCountFor(player);   // rooms 10 → 2
+            recB.LoanFloor = baseFloor - 12;   int cnt12 = LoanService.DebtCardCountFor(player);   // rooms 12 → 1 (below 13)
+            recB.LoanFloor = baseFloor - 13;   int cnt13 = LoanService.DebtCardCountFor(player);   // rooms 13 → 2
             recB.LoanFloor = baseFloor - 16;   int cnt16 = LoanService.DebtCardCountFor(player);   // rooms 16 → 2 (below 17)
             recB.LoanFloor = baseFloor - 17;   int cnt17 = LoanService.DebtCardCountFor(player);   // rooms 17 → 3
             recB.LoanFloor = baseFloor - 21;   int cnt21 = LoanService.DebtCardCountFor(player);   // rooms 21 → 3 (below 22)
             recB.LoanFloor = baseFloor - 22;   int cnt22 = LoanService.DebtCardCountFor(player);   // rooms 22 → 4
             recB.LoanFloor = baseFloor - 30;   int cnt30 = LoanService.DebtCardCountFor(player);   // rooms 30 → 4 (cap)
             LoanService.SyncToRelic(player);         // persist LoanFloor=baseFloor-30 onto the relic for the C round-trip
-            bool tB = cnt0 == 1 && cnt10 == 2 && cnt16 == 2 && cnt17 == 3 && cnt21 == 3 && cnt22 == 4 && cnt30 == 4;
-            W($"  assert tier: r0={cnt0}(1) r10={cnt10}(2) r16={cnt16}(2) r17={cnt17}(3) r21={cnt21}(3) r22={cnt22}(4) r30={cnt30}(4) -> {tB}");
+            bool tB = cnt0 == 1 && cnt12 == 1 && cnt13 == 2 && cnt16 == 2 && cnt17 == 3 && cnt21 == 3 && cnt22 == 4 && cnt30 == 4;
+            W($"  assert tier: r0={cnt0}(1) r12={cnt12}(1) r13={cnt13}(2) r16={cnt16}(2) r17={cnt17}(3) r21={cnt21}(3) r22={cnt22}(4) r30={cnt30}(4) -> {tB}");
             all &= tB;
-            // Badge countdown = rooms until the NEXT escalation (0 at the top tier → counter hidden).
-            int b0 = DebtLoanConfig.RoomsUntilNextTier(0), b10 = DebtLoanConfig.RoomsUntilNextTier(10),
+            // Badge countdown = rooms until the NEXT escalation (0 at the top tier → counter hidden). Schedule 0/13/17/22.
+            int b0 = DebtLoanConfig.RoomsUntilNextTier(0), b13 = DebtLoanConfig.RoomsUntilNextTier(13),
                 b17 = DebtLoanConfig.RoomsUntilNextTier(17), b22 = DebtLoanConfig.RoomsUntilNextTier(22);
-            bool tBadge = b0 == 10 && b10 == 7 && b17 == 5 && b22 == 0;
-            W($"  assert badge: r0={b0}(10) r10={b10}(7) r17={b17}(5) r22={b22}(0/max) -> {tBadge}");
+            bool tBadge = b0 == 13 && b13 == 4 && b17 == 5 && b22 == 0;
+            W($"  assert badge: r0={b0}(13) r13={b13}(4) r17={b17}(5) r22={b22}(0/max) -> {tBadge}");
             all &= tBadge;
             // Per-relic hover: DynamicDescription fills {borrowed}/{paid} + the choose() per-tier curse name.
             // Verify the choose() actually resolved (no leftover "{cards"/"choose(" token in the rendered text).
@@ -203,11 +204,11 @@ internal static class SoloTest
             var reloaded = RunState.FromSerializable(save);
             var rp = reloaded.Players.First();
             var rrelic = LoanService.LedgerRelicOf(rp);
-            bool tC = rrelic != null && rrelic.Borrowed == 100 && rrelic.Principal == 130 && rrelic.LoanFloor == baseFloor - 30 && rrelic.Active;
+            bool tC = rrelic != null && rrelic.Borrowed == 100 && rrelic.Principal == 150 && rrelic.LoanFloor == baseFloor - 30 && rrelic.Active;
             LoanService.RestoreFromRelic(rp);
             var rrec = LoanService.For(rp);
             // rooms-since-loan (30 → tier 4) is re-derived from the restored LoanFloor, not stored.
-            bool tC2 = rrec != null && rrec.Borrowed == 100 && rrec.Principal == 130 && rrec.LoanFloor == baseFloor - 30 && rrec.Active
+            bool tC2 = rrec != null && rrec.Borrowed == 100 && rrec.Principal == 150 && rrec.LoanFloor == baseFloor - 30 && rrec.Active
                        && LoanService.DebtCardCountFor(rp) == 4;
             W($"  assert persist: relic borrowed={rrelic?.Borrowed} owed={rrelic?.Principal} loanFloor={rrelic?.LoanFloor} -> {tC}; restore owed={rrec?.Principal} cards={LoanService.DebtCardCountFor(rp)}(4) -> {tC2}");
             all &= tC && tC2;
@@ -274,25 +275,25 @@ internal static class SoloTest
             }
             all &= tG;
 
-            // H) Amortization: borrow 100 → owe 130 (100 + 30% surcharge). Each Debt-card payment splits 20%
-            //    principal / 80% interest, so the owed amount drops. 5 drains of 10 → 130 − 5×2 = 120, paid 50.
-            Step("amortization (20% to principal, on 130 owed)");
+            // H) Amortization: borrow 100 → owe 150 (100 + 50% surcharge). Each Payment now goes 100% to
+            //    principal (interest = the up-front surcharge), so the owed drops by the full amount paid.
+            //    5 drains of 10 → 150 − 50 = 100, paid 50.
+            Step("amortization (100% to principal, on 150 owed)");
             LoanService.ResetFor(player);
             await DebtLoanGrants.RemoveRelic(player);
             await Task.Delay(150);
-            DebtLoanConfig.PrincipalRepayShare = 0.2;
-            await LoanService.GrantLoanDirect(player, 100);   // borrowed 100 → principal 130
+            await LoanService.GrantLoanDirect(player, 100);   // borrowed 100 → principal 150
             await Task.Delay(150);
-            for (int i = 0; i < 5; i++) await LoanService.AccrueInterest(player, 10);   // 5 × (2 principal, 8 interest)
+            for (int i = 0; i < 5; i++) await LoanService.AccrueInterest(player, 10, principalShareOverride: 1.0);   // 5 × 10 principal
             await Task.Delay(200);
             var rh = LoanService.For(player);
             var hRelic = LoanService.LedgerRelicOf(player);
-            // owed 120, paid 50; relic KEPT + still active (no default mechanic anymore); hover reflects it.
-            bool tH = rh != null && rh.Active && rh.Borrowed == 100 && rh.Principal == 120 && rh.TotalPaid == 50
-                      && hRelic != null && hRelic.Principal == 120 && hRelic.TotalPaid == 50;
+            // owed 100, paid 50; relic KEPT + still active (only a shop repay removes it); hover reflects it.
+            bool tH = rh != null && rh.Active && rh.Borrowed == 100 && rh.Principal == 100 && rh.TotalPaid == 50
+                      && hRelic != null && hRelic.Principal == 100 && hRelic.TotalPaid == 50;
             string hover = "";
             try { hover = hRelic?.DynamicDescription.GetFormattedText() ?? ""; } catch { }
-            W($"  assert amortize: borrowed={rh?.Borrowed}(100) owed={rh?.Principal}(120) paid={rh?.TotalPaid}(50) relicOwed={hRelic?.Principal} -> {tH}");
+            W($"  assert amortize: borrowed={rh?.Borrowed}(100) owed={rh?.Principal}(100) paid={rh?.TotalPaid}(50) relicOwed={hRelic?.Principal} -> {tH}");
             W($"  amortized hover: {hover}");
             all &= tH;
 
@@ -481,6 +482,207 @@ internal static class SoloTest
                 }
             }
             catch (Exception e) { W("  overlay check failed: " + e.Message); }
+
+            // P) NEW payment-set mechanics in a LIVE combat: 납부(Payment) trigger + sequence, 정산/청구서 scaling,
+            //    취업알선(Job Placement) loan. Enter a fresh Monster room for a real enemy, apply the two payment-
+            //    reactive powers, drive 3 payments, then PLAY the scaling/loan cards through the real pipeline
+            //    (CardCmd.AutoPlay → OnPlay) and measure the effects (block gained / enemy HP / loan owed / hand).
+            Step("payment-set mechanics (납부 trigger·시퀀스·정산/청구서·취업알선)");
+            try
+            {
+                LoanService.ResetFor(player);
+                await DebtLoanGrants.RemoveRelic(player);
+                await Task.Delay(150);
+                DebtLoanConfig.MaxLoan = 9999;
+                await LoanService.GrantLoanDirect(player, 200);      // active loan (RecordPayment/AddCombatDebt need one)
+                await Task.Delay(150);
+                if (Engine.GetMainLoop() is SceneTree)
+                {
+                    await RunManager.Instance.EnterRoomDebug(RoomType.Monster);
+                    await Task.Delay(4000);                          // combat + first turn (injector resets the payment counter)
+                }
+                var pcc = new MegaCrit.Sts2.Core.GameActions.Multiplayer.BlockingPlayerChoiceContext();
+                var cstate = player.Creature?.CombatState;
+                var enemy = cstate?.HittableEnemies?.FirstOrDefault(e => e != null && e.IsAlive)
+                            ?? cstate?.Enemies?.FirstOrDefault(e => e != null && e.IsAlive);
+
+                // Reactive powers: 납부 혜택 → Plating each payment, 환급 → a 성실 납부 card each payment.
+                await PowerCmd.Apply<PaymentBenefitPower>(pcc, player.Creature!, 1, player.Creature, null);
+                await PowerCmd.Apply<RefundPower>(pcc, player.Creature!, 1, player.Creature, null);
+                await Task.Delay(120);
+
+                LoanService.ResetPaymentsThisCombat(player);
+                int dp0 = PileType.Hand.GetPile(player)?.Cards.Count(c => c is DiligentPaymentCard) ?? 0;
+                for (int i = 0; i < 3; i++) await LoanService.RecordPayment(player, pcc, 10);   // 납부 시퀀스 ×3
+                await Task.Delay(200);
+
+                int pays = LoanService.PaymentsThisCombat(player);                               // 3
+                var plating = player.Creature!.GetPower<MegaCrit.Sts2.Core.Models.Powers.PlatingPower>();
+                int platingAmt = plating != null ? (int)plating.Amount : 0;                     // 3 × 3 = 9 (if it stacks)
+                int dpGain = (PileType.Hand.GetPile(player)?.Cards.Count(c => c is DiligentPaymentCard) ?? 0) - dp0;
+                bool tP1 = pays == 3 && platingAmt >= 3 && dpGain >= 3;   // count + both reactive powers fired 3×
+                W($"  assert payment-trigger: payments={pays}(3) plating={platingAmt}(>=3, exp 9) diligentCardsAdded={dpGain}(>=3) -> {tP1}");
+
+                // 정산 (Settlement): block gained = payments × 4.
+                int blk0 = player.Creature.Block;
+                var settle = cstate!.CreateCard<SettlementCard>(player);
+                bool settlePlayed = true;
+                try { await CardCmd.AutoPlay(pcc, settle, null); } catch (Exception e) { settlePlayed = false; W("  settlement play failed: " + e.Message); }
+                await Task.Delay(150);
+                int blkGain = player.Creature.Block - blk0;
+                bool tP2 = settlePlayed && blkGain == pays * 4;
+                W($"  assert settlement scale: blockGain={blkGain} (exp {pays}×4={pays * 4}) -> {tP2}");
+
+                // 청구서 (Invoice): damage to the enemy = payments × 5 (exact when the enemy carries no Block).
+                bool tP3 = true;
+                if (enemy != null)
+                {
+                    int ehp0 = enemy.CurrentHp, eblk = enemy.Block;
+                    var inv = cstate!.CreateCard<InvoiceCard>(player);
+                    try { await CardCmd.AutoPlay(pcc, inv, enemy); } catch (Exception e) { W("  invoice play failed: " + e.Message); }
+                    await Task.Delay(150);
+                    int dmg = ehp0 - enemy.CurrentHp;
+                    tP3 = eblk == 0 ? dmg == pays * 4 : dmg >= 1;   // 청구서 = payments × 4 (was ×5)
+                    W($"  assert invoice scale: enemyHp {ehp0}->{enemy.CurrentHp} dmg={dmg} (exp {pays * 4}, enemyBlock={eblk}) -> {tP3}");
+                }
+                else W("  invoice: no live enemy to target — skipped");
+
+                // 취업알선 (Job Placement): play → borrow Fee(50, +surcharge) onto the loan + apply JobPlacementPower;
+                // a turn-start then slips a 품삯(Wages) card into hand.
+                var recP = LoanService.For(player)!;
+                int owed0 = recP.Principal;
+                var job = cstate!.CreateCard<JobPlacementCard>(player);
+                try { await CardCmd.AutoPlay(pcc, job, null); } catch (Exception e) { W("  job-placement play failed: " + e.Message); }
+                await Task.Delay(150);
+                int owedGain = recP.Principal - owed0;
+                var jobPow = player.Creature.GetPower<JobPlacementPower>();
+                int w0 = PileType.Hand.GetPile(player)?.Cards.Count(c => c is WagesCard) ?? 0;
+                if (jobPow != null) await jobPow.AfterPlayerTurnStart(pcc, player);
+                await Task.Delay(150);
+                int wagesGain = (PileType.Hand.GetPile(player)?.Cards.Count(c => c is WagesCard) ?? 0) - w0;
+                bool tP4 = owedGain >= 50 && jobPow != null && wagesGain >= 1;
+                W($"  assert job-placement: owedGain={owedGain}(>=50) power={(jobPow != null)} wagesAdded={wagesGain}(>=1) -> {tP4}");
+
+                // tP5) EMPIRICAL 골드 차감: play a real 빚 독촉 (Dunning) through the pipeline and assert the player's
+                //      ACTUAL held gold drops by the 20-gold play cost (bug report: "납부했을 때 실제 보유 골드가 안 줄어듦").
+                //      The earlier 납부 시퀀스 called RecordPayment directly, which only amortizes — it does NOT touch
+                //      gold. Only the card's OnPlay → PlayerCmd.LoseGold deducts, so THIS is the true-path check.
+                bool tP5 = true;
+                {
+                    int target = 100;
+                    if ((int)player.Gold > target) await PlayerCmd.LoseGold((int)player.Gold - target, player, GoldLossType.Spent);
+                    else if ((int)player.Gold < target) await PlayerCmd.GainGold(target - (int)player.Gold, player, false);
+                    await Task.Delay(100);
+                    int goldBefore = (int)player.Gold;                 // 100
+                    var dunning = cstate!.CreateCard<DebtCurseCard>(player);
+                    try { await CardCmd.AutoPlay(pcc, dunning, null); } catch (Exception e) { tP5 = false; W("  dunning play failed: " + e.Message); }
+                    await Task.Delay(150);
+                    int goldDrop = goldBefore - (int)player.Gold;
+                    tP5 &= goldDrop == 20;                             // PlayCost = 20
+                    W($"  assert gold-deduction: gold {goldBefore}->{(int)player.Gold} drop={goldDrop} (exp 20) -> {tP5}");
+                }
+
+                await Shot("7_payment_combat");
+                bool tP = tP1 && tP2 && tP3 && tP4 && tP5;
+                W($"  == payment-set mechanics: {(tP ? "PASS" : "FAIL")} ==");
+                all &= tP;
+            }
+            catch (Exception e) { W("  payment-set section failed: " + e); all = false; }
+
+            // Q) FRAME HUE SWEEP (item 6): render the 독촉장 NCard at a range of slate-lavender hues so the frame
+            //    colour can be compared and the best h picked. Only the frame material's h changes per shot; the
+            //    ship value is restored at the end. Not part of the PASS/FAIL — it's a visual artifact for tuning.
+            Step("frame hue sweep");
+            try
+            {
+                float ship = NCardFramePatch.TargetH;
+                foreach (float h in new[] { 0.66f, 0.68f, 0.70f, 0.72f, 0.74f, 0.76f, 0.78f, 0.80f })
+                {
+                    NCardFramePatch.TargetH = h;
+                    NCardFramePatch.ResetCacheForSweep();
+                    var card = player.RunState.CreateCard<DunningLetterCard>(player);
+                    var nc = NCard.Create(card);
+                    if (Engine.GetMainLoop() is SceneTree ht && nc != null)
+                    {
+                        ht.Root.AddChild(nc);
+                        nc.Position = new Vector2(690, 150);
+                        nc.Scale = new Vector2(2.2f, 2.2f);
+                        await Task.Delay(400);
+                        await Shot($"hue_{(int)Math.Round(h * 100)}");
+                        nc.QueueFree();
+                        await Task.Delay(120);
+                    }
+                }
+                NCardFramePatch.TargetH = ship;   // restore the ship hue
+                NCardFramePatch.ResetCacheForSweep();
+                W($"  hue sweep done (restored ship h={ship})");
+            }
+            catch (Exception e) { W("  hue sweep failed: " + e.Message); }
+
+            // R) NEW 신용 불량 (Bad Credit) system: the 신용 불량 curse auto-applies BadCreditPower + exhausts; the
+            //    power spawns an escalating 빚쟁이 (Debtor) each turn (level +1 every 3rd turn); 빚쟁이's gold/HP
+            //    scale with level (20+10·L / 2+2·L).
+            Step("bad-credit system (신용불량→파워→빚쟁이)");
+            try
+            {
+                LoanService.ResetFor(player);
+                await DebtLoanGrants.RemoveRelic(player);
+                await Task.Delay(150);
+                DebtLoanConfig.MaxLoan = 9999;
+                await LoanService.GrantLoanDirect(player, 300);
+                await Task.Delay(150);
+                if (Engine.GetMainLoop() is SceneTree)
+                {
+                    await RunManager.Instance.EnterRoomDebug(RoomType.Monster);
+                    await Task.Delay(4000);
+                }
+                var cs = player.Creature?.CombatState;
+                var bcc = new MegaCrit.Sts2.Core.GameActions.Multiplayer.BlockingPlayerChoiceContext();
+
+                // R1) 빚쟁이 gold/HP by escalation level.
+                int[] gL = new int[3], hL = new int[3];
+                for (int L = 0; L < 3; L++)
+                    if (cs!.CreateCard<DebtorCard>(player) is DebtorCard dd) { dd.Level = L; gL[L] = (int)dd.DynamicVars["gold"].BaseValue; hL[L] = (int)dd.DynamicVars["hp"].BaseValue; }
+                bool tR1 = gL[0] == 20 && gL[1] == 30 && gL[2] == 40 && hL[0] == 2 && hL[1] == 4 && hL[2] == 6;
+                W($"  assert 빚쟁이 scale: gold {gL[0]}/{gL[1]}/{gL[2]}(20/30/40) hp {hL[0]}/{hL[1]}/{hL[2]}(2/4/6) -> {tR1}");
+
+                // R2) 신용 불량 curse auto-applies the power + exhausts when in hand at turn start.
+                bool hadPower0 = player.Creature!.GetPower<BadCreditPower>() != null;
+                var bc = cs!.CreateCard<BadCreditCard>(player);
+                await CardPileCmd.AddGeneratedCardToCombat(bc, PileType.Hand, player, CardPilePosition.Bottom);
+                await Task.Delay(120);
+                bool bcInHand = PileType.Hand.GetPile(player)?.Cards.Contains(bc) ?? false;
+                await ((BadCreditCard)bc).AfterPlayerTurnStart(bcc, player);
+                await Task.Delay(150);
+                var power = player.Creature.GetPower<BadCreditPower>();
+                bool bcGone = !(PileType.Hand.GetPile(player)?.Cards.Contains(bc) ?? true);
+                bool tR2 = !hadPower0 && bcInHand && power != null && bcGone;
+                W($"  assert 신용불량 auto-apply: inHand={bcInHand} powerApplied={power != null} exhausted={bcGone} -> {tR2}");
+
+                // R3) Power spawns a 빚쟁이 each turn; level ratchets every 3rd (turn3 → L1).
+                bool tR3 = false;
+                if (power != null)
+                {
+                    LoanService.For(player)!.CollectionLevel = 0;
+                    var seen = new HashSet<DebtorCard>(PileType.Hand.GetPile(player)?.Cards.OfType<DebtorCard>() ?? System.Linq.Enumerable.Empty<DebtorCard>());
+                    var lv = new List<int>();
+                    for (int t = 0; t < 4; t++)
+                    {
+                        await power.AfterPlayerTurnStart(bcc, player);
+                        await Task.Delay(80);
+                        var fresh = (PileType.Hand.GetPile(player)?.Cards.OfType<DebtorCard>() ?? System.Linq.Enumerable.Empty<DebtorCard>()).FirstOrDefault(d => !seen.Contains(d));
+                        if (fresh != null) { lv.Add(fresh.Level); seen.Add(fresh); }
+                    }
+                    tR3 = lv.Count == 4 && lv[0] == 0 && lv[1] == 0 && lv[2] == 1 && lv[3] == 1;   // every 3rd turn → +1
+                    W($"  assert 빚쟁이 spawn levels: [{string.Join(",", lv)}] exp [0,0,1,1] -> {tR3}");
+                }
+
+                await Shot("8_badcredit");
+                bool tR = tR1 && tR2 && tR3;
+                W($"  == bad-credit system: {(tR ? "PASS" : "FAIL")} ==");
+                all &= tR;
+            }
+            catch (Exception e) { W("  bad-credit section failed: " + e); all = false; }
 
             await Shot("2_final");
             W($"=== solo test done: {(all ? "ALL PASS" : "FAIL")} ===");

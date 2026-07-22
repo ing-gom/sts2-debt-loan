@@ -21,7 +21,7 @@ public sealed class PaymentBenefitCard : CardModel
     private static CardPoolModel? _pool;
     public override CardPoolModel Pool => _pool ??= ModelDb.CardPool<ColorlessCardPool>();
 
-    public override int MaxUpgradeLevel => 1;   // upgrade = 0 energy
+    public override int MaxUpgradeLevel => 1;   // upgrade = 1 energy (2 → 1)
 
     public override string PortraitPath =>
         IsUpgraded ? "res://Sts2DebtLoan/card_art/payment_benefit_plus.png"
@@ -31,9 +31,10 @@ public sealed class PaymentBenefitCard : CardModel
     protected override IEnumerable<DynamicVar> CanonicalVars =>
         new[] { new DynamicVar("plate", DebtLoanConfig.LeveragePlating) };
 
-    protected override IEnumerable<IHoverTip> ExtraHoverTips => new[] { HoverTipFactory.FromPower<PlatingPower>() };
+    protected override IEnumerable<IHoverTip> ExtraHoverTips =>
+        new[] { HoverTipFactory.FromPower<PlatingPower>(), DebtLoanHoverTips.Payment() };
 
-    public PaymentBenefitCard() : base(canonicalEnergyCost: 1, CardType.Power, CardRarity.Event, TargetType.None) { }
+    public PaymentBenefitCard() : base(canonicalEnergyCost: 2, CardType.Power, CardRarity.Event, TargetType.None) { }
 
     protected override async Task OnPlay(PlayerChoiceContext choiceContext, CardPlay cardPlay)
     {
@@ -44,6 +45,6 @@ public sealed class PaymentBenefitCard : CardModel
     protected override void OnUpgrade()
     {
         base.OnUpgrade();
-        EnergyCost.UpgradeBy(-1);   // 1 → 0
+        EnergyCost.UpgradeBy(-1);   // 2 → 1
     }
 }

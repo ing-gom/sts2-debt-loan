@@ -50,9 +50,10 @@ public sealed class DunningLetterCard : CardModel
     }
 
     // Hover tips: show the 빚 독촉 (Dunning) card this power feeds you — its preview PLUS its own keyword/power
-    // tips (휘발성/소멸/판금), so hovering the 독촉장 explains exactly what you'll get.
+    // tips (휘발성/소멸/판금), so hovering the 독촉장 explains exactly what you'll get. ★When THIS card is
+    // upgraded (독촉장+), pass upgrade:true so the preview is the 빚 독촉+ it actually injects, not the base.
     protected override IEnumerable<IHoverTip> ExtraHoverTips =>
-        HoverTipFactory.FromCardWithCardHoverTips<DebtCurseCard>();
+        HoverTipFactory.FromCardWithCardHoverTips<DebtCurseCard>(IsUpgraded);
 
     public DunningLetterCard() : base(canonicalEnergyCost: 1, CardType.Power, CardRarity.Event, TargetType.None) { }
 

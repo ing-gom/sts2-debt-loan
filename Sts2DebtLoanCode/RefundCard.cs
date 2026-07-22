@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Commands;                    // PowerCmd
 using MegaCrit.Sts2.Core.Entities.Cards;              // CardType, CardRarity, TargetType, CardPlay
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;     // PlayerChoiceContext
+using MegaCrit.Sts2.Core.HoverTips;                   // HoverTipFactory, IHoverTip
 using MegaCrit.Sts2.Core.Localization.DynamicVars;    // DynamicVar
 using MegaCrit.Sts2.Core.Models;                      // CardModel, CardPoolModel, ModelDb
 using MegaCrit.Sts2.Core.Models.CardPools;            // ColorlessCardPool
@@ -30,8 +31,20 @@ public sealed class RefundCard : CardModel
     protected override IEnumerable<DynamicVar> CanonicalVars =>
         new[] { new DynamicVar("block", 4), new DynamicVar("gold", 5) };   // shown on the card face (성실 납부 payoff)
 
+    // Hover: explain the 납부 (Payment) it reacts to, AND preview the 성실 납부 card it feeds (성실 납부+ once upgraded).
+    protected override IEnumerable<IHoverTip> ExtraHoverTips
+    {
+        get
+        {
+            var tips = new List<IHoverTip> { DebtLoanHoverTips.Payment() };
+            tips.AddRange(HoverTipFactory.FromCardWithCardHoverTips<DiligentPaymentCard>(IsUpgraded));
+            return tips;
+        }
+    }
+
     public RefundCard() : base(canonicalEnergyCost: 2, CardType.Power, CardRarity.Event, TargetType.None) { }
 
+    // 환급+ : SAME 2 cost, just feeds the 성실 납부+ form (the Amount=2 branch below). No OnUpgrade cost change.
     protected override async Task OnPlay(PlayerChoiceContext choiceContext, CardPlay cardPlay)
     {
         if (Owner?.Creature == null) return;
