@@ -14,10 +14,13 @@ namespace Sts2DebtLoan;
 /// (Payment) you make refunds you HALF its amount in gold — the payment engine costs half as much to run.
 /// 1 energy; upgrade grants Innate (선천성) so it opens in your starting hand. Colorless/Event; auto-registered.
 /// </summary>
-public sealed class InterestSupportCard : CardModel
+public sealed class InterestSupportCard : CardModel, IUsesPaymentTally
 {
     private static CardPoolModel? _pool;
     public override CardPoolModel Pool => _pool ??= ModelDb.CardPool<ColorlessCardPool>();
+
+    public int TallyCost => 1;   // costs 1 영수증 (cheap economy engine — entry point of the receipt loop)
+    protected override bool IsPlayable => Owner != null && LoanService.PaymentsThisCombat(Owner) >= TallyCost;
 
     public override int MaxUpgradeLevel => 1;   // upgrade = gain Innate (선천성)
 
@@ -34,6 +37,7 @@ public sealed class InterestSupportCard : CardModel
     {
         if (Owner?.Creature == null) return;
         await PowerCmd.Apply<InterestSupportPower>(choiceContext, Owner.Creature, 1, Owner.Creature, null);
+        await LoanService.SpendTally(Owner, TallyCost);   // spend the 영수증 cost
     }
 
     protected override void OnUpgrade()

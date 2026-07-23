@@ -14,10 +14,13 @@ namespace Sts2DebtLoan;
 /// draws you a card — the payment engine's card-advantage option. 1 energy; upgrade grants Innate (선천성) so it
 /// opens in your starting hand. Colorless/Event; auto-registered.
 /// </summary>
-public sealed class StatementCard : CardModel
+public sealed class StatementCard : CardModel, IUsesPaymentTally
 {
     private static CardPoolModel? _pool;
     public override CardPoolModel Pool => _pool ??= ModelDb.CardPool<ColorlessCardPool>();
+
+    public int TallyCost => 2;   // costs 2 영수증 to install (card-advantage engine)
+    protected override bool IsPlayable => Owner != null && LoanService.PaymentsThisCombat(Owner) >= TallyCost;
 
     public override int MaxUpgradeLevel => 1;   // upgrade = gain Innate (선천성)
 
@@ -34,6 +37,7 @@ public sealed class StatementCard : CardModel
     {
         if (Owner?.Creature == null) return;
         await PowerCmd.Apply<StatementPower>(choiceContext, Owner.Creature, 1, Owner.Creature, null);
+        await LoanService.SpendTally(Owner, TallyCost);   // spend the 영수증 cost
     }
 
     protected override void OnUpgrade()

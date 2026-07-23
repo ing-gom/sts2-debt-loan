@@ -513,10 +513,17 @@ internal static class LoanService
         TallyChanged?.Invoke(p, cell[0]);
     }
 
-    /// <summary>Spend the whole 납부 실적 (called by 청구서/정산 after they pay out). No-op if none.</summary>
+    /// <summary>Spend the WHOLE 영수증 tally (called by 청구서/정산 after they pay out). No-op if none.</summary>
     internal static Task ConsumePaymentStack(Player? p)
     {
         if (p != null) SetTally(p, 0);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Spend a FIXED amount of 영수증 — used by power cards that cost N to install. Clamps at 0.</summary>
+    internal static Task SpendTally(Player? p, int n)
+    {
+        if (p != null && n > 0) SetTally(p, PaymentsThisCombat(p) - n);
         return Task.CompletedTask;
     }
 

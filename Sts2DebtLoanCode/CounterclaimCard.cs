@@ -15,10 +15,13 @@ namespace Sts2DebtLoan;
 /// you make deals [b]{dmg}[/b] damage to a random enemy — the payment engine's sustained offense. 1 energy;
 /// upgrade grants Innate (선천성) so it opens in your starting hand. Colorless/Event; auto-registered.
 /// </summary>
-public sealed class CounterclaimCard : CardModel
+public sealed class CounterclaimCard : CardModel, IUsesPaymentTally
 {
     private static CardPoolModel? _pool;
     public override CardPoolModel Pool => _pool ??= ModelDb.CardPool<ColorlessCardPool>();
+
+    public int TallyCost => 2;   // costs 2 영수증 to install (strong offense engine)
+    protected override bool IsPlayable => Owner != null && LoanService.PaymentsThisCombat(Owner) >= TallyCost;
 
     public override int MaxUpgradeLevel => 1;   // upgrade = gain Innate (선천성)
 
@@ -37,6 +40,7 @@ public sealed class CounterclaimCard : CardModel
     {
         if (Owner?.Creature == null) return;
         await PowerCmd.Apply<CounterclaimPower>(choiceContext, Owner.Creature, 1, Owner.Creature, null);
+        await LoanService.SpendTally(Owner, TallyCost);   // spend the 영수증 cost
     }
 
     protected override void OnUpgrade()

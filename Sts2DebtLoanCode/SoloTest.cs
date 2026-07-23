@@ -601,21 +601,21 @@ internal static class SoloTest
                 if (handClear != null && handClear.Count > 0) await CardPileCmd.RemoveFromCombat(handClear, skipVisuals: true);
                 await Task.Delay(120);
 
-                // Render 청구서 + 정산 as standalone NCards (like §N) so the screenshot captures the custom X 납부 실적
-                // cost badge (책 심볼 + X) our overlay patch draws on tally-spending cards.
+                // Render standalone NCards (like §N) so the screenshot captures the custom 영수증 cost badge our
+                // overlay patch draws: 청구서 = X (spend all), 자본 타격 = 2, 이자 지원 = 1.
                 try
                 {
-                    var invModel = cstate!.CreateCard<InvoiceCard>(player);
-                    var setModel = cstate!.CreateCard<SettlementCard>(player);
-                    var nInv = NCard.Create(invModel);
-                    var nSet = NCard.Create(setModel);
-                    if (Engine.GetMainLoop() is SceneTree tb && nInv != null && nSet != null)
+                    var nInv = NCard.Create(cstate!.CreateCard<InvoiceCard>(player));            // X
+                    var nCc  = NCard.Create(cstate!.CreateCard<CounterclaimCard>(player));       // 2
+                    var nIs  = NCard.Create(cstate!.CreateCard<InterestSupportCard>(player));    // 1
+                    if (Engine.GetMainLoop() is SceneTree tb && nInv != null && nCc != null && nIs != null)
                     {
-                        tb.Root.AddChild(nInv); nInv.Position = new Vector2(560, 470); nInv.Scale = new Vector2(1.5f, 1.5f);
-                        tb.Root.AddChild(nSet); nSet.Position = new Vector2(1120, 470); nSet.Scale = new Vector2(1.5f, 1.5f);
+                        tb.Root.AddChild(nInv); nInv.Position = new Vector2(420, 500); nInv.Scale = new Vector2(1.4f, 1.4f);
+                        tb.Root.AddChild(nCc);  nCc.Position  = new Vector2(890, 500); nCc.Scale  = new Vector2(1.4f, 1.4f);
+                        tb.Root.AddChild(nIs);  nIs.Position  = new Vector2(1360, 500); nIs.Scale = new Vector2(1.4f, 1.4f);
                         await Task.Delay(500);
-                        await Shot("6c_badge");   // 청구서/정산 should show the X 납부 실적 cost badge
-                        nInv.QueueFree(); nSet.QueueFree();
+                        await Shot("6c_badge");   // 청구서=X / 자본타격=2 / 이자지원=1 영수증 cost badges
+                        nInv.QueueFree(); nCc.QueueFree(); nIs.QueueFree();
                     }
                 }
                 catch (Exception e) { W("  badge render failed: " + e.Message); }
@@ -693,6 +693,32 @@ internal static class SoloTest
                 }
 
                 await Shot("7_payment_combat");
+
+                // tP6) POWER-CARD 영수증 COST: 자본 타격 costs 2, 이자 지원 costs 1. Gate on receipts (CanPlay false
+                //      when short) + spend the cost on play.
+                {
+                    await LoanService.ConsumePaymentStack(player);                                  // tally → 0
+                    var ccCard = cstate!.CreateCard<CounterclaimCard>(player);
+                    bool gate0 = !ccCard.CanPlay();                                                 // 0 < 2 → not playable
+                    await LoanService.GrantLoanDirect(player, 200);
+                    for (int i = 0; i < 3; i++) await LoanService.RecordPayment(player, pcc, 5);    // tally → 3
+                    await Task.Delay(120);
+                    int t0 = LoanService.PaymentsThisCombat(player);                                // 3
+                    bool gate3 = ccCard.CanPlay();                                                  // 3 >= 2 → playable
+                    try { await CardCmd.AutoPlay(pcc, ccCard, null); } catch (Exception e) { W("  자본타격 play failed: " + e.Message); }
+                    await Task.Delay(120);
+                    int tAfterCc = LoanService.PaymentsThisCombat(player);                          // 3 - 2 = 1
+                    bool ccPow = player.Creature!.GetPower<CounterclaimPower>() != null;
+                    var isCard = cstate!.CreateCard<InterestSupportCard>(player);
+                    bool isGate = isCard.CanPlay();                                                 // 1 >= 1 → playable
+                    try { await CardCmd.AutoPlay(pcc, isCard, null); } catch (Exception e) { W("  이자지원 play failed: " + e.Message); }
+                    await Task.Delay(120);
+                    int tAfterIs = LoanService.PaymentsThisCombat(player);                          // 1 - 1 = 0
+                    bool isPow = player.Creature!.GetPower<InterestSupportPower>() != null;
+                    bool tP6 = gate0 && gate3 && ccPow && tAfterCc == t0 - 2 && isGate && isPow && tAfterIs == 0;
+                    W($"  assert power-card 영수증 cost: gate@0={gate0}(unplayable) gate@3={gate3} 자본타격→tally {tAfterCc}(=1,cost2) 이자지원→tally {tAfterIs}(=0,cost1) powers={ccPow}&{isPow} -> {tP6}");
+                    all &= tP6;
+                }
 
                 // 2-digit check: drive the tally up to 12 and screenshot the HUD counter so we can see a two-digit
                 // value render (asserts above are all done, so extra payments here are harmless).
