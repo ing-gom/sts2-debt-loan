@@ -7,16 +7,17 @@ using MegaCrit.Sts2.Core.Hooks;              // Hook
 namespace Sts2DebtLoan;
 
 /// <summary>
-/// Injects the run-wide Debt-card total into a player's DRAW pile at the start of their FIRST turn,
-/// <b>before the opening hand is dealt</b>, so the Debt cards are DRAWN into that opening hand.
+/// Shuffles the run-wide Debt-card total into a player's DRAW pile at the start of their FIRST turn,
+/// <b>before the opening hand is dealt</b>, so the normal draw logic pulls them in from turn 1.
 ///
 /// We hook <see cref="Hook.BeforeHandDraw"/> (guarded to <c>TurnNumber == 1</c>) rather than
 /// <see cref="Hook.AfterPlayerTurnStart"/>. In <c>CombatManager.StartTurn</c> the sequence is:
 /// AfterEnergyReset → <b>BeforeHandDraw</b> → ModifyHandDraw → (turn-1 Innate reorder) →
 /// <c>CardPileCmd.Draw</c> → AfterPlayerTurnStart. The old AfterPlayerTurnStart injection ran AFTER the
 /// draw, so the cards sat in the draw pile and only appeared on turn 2. Injecting here — awaited before the
-/// Draw within the same StartTurn — places them at the TOP of the draw pile (see
-/// <see cref="LoanService.InjectAllDebtsForCombat"/>) so the opening Draw pulls them straight into hand.
+/// Draw within the same StartTurn — shuffles them into the draw pile at random positions (see
+/// <see cref="LoanService.InjectAllDebtsForCombat"/>), so how many reach the opening hand varies: sometimes
+/// several, sometimes they trickle in over later turns — never all forced onto turn 1.
 ///
 /// Global (not bound to the relic owner) and run-wide, so in co-op one player's debt is felt in every
 /// player's combats too, stacking if both carry loans. Chained onto the awaited hook Task (in-order,

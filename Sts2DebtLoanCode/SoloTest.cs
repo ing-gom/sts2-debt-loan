@@ -297,9 +297,10 @@ internal static class SoloTest
             W($"  amortized hover: {hover}");
             all &= tH;
 
-            // I) Combat-start injection: a fresh loan (count 1) → entering a Monster room. Injection now runs
-            //    at BeforeHandDraw (before the opening deal) and inserts at the TOP of the draw pile, so the
-            //    Debt card should be DRAWN into the OPENING HAND (not merely sitting in the draw pile).
+            // I) Combat-start injection: a fresh loan (count 1) → entering a Monster room. Injection runs at
+            //    BeforeHandDraw (before the opening deal) and SHUFFLES the Debt card into the draw pile at a
+            //    random position, so it's drawn by the normal logic — it may or may not land in the opening
+            //    hand. We assert it's IN COMBAT (draw/hand/discard); opening-hand presence is just logged.
             Step("combat-start injection");
             LoanService.ResetFor(player);
             await DebtLoanGrants.RemoveRelic(player);
@@ -320,10 +321,36 @@ internal static class SoloTest
                 int debtInHand = PileType.Hand.GetPile(player)?.Cards.Count(c => c is DebtCurseCard) ?? 0;
                 bool inCombat = MegaCrit.Sts2.Core.Combat.CombatManager.Instance?.IsInProgress ?? false;
                 tI = inCombat && debtInCombat >= 1;
-                W($"  assert combat inject: inCombat={inCombat} debtCardsInCombat={debtInCombat}(>=1) inOpeningHand={debtInHand}(expect>=1) -> {tI}");
+                W($"  assert combat inject: inCombat={inCombat} debtCardsInCombat={debtInCombat}(>=1) inOpeningHand={debtInHand}(random, may be 0) -> {tI}");
                 await Shot("4_combat");
             }
             all &= tI;
+
+            // I2) Tier 4 injects ONLY 신용 불량 (Bad Credit) — NOT the cumulative 납부/연체/차압 (which would flood the
+            //     hand). Bad Credit drives the 강제 징수 spiral instead. Assert none of the tier-1..3 curses appear.
+            Step("tier4 = bad-credit only");
+            bool tI2 = true;
+            LoanService.ResetFor(player);
+            await DebtLoanGrants.RemoveRelic(player);
+            await Task.Delay(120);
+            DebtLoanConfig.MaxLoan = 9999;
+            await LoanService.GrantLoanDirect(player, 200);
+            await LoanService.DebugSetTier(player, 25);            // rooms-since-loan 25 → tier 4
+            await Task.Delay(120);
+            if (Engine.GetMainLoop() is SceneTree)
+            {
+                await RunManager.Instance.EnterRoomDebug(RoomType.Monster);
+                await Task.Delay(4000);                            // combat setup → tier-4 injection runs
+                int cumulativeCurses = 0;
+                foreach (var pt in new[] { PileType.Draw, PileType.Hand, PileType.Discard })
+                {
+                    var pile = pt.GetPile(player);
+                    if (pile != null) cumulativeCurses += pile.Cards.Count(c => c is DebtCurseCard or DelinquencyCard or SeizureCard);
+                }
+                tI2 = cumulativeCurses == 0;
+                W($"  assert tier4=신용불량 only: 납부/연체/차압 injected={cumulativeCurses}(=0) -> {tI2}");
+            }
+            all &= tI2;
 
             // J) Min-loan floor: a 1-gold shortfall still borrows at least MinLoan (100), not 1.
             Step("min-loan floor");

@@ -94,8 +94,10 @@ internal static class LoanService
     /// pile — the run-wide contagion (a partner's loan seeps into your combat too; multiple loans stack).
     /// Each loan contributes an escalating SET by rooms-since-loan: 빚 독촉 (Dunning, upgraded to '+' once
     /// that loan is over the soft cap) always; +연체 (Delinquency) at 10 rooms; +차압 (Seizure) at 20. The
-    /// cards are placed at the TOP of the draw pile so the opening hand (drawn right after this, in the same
-    /// StartTurn) pulls them straight into hand. Temporary — gone at combat end.</summary>
+    /// cards are SHUFFLED into the draw pile (random positions) BEFORE the opening hand is dealt (this runs at
+    /// BeforeHandDraw), so the normal draw pulls them in naturally from turn 1 — sometimes several land in the
+    /// opening hand, sometimes they trickle in over the next turns, but they're never all forced onto turn 1.
+    /// Temporary — gone at combat end.</summary>
     internal static async Task InjectAllDebtsForCombat(Player injectee, IRunState run)
     {
         var combat = injectee?.Creature?.CombatState;
@@ -110,25 +112,32 @@ internal static class LoanService
             if (rec == null || !rec.Active || rec.Principal <= 0 || owner.RunState == null) continue;
             int tier = DebtLoanConfig.TargetDebtCards(owner.RunState.TotalFloor - rec.LoanFloor);   // 1/2/3
 
-            // Forced-injected Debt cards are ALWAYS the base 빚 독촉 (leverage nuke). The upgraded 빚 독촉+ form
-            // (0-cost, no AoE) is exclusively what the 독촉장+ (Dunning Letter) power injects — it's a payoff,
-            // not a penalty, so it must NOT appear as debt escalation (that would make deep debt milder).
-            var dunning = combat.CreateCard<DebtCurseCard>(injectee);
-            if (dunning != null) cards.Add(dunning);
-            if (tier >= 2) { var c = combat.CreateCard<DelinquencyCard>(injectee); if (c != null) cards.Add(c); }
-            if (tier >= 3) { var c = combat.CreateCard<SeizureCard>(injectee);     if (c != null) cards.Add(c); }
             if (tier >= 4)
             {
+                // Tier 4 REPLACES the cumulative curse set with the 신용 불량 (Bad Credit) engine ALONE. Bad Credit
+                // spawns a 강제 징수 (Forced Collection) every turn — an escalating gold/HP drain that IS the tier-4
+                // pressure — so we deliberately do NOT also inject 납부/연체/차압 (that would just flood the hand).
                 rec.CollectionLevel = 0;   // fresh spiral each combat; BadCredit ratchets it up per turn
                 var c = combat.CreateCard<BadCreditCard>(injectee); if (c != null) cards.Add(c);
+            }
+            else
+            {
+                // Tiers 1-3 are CUMULATIVE: 납부 (Payment) always; +연체 (Delinquency) at tier 2; +차압 (Seizure) at
+                // tier 3. The injected 납부 is always the base form (the 독촉장+ payoff form is power-only).
+                var dunning = combat.CreateCard<DebtCurseCard>(injectee);
+                if (dunning != null) cards.Add(dunning);
+                if (tier >= 2) { var c = combat.CreateCard<DelinquencyCard>(injectee); if (c != null) cards.Add(c); }
+                if (tier >= 3) { var c = combat.CreateCard<SeizureCard>(injectee);     if (c != null) cards.Add(c); }
             }
         }
         if (cards.Count == 0) return;
 
-        // Top of pile → the opening Draw (fired right after this in StartTurn) pulls them into hand. The
-        // normal draw animation shows them entering hand, so no separate PreviewCardPileAdd reveal is needed.
-        await CardPileCmd.AddGeneratedCardsToCombat(cards, PileType.Draw, injectee, CardPilePosition.Top);
-        MainFile.Logger.Info($"[{MainFile.ModId}] injected {cards.Count} Debt curse card(s) at the top of the draw pile.");
+        // Random positions → shuffled into the draw pile before the opening deal, so how many land in the
+        // opening hand varies (not always all of them). The reveal shows them seeping into the pile. Random
+        // uses the lockstep combat RNG → deterministic across co-op peers.
+        var results = await CardPileCmd.AddGeneratedCardsToCombat(cards, PileType.Draw, injectee, CardPilePosition.Random);
+        CardCmd.PreviewCardPileAdd(results);
+        MainFile.Logger.Info($"[{MainFile.ModId}] shuffled {cards.Count} Debt curse card(s) into the draw pile.");
     }
 
     /// <summary>True if the player already carries the Merchant's Ledger relic.</summary>

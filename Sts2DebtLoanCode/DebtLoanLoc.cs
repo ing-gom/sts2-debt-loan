@@ -37,7 +37,7 @@ internal static class DebtLoanLoc
     private static readonly Dictionary<string, Row> ByLang = new()
     {
         ["eng"] = new("Merchant's Ledger",
-            "Owed [gold]{owed} Gold[/gold]. Paid [gold]{paid} Gold[/gold] so far.\nInjected each combat: [b]{cards:choose(1|2|3|4):Payment|Payment, Delinquency|Payment, Delinquency, Seizure|Payment, Delinquency, Seizure, Bad Credit|Payment}[/b]. More curses pile on the longer you owe.\nRepay the debt at a shop to remove this relic.",
+            "Owed [gold]{owed} Gold[/gold]. Paid [gold]{paid} Gold[/gold] so far.\nInjected each combat: [b]{cards:choose(1|2|3|4):Payment|Payment, Delinquency|Payment, Delinquency, Seizure|Bad Credit|Payment}[/b]. More curses pile on the longer you owe.\nRepay the debt at a shop to remove this relic.",
             "Every signature is a small surrender.",
             "Payment", "Play it to make a [gold]{play} Gold[/gold] [gold]Payment[/gold].",
             "Delinquency", "While this is in your hand, enemy attacks deal 50% more damage.",
@@ -46,7 +46,7 @@ internal static class DebtLoanLoc
             "Forced Collection", "At the end of your turn, lose [b]{hp}[/b] HP and repay [gold]{principal} Gold[/gold] of principal, then Exhaust."),
 
         ["kor"] = new("상인의 장부",
-            "남은 상환액 [gold]{owed} 골드[/gold]. 지금까지 지불 [gold]{paid} 골드[/gold].\n전투마다 주입되는 저주: [b]{cards:choose(1|2|3|4):납부|납부, 연체|납부, 연체, 차압|납부, 연체, 차압, 신용 불량|납부}[/b]. 오래 갚지 않을수록 늘어납니다.\n상점에서 빚을 갚으면 이 유물이 제거됩니다.",
+            "남은 상환액 [gold]{owed} 골드[/gold]. 지금까지 지불 [gold]{paid} 골드[/gold].\n전투마다 주입되는 저주: [b]{cards:choose(1|2|3|4):납부|납부, 연체|납부, 연체, 차압|신용 불량|납부}[/b]. 오래 갚지 않을수록 늘어납니다.\n상점에서 빚을 갚으면 이 유물이 제거됩니다.",
             "모든 서명은 작은 항복이다.",
             "납부", "플레이하여 [gold]{play} 골드[/gold]를 [gold]납부[/gold]합니다.",
             "연체", "이 카드가 손에 있는 동안, 적의 공격이 50% 더 큰 피해를 줍니다.",
@@ -55,7 +55,7 @@ internal static class DebtLoanLoc
             "강제 징수", "턴 종료 시, 체력을 [b]{hp}[/b] 잃고 원금 [gold]{principal} 골드[/gold]를 상환한 뒤 소멸합니다."),
 
         ["jpn"] = new("商人の元帳",
-            "残債 [gold]{owed} ゴールド[/gold]。これまでの支払い [gold]{paid} ゴールド[/gold]。\n戦闘ごとに加わる呪い: [b]{cards:choose(1|2|3|4):支払い|支払い・延滞|支払い・延滞・差し押さえ|支払い・延滞・差し押さえ・信用不良|支払い}[/b]。返済が遅れるほど増える。\nショップで借金を返済すると、このレリックは取り除かれる。",
+            "残債 [gold]{owed} ゴールド[/gold]。これまでの支払い [gold]{paid} ゴールド[/gold]。\n戦闘ごとに加わる呪い: [b]{cards:choose(1|2|3|4):支払い|支払い・延滞|支払い・延滞・差し押さえ|信用不良|支払い}[/b]。返済が遅れるほど増える。\nショップで借金を返済すると、このレリックは取り除かれる。",
             "署名はすべて、小さな降伏だ。",
             "支払い", "プレイして[gold]{play} ゴールド[/gold]を支払い、借金をより早く返済する。",
             "延滞", "この手札にある間、敵の攻撃ダメージが50%増加する。",
@@ -64,7 +64,7 @@ internal static class DebtLoanLoc
             "強制徴収", "ターン終了時、体力を[b]{hp}[/b]失い、元金[gold]{principal} ゴールド[/gold]を返済してから廃棄。"),
 
         ["zhs"] = new("商人的账簿",
-            "待还 [gold]{owed} 金币[/gold]。已偿还 [gold]{paid} 金币[/gold]。\n每场战斗注入的诅咒：[b]{cards:choose(1|2|3|4):还款|还款、拖欠|还款、拖欠、扣押|还款、拖欠、扣押、信用不良|还款}[/b]。拖欠越久，诅咒越多。\n在商店还清债务即可移除此遗物。",
+            "待还 [gold]{owed} 金币[/gold]。已偿还 [gold]{paid} 金币[/gold]。\n每场战斗注入的诅咒：[b]{cards:choose(1|2|3|4):还款|还款、拖欠|还款、拖欠、扣押|信用不良|还款}[/b]。拖欠越久，诅咒越多。\n在商店还清债务即可移除此遗物。",
             "每一个签名都是一次小小的屈服。",
             "还款", "打出它，支付 [gold]{play} 金币[/gold]，更快偿还贷款。",
             "拖欠", "当此牌在你手牌中时，敌人的攻击造成的伤害提高 50%。",
@@ -73,7 +73,7 @@ internal static class DebtLoanLoc
             "强制征收", "回合结束时，失去 [b]{hp}[/b] 点生命并偿还 [gold]{principal} 金币[/gold] 本金，然后消耗。"),
 
         ["deu"] = new("Händlerbuch",
-            "Offen: [gold]{owed} Gold[/gold]. Zurückgezahlt: [gold]{paid} Gold[/gold].\nJeder Kampf schleust ein: [b]{cards:choose(1|2|3|4):Zahlung|Zahlung, Verzug|Zahlung, Verzug, Pfändung|Zahlung, Verzug, Pfändung, Zahlungsunfähig|Zahlung}[/b]. Je länger du schuldest, desto mehr Flüche.\nZahle die Schuld in einem Laden zurück, um dieses Relikt zu entfernen.",
+            "Offen: [gold]{owed} Gold[/gold]. Zurückgezahlt: [gold]{paid} Gold[/gold].\nJeder Kampf schleust ein: [b]{cards:choose(1|2|3|4):Zahlung|Zahlung, Verzug|Zahlung, Verzug, Pfändung|Zahlungsunfähig|Zahlung}[/b]. Je länger du schuldest, desto mehr Flüche.\nZahle die Schuld in einem Laden zurück, um dieses Relikt zu entfernen.",
             "Jede Unterschrift ist eine kleine Kapitulation.",
             "Zahlung", "Spiele sie, um [gold]{play} Gold[/gold] zu zahlen und die Schuld schneller zu tilgen.",
             "Verzug", "Solange sie auf deiner Hand ist, richten gegnerische Angriffe 50% mehr Schaden an.",
@@ -82,7 +82,7 @@ internal static class DebtLoanLoc
             "Zwangseinziehung", "Am Ende deiner Runde verlierst du [b]{hp}[/b] LP und tilgst [gold]{principal} Gold[/gold] der Schuld, dann verbraucht."),
 
         ["fra"] = new("Grand livre du marchand",
-            "Dû : [gold]{owed} or[/gold]. Remboursé : [gold]{paid} or[/gold].\nInjecté à chaque combat : [b]{cards:choose(1|2|3|4):Paiement|Paiement, Défaut|Paiement, Défaut, Saisie|Paiement, Défaut, Saisie, Insolvabilité|Paiement}[/b]. Plus tu tardes, plus il y a de malédictions.\nRembourse la dette dans une boutique pour retirer cette relique.",
+            "Dû : [gold]{owed} or[/gold]. Remboursé : [gold]{paid} or[/gold].\nInjecté à chaque combat : [b]{cards:choose(1|2|3|4):Paiement|Paiement, Défaut|Paiement, Défaut, Saisie|Insolvabilité|Paiement}[/b]. Plus tu tardes, plus il y a de malédictions.\nRembourse la dette dans une boutique pour retirer cette relique.",
             "Chaque signature est une petite reddition.",
             "Paiement", "Joue-la pour payer [gold]{play} or[/gold] et rembourser la dette plus vite.",
             "Défaut", "Tant qu'elle est dans ta main, les attaques ennemies infligent 50% de dégâts en plus.",
@@ -91,7 +91,7 @@ internal static class DebtLoanLoc
             "Saisie forcée", "À la fin de ton tour, perds [b]{hp}[/b] PV et rembourse [gold]{principal} or[/gold] de la dette, puis Épuise."),
 
         ["spa"] = new("Libro del mercader",
-            "Pendiente: [gold]{owed} de oro[/gold]. Pagado: [gold]{paid} de oro[/gold].\nInyectado cada combate: [b]{cards:choose(1|2|3|4):Pago|Pago, Morosidad|Pago, Morosidad, Embargo|Pago, Morosidad, Embargo, Insolvencia|Pago}[/b]. Cuanto más debas, más maldiciones.\nSalda la deuda en una tienda para eliminar esta reliquia.",
+            "Pendiente: [gold]{owed} de oro[/gold]. Pagado: [gold]{paid} de oro[/gold].\nInyectado cada combate: [b]{cards:choose(1|2|3|4):Pago|Pago, Morosidad|Pago, Morosidad, Embargo|Insolvencia|Pago}[/b]. Cuanto más debas, más maldiciones.\nSalda la deuda en una tienda para eliminar esta reliquia.",
             "Cada firma es una pequeña rendición.",
             "Pago", "Juégala para pagar [gold]{play} de oro[/gold] y saldar la deuda más rápido.",
             "Morosidad", "Mientras esté en tu mano, los ataques enemigos infligen un 50% más de daño.",
@@ -100,7 +100,7 @@ internal static class DebtLoanLoc
             "Embargo forzoso", "Al final de tu turno, pierde [b]{hp}[/b] de vida y salda [gold]{principal} de oro[/gold] de la deuda; luego Agota."),
 
         ["esp"] = new("Libro del mercader",
-            "Pendiente: [gold]{owed} de oro[/gold]. Pagado: [gold]{paid} de oro[/gold].\nInyectado cada combate: [b]{cards:choose(1|2|3|4):Pago|Pago, Morosidad|Pago, Morosidad, Embargo|Pago, Morosidad, Embargo, Insolvencia|Pago}[/b]. Cuanto más debas, más maldiciones.\nSalda la deuda en una tienda para eliminar esta reliquia.",
+            "Pendiente: [gold]{owed} de oro[/gold]. Pagado: [gold]{paid} de oro[/gold].\nInyectado cada combate: [b]{cards:choose(1|2|3|4):Pago|Pago, Morosidad|Pago, Morosidad, Embargo|Insolvencia|Pago}[/b]. Cuanto más debas, más maldiciones.\nSalda la deuda en una tienda para eliminar esta reliquia.",
             "Cada firma es una pequeña rendición.",
             "Pago", "Juégala para pagar [gold]{play} de oro[/gold] y saldar la deuda más rápido.",
             "Morosidad", "Mientras esté en tu mano, los ataques enemigos infligen un 50% más de daño.",
@@ -109,7 +109,7 @@ internal static class DebtLoanLoc
             "Embargo forzoso", "Al final de tu turno, pierde [b]{hp}[/b] de vida y salda [gold]{principal} de oro[/gold] de la deuda; luego Agota."),
 
         ["ita"] = new("Registro del mercante",
-            "Dovuto: [gold]{owed} Oro[/gold]. Pagato: [gold]{paid} Oro[/gold].\nInserito ogni combattimento: [b]{cards:choose(1|2|3|4):Pagamento|Pagamento, Morosità|Pagamento, Morosità, Pignoramento|Pagamento, Morosità, Pignoramento, Insolvenza|Pagamento}[/b]. Più tardi, più maledizioni.\nSalda il debito in un negozio per rimuovere questo cimelio.",
+            "Dovuto: [gold]{owed} Oro[/gold]. Pagato: [gold]{paid} Oro[/gold].\nInserito ogni combattimento: [b]{cards:choose(1|2|3|4):Pagamento|Pagamento, Morosità|Pagamento, Morosità, Pignoramento|Insolvenza|Pagamento}[/b]. Più tardi, più maledizioni.\nSalda il debito in un negozio per rimuovere questo cimelio.",
             "Ogni firma è una piccola resa.",
             "Pagamento", "Giocala per pagare [gold]{play} Oro[/gold] e saldare il debito più in fretta.",
             "Morosità", "Finché è nella tua mano, gli attacchi nemici infliggono il 50% di danni in più.",
@@ -118,7 +118,7 @@ internal static class DebtLoanLoc
             "Riscossione forzata", "Alla fine del turno, perdi [b]{hp}[/b] PV e ripaghi [gold]{principal} Oro[/gold] di debito, poi Consuma."),
 
         ["pol"] = new("Księga kupca",
-            "Do spłaty: [gold]{owed} złota[/gold]. Spłacono: [gold]{paid} złota[/gold].\nDodawane w każdej walce: [b]{cards:choose(1|2|3|4):Spłata|Spłata, Zaległość|Spłata, Zaległość, Zajęcie|Spłata, Zaległość, Zajęcie, Niewypłacalność|Spłata}[/b]. Im dłużej zwlekasz, tym więcej klątw.\nSpłać dług w sklepie, aby usunąć ten relikt.",
+            "Do spłaty: [gold]{owed} złota[/gold]. Spłacono: [gold]{paid} złota[/gold].\nDodawane w każdej walce: [b]{cards:choose(1|2|3|4):Spłata|Spłata, Zaległość|Spłata, Zaległość, Zajęcie|Niewypłacalność|Spłata}[/b]. Im dłużej zwlekasz, tym więcej klątw.\nSpłać dług w sklepie, aby usunąć ten relikt.",
             "Każdy podpis to mała kapitulacja.",
             "Spłata", "Zagraj ją, aby zapłacić [gold]{play} złota[/gold] i szybciej spłacić dług.",
             "Zaległość", "Gdy jest w twojej ręce, ataki wrogów zadają 50% więcej obrażeń.",
@@ -127,7 +127,7 @@ internal static class DebtLoanLoc
             "Przymusowa egzekucja", "Na końcu tury tracisz [b]{hp}[/b] PŻ i spłacasz [gold]{principal} złota[/gold] długu, potem Zużywa się."),
 
         ["ptb"] = new("Livro-razão do mercador",
-            "Devido: [gold]{owed} de Ouro[/gold]. Pago: [gold]{paid} de Ouro[/gold].\nInjetado a cada combate: [b]{cards:choose(1|2|3|4):Pagamento|Pagamento, Inadimplência|Pagamento, Inadimplência, Penhora|Pagamento, Inadimplência, Penhora, Crédito Ruim|Pagamento}[/b]. Quanto mais você deve, mais maldições.\nQuite a dívida em uma loja para remover esta relíquia.",
+            "Devido: [gold]{owed} de Ouro[/gold]. Pago: [gold]{paid} de Ouro[/gold].\nInjetado a cada combate: [b]{cards:choose(1|2|3|4):Pagamento|Pagamento, Inadimplência|Pagamento, Inadimplência, Penhora|Crédito Ruim|Pagamento}[/b]. Quanto mais você deve, mais maldições.\nQuite a dívida em uma loja para remover esta relíquia.",
             "Cada assinatura é uma pequena rendição.",
             "Pagamento", "Jogue-a para pagar [gold]{play} de Ouro[/gold] e quitar a dívida mais rápido.",
             "Inadimplência", "Enquanto estiver na sua mão, ataques inimigos causam 50% mais dano.",
@@ -136,7 +136,7 @@ internal static class DebtLoanLoc
             "Cobrança Forçada", "No fim do seu turno, perca [b]{hp}[/b] de Vida e quite [gold]{principal} de Ouro[/gold] da dívida, então Exaure."),
 
         ["rus"] = new("Гроссбух торговца",
-            "К оплате: [gold]{owed} золота[/gold]. Выплачено: [gold]{paid} золота[/gold].\nДобавляется каждый бой: [b]{cards:choose(1|2|3|4):Платёж|Платёж, Просрочка|Платёж, Просрочка, Арест|Платёж, Просрочка, Арест, Неплатёжеспособность|Платёж}[/b]. Чем дольше долг, тем больше проклятий.\nПогасите долг в магазине, чтобы убрать эту реликвию.",
+            "К оплате: [gold]{owed} золота[/gold]. Выплачено: [gold]{paid} золота[/gold].\nДобавляется каждый бой: [b]{cards:choose(1|2|3|4):Платёж|Платёж, Просрочка|Платёж, Просрочка, Арест|Неплатёжеспособность|Платёж}[/b]. Чем дольше долг, тем больше проклятий.\nПогасите долг в магазине, чтобы убрать эту реликвию.",
             "Каждая подпись — маленькая капитуляция.",
             "Платёж", "Разыграйте её, чтобы заплатить [gold]{play} золота[/gold] и быстрее погасить долг.",
             "Просрочка", "Пока она в руке, атаки врагов наносят на 50% больше урона.",
@@ -145,7 +145,7 @@ internal static class DebtLoanLoc
             "Принудительное взыскание", "В конце хода теряете [b]{hp}[/b] здоровья и гасите [gold]{principal} золота[/gold] долга, затем Истощается."),
 
         ["tha"] = new("บัญชีของพ่อค้า",
-            "ค้างชำระ [gold]{owed} ทอง[/gold] จ่ายไปแล้ว [gold]{paid} ทอง[/gold]\nใส่ทุกการต่อสู้: [b]{cards:choose(1|2|3|4):การชำระ|การชำระ, ค้างชำระ|การชำระ, ค้างชำระ, ยึดทรัพย์|การชำระ, ค้างชำระ, ยึดทรัพย์, เครดิตเสีย|การชำระ}[/b] ยิ่งค้างนานยิ่งมากขึ้น\nชำระหนี้ที่ร้านค้าเพื่อนำวัตถุโบราณนี้ออก",
+            "ค้างชำระ [gold]{owed} ทอง[/gold] จ่ายไปแล้ว [gold]{paid} ทอง[/gold]\nใส่ทุกการต่อสู้: [b]{cards:choose(1|2|3|4):การชำระ|การชำระ, ค้างชำระ|การชำระ, ค้างชำระ, ยึดทรัพย์|เครดิตเสีย|การชำระ}[/b] ยิ่งค้างนานยิ่งมากขึ้น\nชำระหนี้ที่ร้านค้าเพื่อนำวัตถุโบราณนี้ออก",
             "ทุกลายเซ็นคือการยอมจำนนเล็กๆ",
             "การชำระ", "เล่นเพื่อจ่าย [gold]{play} ทอง[/gold] และชำระหนี้เร็วขึ้น",
             "ค้างชำระ", "ขณะอยู่ในมือ การโจมตีของศัตรูสร้างความเสียหายเพิ่ม 50%",
@@ -154,7 +154,7 @@ internal static class DebtLoanLoc
             "บังคับเก็บหนี้", "เมื่อจบเทิร์น เสียพลังชีวิต [b]{hp}[/b] และชำระเงินต้น [gold]{principal} ทอง[/gold] จากนั้นเผาไหม้"),
 
         ["tur"] = new("Tüccarın Defteri",
-            "Kalan: [gold]{owed} Altın[/gold]. Ödenen: [gold]{paid} Altın[/gold].\nHer savaş eklenir: [b]{cards:choose(1|2|3|4):Ödeme|Ödeme, Temerrüt|Ödeme, Temerrüt, Haciz|Ödeme, Temerrüt, Haciz, Kredi İflası|Ödeme}[/b]. Borç uzadıkça daha fazla lanet.\nBu kalıntıyı kaldırmak için borcu bir dükkânda öde.",
+            "Kalan: [gold]{owed} Altın[/gold]. Ödenen: [gold]{paid} Altın[/gold].\nHer savaş eklenir: [b]{cards:choose(1|2|3|4):Ödeme|Ödeme, Temerrüt|Ödeme, Temerrüt, Haciz|Kredi İflası|Ödeme}[/b]. Borç uzadıkça daha fazla lanet.\nBu kalıntıyı kaldırmak için borcu bir dükkânda öde.",
             "Her imza küçük bir teslimiyettir.",
             "Ödeme", "Oyna: [gold]{play} Altın[/gold] öde ve borcu daha hızlı kapat.",
             "Temerrüt", "Elindeyken düşman saldırıları %50 daha fazla hasar verir.",
