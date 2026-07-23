@@ -52,9 +52,10 @@ internal static class DebtLoanConfig
     // ── 신용 회복 (Credit Restored) reward gate ──────────────────────────────────────────────────────────
     /// <summary>Clearing a loan grants the permanent 신용 회복 reward card ONLY if it reached at least this tier…</summary>
     internal static int RewardMinTier = 4;
-    /// <summary>…AND the owed amount (상환금액) it peaked at was at least this many gold. Both gates must hold, so
-    /// the reward is for clearing a genuinely deep + large debt, not a quick small loan.</summary>
-    internal static int RewardMinOwed = 400;
+    /// <summary>…AND the total gold you actually PAID (갚은 금액 = cumulative TotalPaid) over the loan's life was at
+    /// least this much. Both gates must hold, so the reward is for genuinely working off a deep, large debt.
+    /// At 400 it's reachable from a near-max loan alone (MaxLoan 300 → owed 450 ≥ 400), without needing 취업알선.</summary>
+    internal static int RewardMinPaid = 400;
 
     // Debt-curse ESCALATION tier by rooms-since-loan. Each tier UNLOCKS a new curse in the injected set (see
     // LoanService.InjectAllDebtsForCombat): 1=빚 독촉(Dunning), 2=+연체(Delinquency), 3=+차압(Seizure),

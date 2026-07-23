@@ -27,7 +27,7 @@ public sealed class DebtLoanRelic : RelicModel
     protected override string PackedIconOutlinePath => "res://Sts2DebtLoan/icons/debt_loan_relic_outline.png";
     protected override string BigIconPath => "res://Sts2DebtLoan/icons/debt_loan_relic.png";
 
-    private int _borrowed, _principal, _totalPaid, _loanFloor, _peakPrincipal;
+    private int _borrowed, _principal, _totalPaid, _loanFloor;
     private bool _active;
     private int _cards;   // transient (not saved): current per-combat Debt-card count, for the hover {cards}
 
@@ -39,10 +39,6 @@ public sealed class DebtLoanRelic : RelicModel
 
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public int TotalPaid { get => _totalPaid; set { AssertMutable(); _totalPaid = value; } }
-
-    /// <summary>Biggest owed amount this loan ever reached (never shrinks). Gates the 신용 회복 reward (≥400).</summary>
-    [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
-    public int PeakPrincipal { get => _peakPrincipal; set { AssertMutable(); _peakPrincipal = value; } }
 
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public int LoanFloor { get => _loanFloor; set { AssertMutable(); _loanFloor = value; } }

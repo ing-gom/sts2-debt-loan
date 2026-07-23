@@ -29,11 +29,6 @@ internal sealed class LoanRecord
     /// <see cref="Borrowed"/> and shrinks as each Debt-card payment retires a share of it (amortization).</summary>
     internal int Principal;
 
-    /// <summary>Highest the owed <see cref="Principal"/> ever reached this loan (never shrinks with payments).
-    /// This is the "상환금액 you carried" — the 신용 회복 reward gates on it (≥ 400) since Principal is already 0
-    /// by the time the loan is cleared. Bumped on every loan/top-up/fee; persisted on the relic.</summary>
-    internal int PeakPrincipal;
-
     /// <summary>Cumulative gold the Debt cards have drained = total paid so far (interest + amortized principal).</summary>
     internal int TotalPaid;
 
@@ -171,7 +166,6 @@ internal static class LoanService
         {
             relic.Borrowed = rec.Borrowed;
             relic.Principal = rec.Principal;
-            relic.PeakPrincipal = rec.PeakPrincipal;
             relic.TotalPaid = rec.TotalPaid;
             relic.LoanFloor = rec.LoanFloor;
             relic.Active = rec.Active;
@@ -196,7 +190,6 @@ internal static class LoanService
         var rec = GetOrCreate(player);
         rec.Borrowed = relic.Borrowed;
         rec.Principal = relic.Principal;
-        rec.PeakPrincipal = relic.PeakPrincipal;
         rec.TotalPaid = relic.TotalPaid;
         rec.LoanFloor = relic.LoanFloor;
         rec.Active = relic.Active;
@@ -219,7 +212,6 @@ internal static class LoanService
         if (rec == null) return;
         rec.LoanFloor = player.RunState.TotalFloor - rooms;   // rooms-since-loan = TotalFloor − LoanFloor
         if (rec.Principal <= 0) rec.Principal = 200;
-        rec.PeakPrincipal = System.Math.Max(rec.PeakPrincipal, rec.Principal);
         SyncToRelic(player);
         RefreshRelicDisplay(player);
         LedgerOverlay.Refresh();
@@ -344,7 +336,6 @@ internal static class LoanService
         var rec = GetOrCreate(player);
         rec.Borrowed     = borrowed;
         rec.Principal    = principal;
-        rec.PeakPrincipal = System.Math.Max(rec.PeakPrincipal, principal);   // track the biggest debt carried (reward gate)
         rec.TotalPaid    = totalPaid;
         rec.LoanFloor    = loanFloor;
         rec.Active       = true;
@@ -454,7 +445,6 @@ internal static class LoanService
         var rec = For(player);
         if (rec == null || !rec.Active || amount <= 0) return;
         rec.Principal += amount;   // owed goes up; the player gains no gold (it's a fee, not a loan)
-        rec.PeakPrincipal = System.Math.Max(rec.PeakPrincipal, rec.Principal);   // fees count toward the reward gate
         SyncToRelic(player);
     }
 
@@ -560,10 +550,10 @@ internal static class LoanService
         if (rec != null) { rec.Active = false; SyncToRelic(player); }   // reflect "settled" for one frame
         await DebtLoanGrants.RemoveAllDebtLoanCards(player);            // the WHOLE debt kit evaporates with the loan
         await DebtLoanGrants.RemoveRelic(player);                        // clean slate — no inert relic left behind
-        // Reward for climbing out of DEEP, BIG debt: a permanent 신용 회복 (Credit Restored) card — but ONLY if the
-        // loan hit tier 4 AND the owed amount you carried peaked at ≥ 400 gold. Both gates (deep + large) mean it's
-        // a real achievement, not something you can farm with quick small loans. tier 4 → upgraded (신용 회복+).
-        if (rec != null && rewardTier >= DebtLoanConfig.RewardMinTier && rec.PeakPrincipal >= DebtLoanConfig.RewardMinOwed)
+        // Reward for genuinely working off a DEEP, BIG debt: a permanent 신용 회복 (Credit Restored) card — but ONLY
+        // if the loan hit tier 4 AND you actually PAID at least 500 gold total over its life (갚은 금액 = TotalPaid).
+        // Both gates (deep + paid-a-lot) mean it's a real achievement, not farmable. tier 4 → upgraded (신용 회복+).
+        if (rec != null && rewardTier >= DebtLoanConfig.RewardMinTier && rec.TotalPaid >= DebtLoanConfig.RewardMinPaid)
             await DebtLoanGrants.GrantRewardCard(player, upgraded: rewardTier >= 4);
         ResetFor(player);                                               // record gone → next loan is a fresh first loan
     }

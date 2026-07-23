@@ -759,37 +759,40 @@ internal static class SoloTest
                 W($"  assert mid-combat settle: relicBefore={stRelicBefore} debtBefore={stDebtBefore}(>=1) -> relicGone={stRelicGone} recordReset={stRecordReset} debtAfter={stDebtAfter}(0) -> {tT}");
                 all &= tT;
 
-                // T2) Reward gate = tier 4 AND owed peaked ≥ 400. A DEEP + BIG loan (borrow 300 → owe 450) cleared at
-                //     tier 4 drops a permanent 신용 회복+ card into the deck.
+                // T2) Reward gate = tier 4 AND total PAID ≥ 400 (갚은 금액). A near-max loan (borrow 300 → owe 450)
+                //     carried to tier 4 and fully paid off (TotalPaid 450 ≥ 400) drops a permanent 신용 회복+ into the
+                //     deck — reachable from a big loan alone, no 취업알선 needed.
                 LoanService.ResetFor(player);
                 await DebtLoanGrants.RemoveRelic(player);
                 await Task.Delay(120);
-                await LoanService.GrantLoanDirect(player, 300);      // owe 450 → PeakPrincipal 450 (≥ 400)
+                await LoanService.GrantLoanDirect(player, 300);      // owe 450
                 await LoanService.DebugSetTier(player, 25);          // rooms-since-loan 25 → tier 4 (keeps owed 450)
                 await Task.Delay(120);
                 int reward0 = player.Deck.Cards.Count(c => c is CreditRestoredCard);
-                await LoanService.RecordPayment(player, tcc, 999);   // overpay → principal 0 → settle → grant reward
+                int owedT2 = LoanService.For(player)?.Principal ?? 0;   // 450
+                await LoanService.RecordPayment(player, tcc, owedT2); // pay exactly owed → TotalPaid 450 (≥400) → settle+reward
                 await Task.Delay(200);
                 var rewardCards = player.Deck.Cards.OfType<CreditRestoredCard>().ToList();
                 int rewardGain = rewardCards.Count - reward0;
                 bool rewardUpgraded = rewardCards.Any(c => c.IsUpgraded);
                 bool tT2 = rewardGain == 1 && rewardUpgraded;
-                W($"  assert reward (tier4 + owed>=400): added={rewardGain}(=1) upgraded={rewardUpgraded} -> {tT2}");
+                W($"  assert reward (tier4 + paid>=400): owedPaid={owedT2} added={rewardGain}(=1) upgraded={rewardUpgraded} -> {tT2}");
                 all &= tT2;
 
-                // T2b) NEGATIVE: tier 4 but a SMALL loan (owe 150 < 400) must NOT grant the reward (the 400 gate).
+                // T2b) NEGATIVE: tier 4 but only paid 150 (< 400) must NOT grant the reward (the 400-paid gate).
                 LoanService.ResetFor(player);
                 await DebtLoanGrants.RemoveRelic(player);
                 await Task.Delay(120);
-                await LoanService.GrantLoanDirect(player, 100);      // owe 150 → PeakPrincipal 150 (< 400)
-                var smallRec = LoanService.For(player); if (smallRec != null) smallRec.LoanFloor = player.RunState.TotalFloor - 25;   // tier 4 by rooms, but keep owed 150
+                await LoanService.GrantLoanDirect(player, 100);      // owe 150
+                var smallRec = LoanService.For(player); if (smallRec != null) smallRec.LoanFloor = player.RunState.TotalFloor - 25;   // tier 4 by rooms
                 await Task.Delay(120);
                 int reward0b = player.Deck.Cards.Count(c => c is CreditRestoredCard);
-                await LoanService.RecordPayment(player, tcc, 999);   // pay off tier-4-but-small loan → NO reward expected
+                int owedT2b = LoanService.For(player)?.Principal ?? 0;   // 150
+                await LoanService.RecordPayment(player, tcc, owedT2b); // pay exactly owed → TotalPaid 150 (<500) → no reward
                 await Task.Delay(200);
                 int rewardGainB = player.Deck.Cards.Count(c => c is CreditRestoredCard) - reward0b;
                 bool tT2b = rewardGainB == 0;
-                W($"  assert reward gate (tier4 + owed<400 → none): added={rewardGainB}(=0) -> {tT2b}");
+                W($"  assert reward gate (tier4 + paid<400 → none): paid={owedT2b} added={rewardGainB}(=0) -> {tT2b}");
                 all &= tT2b;
                 await Shot("10_settled");
             }
