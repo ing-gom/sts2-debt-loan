@@ -337,10 +337,8 @@ internal static class LoanService
 
         MainFile.Logger.Info($"[{MainFile.ModId}] loan +{amount}g (borrowed {borrowed}/{DebtLoanConfig.MaxLoan}, owed {principal}=+30%).");
 
-        // Merchant flavor for the borrower: first loan / crossing 200 / crossing 300 (lifetime borrowed).
-        if (oldBorrowed == 0)                             MerchantBark.SayFirst();
-        else if (oldBorrowed <= 300 && borrowed > 300)   MerchantBark.Say300();
-        else if (oldBorrowed <= 200 && borrowed > 200)   MerchantBark.Say200();
+        // (No merchant bark on the loan itself any more — the merchant now speaks when he HANDS you a payoff card,
+        //  see the 독촉장 loan-time grant + TryGrantDunningLetter, hinting another card comes next visit.)
     }
 
     /// <summary>Apply an ACTIVE loan state locally: set the record, grant the Ledger relic if the player
@@ -366,6 +364,7 @@ internal static class LoanService
             rec.DunningLetterGranted = true;
             rec.EventGrantCount = System.Math.Max(rec.EventGrantCount, 1);
             _ = DebtLoanGrants.GrantDunningLetter(player);
+            MerchantBark.SayGrant();   // merchant hands the 독촉장 + hints more payoff cards on future visits
         }
         EnsureRoomWatch();   // still watch shop revisits for the REMAINING payoff cards (slots 1-6)
         SyncToRelic(player);
@@ -420,19 +419,30 @@ internal static class LoanService
 
     /// <summary>Grant the 독촉장 once per loan, when the debtor enters a shop that isn't the one they borrowed
     /// at (TotalFloor != LoanFloor). Deck mutation is local + deterministic → the same card lands on each peer.</summary>
-    // The 5 payment-payoff cards that fill the shuffled slots (shop-revisits 2/3/4/6/7). Shops 1 and 5 are the
-    // FIXED grants (독촉장 / 취업알선). 7 cards over 7 revisits, each exactly once.
-    private static readonly System.Type[] PaymentPool =
+    // The event-card grant SEQUENCE across shop revisits — 10 cards, each once. Slot 0 (독촉장) is handed at LOAN
+    // TIME; slots 1-9 come on shop revisits. The FIRST slots are a FIXED priority order so even a short run gets the
+    // core of the 영수증 (Receipt) loop early — 독촉장(repay engine), 정산 + 청구서(the Receipt spenders), 이자 지원
+    // (cheap engine), 취업알선 — then the REMAINING five cards come SHUFFLED per run (variety; they're secondary).
+    private static readonly System.Type[] FixedOrder =
     {
-        typeof(PaymentBenefitCard), typeof(RefundCard), typeof(SettlementCard), typeof(InvoiceCard), typeof(BloodPaymentCard),
-        typeof(CounterclaimCard), typeof(StatementCard), typeof(InterestSupportCard),   // engine-expansion payoffs
+        typeof(DunningLetterCard),    // slot 0 — granted at loan time
+        typeof(SettlementCard),       // slot 1
+        typeof(InvoiceCard),          // slot 2
+        typeof(InterestSupportCard),  // slot 3 (cheapest engine)
+        typeof(JobPlacementCard),     // slot 4
     };
-
-    /// <summary>Deterministic per-run shuffle of the 5 payment cards (seeded from the loan floor, so both co-op
-    /// peers get the same order with no networking).</summary>
-    private static System.Type[] ShuffledPaymentPool(int seed)
+    private static readonly System.Type[] RemainderPool =
     {
-        var arr = (System.Type[])PaymentPool.Clone();
+        typeof(PaymentBenefitCard), typeof(RefundCard), typeof(BloodPaymentCard),
+        typeof(CounterclaimCard), typeof(StatementCard),
+    };
+    private const int TotalEventCards = 10;   // FixedOrder(5) + RemainderPool(5)
+
+    /// <summary>Deterministic per-run shuffle of the remainder pool (seeded from the loan floor → same order on both
+    /// co-op peers with no networking).</summary>
+    private static System.Type[] ShuffledRemainder(int seed)
+    {
+        var arr = (System.Type[])RemainderPool.Clone();
         var rng = new System.Random(seed);
         for (int i = arr.Length - 1; i > 0; i--) { int j = rng.Next(i + 1); (arr[i], arr[j]) = (arr[j], arr[i]); }
         return arr;
@@ -443,21 +453,17 @@ internal static class LoanService
         var rec = For(player);
         if (rec == null || !rec.Active || rec.Principal <= 0 || player.RunState == null) return;
         if (player.RunState.TotalFloor == rec.LoanFloor) return;   // still the loan shop → not a "revisit"
-        if (rec.EventGrantCount >= 7) return;                       // all 7 event cards handed out
+        if (rec.EventGrantCount >= TotalEventCards) return;         // all event cards handed out
 
-        int pos = rec.EventGrantCount;   // 0-based revisit index
-        System.Type cardType;
-        if (pos == 0) cardType = typeof(DunningLetterCard);        // shop 1: 독촉장 (fixed)
-        else if (pos == 4) cardType = typeof(JobPlacementCard);   // shop 5: 취업알선 (fixed)
-        else                                                       // shops 2/3/4/6/7: shuffled payment cards
-        {
-            int payIdx = pos < 4 ? pos - 1 : pos - 2;             // pos 1,2,3 → 0,1,2 ; pos 5,6 → 3,4
-            cardType = ShuffledPaymentPool(rec.LoanFloor)[payIdx];
-        }
+        int pos = rec.EventGrantCount;   // 0-based sequence index
+        System.Type cardType = pos < FixedOrder.Length
+            ? FixedOrder[pos]
+            : ShuffledRemainder(rec.LoanFloor)[pos - FixedOrder.Length];
 
         rec.EventGrantCount++;
         if (cardType == typeof(DunningLetterCard)) rec.DunningLetterGranted = true;   // repay-vanish still keys on this
         _ = DebtLoanGrants.GrantCard(player, cardType);
+        MerchantBark.SayGrant();   // merchant hands you a payoff card + hints another next visit (moved off the loan)
         SyncToRelic(player);
     }
 

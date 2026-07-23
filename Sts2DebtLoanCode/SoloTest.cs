@@ -286,8 +286,10 @@ internal static class SoloTest
                 await Task.Delay(3000);
                 DebtLoanConfig.MaxLoan = 300;
                 if ((int)player.Gold < 150) await PlayerCmd.GainGold(150 - (int)player.Gold, player, false);
+                LoanService.ResetFor(player);                       // fresh loan → the loan-time 독촉장 grant fires the bark
                 await LoanService.GrantLoanDirect(player, 120);
-                await Task.Delay(500);
+                await Task.Delay(1300);                             // let the deferred (0.6s) SayGrant speech bubble render
+                await Shot("8_merchant_bark");                      // merchant speech bubble when he hands you the 독촉장
                 var shopNode = FindNode<NMerchantInventory>(stree.Root);
                 var repayBtn = FindNode<NMerchantRepayButton>(stree.Root);
                 try { shopNode?.Open(); } catch { }
