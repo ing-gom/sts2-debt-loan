@@ -12,9 +12,10 @@ namespace Sts2DebtLoan;
 
 /// <summary>
 /// 취업알선 (Job Placement) — a Power card. Playing it adds a 50-gold placement fee straight ONTO your debt (you
-/// do NOT receive the gold — it's a fee, so what you owe goes up by 50), then for the rest of combat the start of
-/// each turn slips a 품삯 (Wages) card into your hand: steady income to work off what you owe. Upgraded (취업알선+)
-/// it keeps the same 50-gold fee but feeds the 품삯+ form (0-cost, 15 gold). Same 1-energy cost as the 정기 납부.
+/// do NOT receive the gold — it's a fee, so what you owe goes up by 50), hands you a 품삯 (Wages) card RIGHT NOW,
+/// and then for the rest of combat the start of each turn slips ANOTHER 품삯 into your hand: steady income to work
+/// off what you owe. The immediate 품삯 means it pays off from the turn you play it (no dead first turn). Upgraded
+/// (취업알선+) it keeps the same 50-gold fee but feeds the 품삯+ form (0-cost, 20 gold). Same 1-energy cost as 정기 납부.
 /// Colorless/Event; the guaranteed 5th-shop grant. Auto-registered.
 /// </summary>
 public sealed class JobPlacementCard : CardModel
@@ -44,5 +45,13 @@ public sealed class JobPlacementCard : CardModel
         if (Owner?.Creature == null) return;
         LoanService.AddCombatDebt(Owner, Fee);   // add the 50-gold placement fee onto what you OWE (no gold gained)
         await PowerCmd.Apply<JobPlacementPower>(choiceContext, Owner.Creature, IsUpgraded ? 2 : 1, Owner.Creature, null);   // 2 = 품삯+
+        // Hand over the FIRST 품삯 immediately so it pays off THIS turn (the power then feeds one every turn start).
+        var combat = Owner.Creature.CombatState;
+        if (combat != null && combat.CreateCard<WagesCard>(Owner) is WagesCard wages)
+        {
+            if (IsUpgraded) { wages.UpgradeInternal(); wages.FinalizeUpgradeInternal(); }
+            CardCmd.PreviewCardPileAdd(await CardPileCmd.AddGeneratedCardsToCombat(
+                new List<CardModel> { wages }, PileType.Hand, Owner, CardPilePosition.Random));
+        }
     }
 }

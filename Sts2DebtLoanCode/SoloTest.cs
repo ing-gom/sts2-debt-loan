@@ -549,24 +549,25 @@ internal static class SoloTest
                 }
                 else W("  invoice: no live enemy to target — skipped");
 
-                // 취업알선 (Job Placement): play → add Fee(50) straight onto the OWED principal WITHOUT giving the
-                // player any gold (fee, not a loan) + apply JobPlacementPower; a turn-start then slips a 품삯(Wages)
-                // card into hand.
+                // 취업알선 (Job Placement): play → add Fee(50) onto OWED (no gold to player) + apply JobPlacementPower
+                // + hand ONE 품삯(Wages) IMMEDIATELY; a turn-start then slips ANOTHER 품삯 into hand.
                 var recP = LoanService.For(player)!;
                 int owed0 = recP.Principal;
                 int jobGold0 = (int)player.Gold;                     // must NOT rise (no gold handed to the player)
+                int wagesPre = PileType.Hand.GetPile(player)?.Cards.Count(c => c is WagesCard) ?? 0;
                 var job = cstate!.CreateCard<JobPlacementCard>(player);
                 try { await CardCmd.AutoPlay(pcc, job, null); } catch (Exception e) { W("  job-placement play failed: " + e.Message); }
                 await Task.Delay(150);
                 int owedGain = recP.Principal - owed0;
                 int jobGoldGain = (int)player.Gold - jobGold0;       // expect 0 (the fee is added to debt, not paid out)
+                int wagesImmediate = (PileType.Hand.GetPile(player)?.Cards.Count(c => c is WagesCard) ?? 0) - wagesPre;   // expect 1 on play
                 var jobPow = player.Creature.GetPower<JobPlacementPower>();
                 int w0 = PileType.Hand.GetPile(player)?.Cards.Count(c => c is WagesCard) ?? 0;
                 if (jobPow != null) await jobPow.AfterPlayerTurnStart(pcc, player);
                 await Task.Delay(150);
-                int wagesGain = (PileType.Hand.GetPile(player)?.Cards.Count(c => c is WagesCard) ?? 0) - w0;
-                bool tP4 = owedGain == 50 && jobGoldGain == 0 && jobPow != null && wagesGain >= 1;
-                W($"  assert job-placement: owedGain={owedGain}(=50) playerGoldGain={jobGoldGain}(=0) power={(jobPow != null)} wagesAdded={wagesGain}(>=1) -> {tP4}");
+                int wagesTurn = (PileType.Hand.GetPile(player)?.Cards.Count(c => c is WagesCard) ?? 0) - w0;   // expect 1 per turn
+                bool tP4 = owedGain == 50 && jobGoldGain == 0 && jobPow != null && wagesImmediate >= 1 && wagesTurn >= 1;
+                W($"  assert job-placement: owedGain={owedGain}(=50) goldGain={jobGoldGain}(=0) power={(jobPow != null)} wagesOnPlay={wagesImmediate}(>=1) wagesPerTurn={wagesTurn}(>=1) -> {tP4}");
 
                 // tP5) EMPIRICAL 골드 차감: play a real 빚 독촉 (Dunning) through the pipeline and assert the player's
                 //      ACTUAL held gold drops by the 20-gold play cost (bug report: "납부했을 때 실제 보유 골드가 안 줄어듦").
