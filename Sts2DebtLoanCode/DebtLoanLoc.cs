@@ -234,20 +234,20 @@ internal static class DebtLoanLoc
 
     private static readonly Dictionary<string, PayRow> PayByLang = new()
     {
-        ["eng"] = new("Payment", "Every gold you pay comes off what you [b]owe[/b] (interest included). The longer you carry the debt, the more [b]interest[/b] it gathers — repay early to keep the shop cost down."),
-        ["kor"] = new("납부", "납부하는 골드는 [b]갚을 금액[/b]에서 그대로 차감됩니다(이자 포함). 빚을 오래 짊어질수록 [b]이자[/b]가 늘어나니 일찍 갚을수록 상점 상환액이 줄어듭니다."),
-        ["jpn"] = new("支払い", "支払ったゴールドは全額が[b]返済額[/b]から差し引かれる（利息込み）。借金を長く抱えるほど[b]利息[/b]が増えるので、早く返すほどショップでの返済額が減る。"),
-        ["zhs"] = new("还款", "所付金币全部从你的[b]欠款[/b]中扣除（含利息）。欠债越久，[b]利息[/b]越多——尽早偿还可降低商店还款额。"),
-        ["deu"] = new("Zahlung", "Jedes gezahlte Gold wird von deiner [b]Schuld[/b] abgezogen (Zinsen inklusive). Je länger du die Schuld trägst, desto mehr [b]Zinsen[/b] fallen an — zahle früh zurück, um die Ladenkosten gering zu halten."),
-        ["fra"] = new("Paiement", "Chaque or payé est déduit de ce que tu [b]dois[/b] (intérêts inclus). Plus tu gardes la dette longtemps, plus les [b]intérêts[/b] s'accumulent — rembourse tôt pour réduire le coût en boutique."),
-        ["spa"] = new("Pago", "Cada oro pagado se descuenta de lo que [b]debes[/b] (intereses incluidos). Cuanto más tiempo mantengas la deuda, más [b]intereses[/b] se acumulan; paga pronto para reducir el coste en la tienda."),
-        ["esp"] = new("Pago", "Cada oro pagado se descuenta de lo que [b]debes[/b] (intereses incluidos). Cuanto más tiempo mantengas la deuda, más [b]intereses[/b] se acumulan; paga pronto para reducir el coste en la tienda."),
-        ["ita"] = new("Pagamento", "Ogni oro pagato viene sottratto da ciò che [b]devi[/b] (interessi inclusi). Più a lungo porti il debito, più [b]interessi[/b] si accumulano — rimborsa presto per ridurre il costo nel negozio."),
-        ["pol"] = new("Spłata", "Każde zapłacone złoto odejmuje się od twojego [b]długu[/b] (z odsetkami). Im dłużej masz dług, tym więcej [b]odsetek[/b] narasta — spłać wcześnie, by obniżyć koszt w sklepie."),
-        ["ptb"] = new("Pagamento", "Cada ouro pago é descontado do que você [b]deve[/b] (juros incluídos). Quanto mais tempo mantiver a dívida, mais [b]juros[/b] se acumulam — quite cedo para reduzir o custo na loja."),
-        ["rus"] = new("Платёж", "Каждое уплаченное золото вычитается из вашего [b]долга[/b] (с процентами). Чем дольше вы держите долг, тем больше [b]процентов[/b] набегает — гасите раньше, чтобы снизить стоимость в магазине."),
-        ["tha"] = new("การชำระ", "ทองที่จ่ายทุกเหรียญจะถูกหักจาก[b]ยอดที่ค้าง[/b] (รวมดอกเบี้ย) ยิ่งเป็นหนี้นาน [b]ดอกเบี้ย[/b]ยิ่งเพิ่ม — ชำระเร็วเพื่อลดค่าใช้จ่ายที่ร้านค้า"),
-        ["tur"] = new("Ödeme", "Ödediğin her altın [b]borcundan[/b] düşülür (faiz dahil). Borcu ne kadar uzun taşırsan o kadar çok [b]faiz[/b] birikir — erken öde, dükkân maliyetini düşük tut."),
+        ["eng"] = new("Payment", "Every gold you pay comes off what you [b]owe[/b] (interest included). The longer you carry the debt, the more [b]interest[/b] it gathers — repay early to keep the shop cost down. Each payment also earns you 1 [b]Receipt[/b]."),
+        ["kor"] = new("납부", "납부하는 골드는 [b]갚을 금액[/b]에서 그대로 차감됩니다(이자 포함). 빚을 오래 짊어질수록 [b]이자[/b]가 늘어나니 일찍 갚을수록 상점 상환액이 줄어듭니다. 납부할 때마다 [b]영수증[/b]을 1 얻습니다."),
+        ["jpn"] = new("支払い", "支払ったゴールドは全額が[b]返済額[/b]から差し引かれる（利息込み）。借金を長く抱えるほど[b]利息[/b]が増えるので、早く返すほどショップでの返済額が減る。 支払うたびに[b]レシート[/b]を1枚得る。"),
+        ["zhs"] = new("还款", "所付金币全部从你的[b]欠款[/b]中扣除（含利息）。欠债越久，[b]利息[/b]越多——尽早偿还可降低商店还款额。 每次还款还会获得 1 张[b]收据[/b]。"),
+        ["deu"] = new("Zahlung", "Jedes gezahlte Gold wird von deiner [b]Schuld[/b] abgezogen (Zinsen inklusive). Je länger du die Schuld trägst, desto mehr [b]Zinsen[/b] fallen an — zahle früh zurück, um die Ladenkosten gering zu halten. Jede Zahlung bringt dir außerdem 1 [b]Beleg[/b] ein."),
+        ["fra"] = new("Paiement", "Chaque or payé est déduit de ce que tu [b]dois[/b] (intérêts inclus). Plus tu gardes la dette longtemps, plus les [b]intérêts[/b] s'accumulent — rembourse tôt pour réduire le coût en boutique. Chaque paiement te rapporte aussi 1 [b]reçu[/b]."),
+        ["spa"] = new("Pago", "Cada oro pagado se descuenta de lo que [b]debes[/b] (intereses incluidos). Cuanto más tiempo mantengas la deuda, más [b]intereses[/b] se acumulan; paga pronto para reducir el coste en la tienda. Cada pago también te otorga 1 [b]recibo[/b]."),
+        ["esp"] = new("Pago", "Cada oro pagado se descuenta de lo que [b]debes[/b] (intereses incluidos). Cuanto más tiempo mantengas la deuda, más [b]intereses[/b] se acumulan; paga pronto para reducir el coste en la tienda. Cada pago también te otorga 1 [b]recibo[/b]."),
+        ["ita"] = new("Pagamento", "Ogni oro pagato viene sottratto da ciò che [b]devi[/b] (interessi inclusi). Più a lungo porti il debito, più [b]interessi[/b] si accumulano — rimborsa presto per ridurre il costo nel negozio. Ogni pagamento ti dà anche 1 [b]ricevuta[/b]."),
+        ["pol"] = new("Spłata", "Każde zapłacone złoto odejmuje się od twojego [b]długu[/b] (z odsetkami). Im dłużej masz dług, tym więcej [b]odsetek[/b] narasta — spłać wcześnie, by obniżyć koszt w sklepie. Każda spłata daje ci też 1 [b]paragon[/b]."),
+        ["ptb"] = new("Pagamento", "Cada ouro pago é descontado do que você [b]deve[/b] (juros incluídos). Quanto mais tempo mantiver a dívida, mais [b]juros[/b] se acumulam — quite cedo para reduzir o custo na loja. Cada pagamento também rende 1 [b]recibo[/b]."),
+        ["rus"] = new("Платёж", "Каждое уплаченное золото вычитается из вашего [b]долга[/b] (с процентами). Чем дольше вы держите долг, тем больше [b]процентов[/b] набегает — гасите раньше, чтобы снизить стоимость в магазине. Каждый платёж также приносит 1 [b]чек[/b]."),
+        ["tha"] = new("การชำระ", "ทองที่จ่ายทุกเหรียญจะถูกหักจาก[b]ยอดที่ค้าง[/b] (รวมดอกเบี้ย) ยิ่งเป็นหนี้นาน [b]ดอกเบี้ย[/b]ยิ่งเพิ่ม — ชำระเร็วเพื่อลดค่าใช้จ่ายที่ร้านค้า การชำระแต่ละครั้งยังได้รับ[b]ใบเสร็จ[/b] 1 ใบด้วย"),
+        ["tur"] = new("Ödeme", "Ödediğin her altın [b]borcundan[/b] düşülür (faiz dahil). Borcu ne kadar uzun taşırsan o kadar çok [b]faiz[/b] birikir — erken öde, dükkân maliyetini düşük tut. Her ödeme sana ayrıca 1 [b]makbuz[/b] kazandırır."),
     };
 
     // ── Shop "Repay Loan" button hover tooltip (14 languages). {0} = outstanding principal (gold owed). The

@@ -693,6 +693,15 @@ internal static class SoloTest
                 }
 
                 await Shot("7_payment_combat");
+
+                // 2-digit check: drive the tally up to 12 and screenshot the HUD counter so we can see a two-digit
+                // value render (asserts above are all done, so extra payments here are harmless).
+                await LoanService.GrantLoanDirect(player, 200);
+                for (int i = 0; i < 12; i++) await LoanService.RecordPayment(player, pcc, 5);
+                await Task.Delay(250);
+                W($"  2-digit tally check: 납부실적={LoanService.PaymentsThisCombat(player)} (see 6d_twodigit)");
+                await Shot("6d_twodigit");
+
                 bool tP = tP1 && tP2 && tP3 && tP4 && tP5;
                 W($"  == payment-set mechanics: {(tP ? "PASS" : "FAIL")} ==");
                 all &= tP;
