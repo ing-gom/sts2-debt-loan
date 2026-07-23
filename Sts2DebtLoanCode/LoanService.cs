@@ -116,24 +116,21 @@ internal static class LoanService
             if (rec == null || !rec.Active || rec.Principal <= 0 || owner.RunState == null) continue;
             int tier = DebtLoanConfig.TargetDebtCards(owner.RunState.TotalFloor - rec.LoanFloor);   // 1/2/3
 
+            // Tier 1 (rooms 0-12) injects NOTHING — a loan you're paying ON TIME isn't cursed. It only costs
+            // interest (which accrues) + shop-price inflation; the 정기 납부 (Standing Order) power still feeds
+            // 납부 cards to work it down. The penalty escalation only starts once you fall BEHIND:
             if (tier >= 4)
             {
-                // Tier 4 REPLACES the cumulative curse set with the 신용 불량 (Bad Credit) engine ALONE. Bad Credit
-                // spawns a 강제 징수 (Forced Collection) every turn — an escalating gold/HP drain that IS the tier-4
-                // pressure — so we deliberately do NOT also inject 납부/연체/차압 (that would just flood the hand).
+                // Tier 4: 신용 불량 (Bad Credit) ALONE — it spawns a 강제 징수 (Forced Collection) every turn (the
+                // escalating gold/HP drain that IS the tier-4 pressure), so nothing else is injected.
                 rec.CollectionLevel = 0;   // fresh spiral each combat; BadCredit ratchets it up per turn
                 var c = combat.CreateCard<BadCreditCard>(injectee); if (c != null) cards.Add(c);
             }
-            else
+            else if (tier >= 2)
             {
-                // Tiers 1-3 are CUMULATIVE: the base curse is the VANILLA 빚 (Debt) curse — an Unplayable curse
-                // that bleeds 10 gold at end of turn — NOT our 납부 (Payment) card. 납부 is reserved for the 정기
-                // 납부 (Standing Order) power payoff; the injected penalty is a plain, native debt curse. +연체
-                // (Delinquency) is added at tier 2, +차압 (Seizure) at tier 3.
-                var debt = combat.CreateCard<MegaCrit.Sts2.Core.Models.Cards.Debt>(injectee);
-                if (debt != null) cards.Add(debt);
-                if (tier >= 2) { var c = combat.CreateCard<DelinquencyCard>(injectee); if (c != null) cards.Add(c); }
-                if (tier >= 3) { var c = combat.CreateCard<SeizureCard>(injectee);     if (c != null) cards.Add(c); }
+                // Tier 2: 연체 (Delinquency, "you're late"). Tier 3: + 차압 (Seizure). Cumulative.
+                var c = combat.CreateCard<DelinquencyCard>(injectee); if (c != null) cards.Add(c);
+                if (tier >= 3) { var s = combat.CreateCard<SeizureCard>(injectee); if (s != null) cards.Add(s); }
             }
         }
         if (cards.Count == 0) return;

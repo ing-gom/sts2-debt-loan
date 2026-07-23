@@ -319,15 +319,15 @@ internal static class SoloTest
             W($"  amortized hover: {hover}");
             all &= tH;
 
-            // I) Combat-start injection: a fresh loan (count 1) → entering a Monster room. Injection runs at
-            //    BeforeHandDraw (before the opening deal) and SHUFFLES the Debt card into the draw pile at a
-            //    random position, so it's drawn by the normal logic — it may or may not land in the opening
-            //    hand. We assert it's IN COMBAT (draw/hand/discard); opening-hand presence is just logged.
-            Step("combat-start injection");
+            // I) Combat-start injection: tier 1 injects NOTHING (on-time grace), so we back-date the loan to tier 2
+            //    (rooms 13) and check the 연체 (Delinquency) curse gets SHUFFLED into the draw pile at BeforeHandDraw
+            //    (before the opening deal), drawn by the normal logic. We assert it's IN COMBAT; opening-hand is logged.
+            Step("combat-start injection (tier 2 → 연체)");
             LoanService.ResetFor(player);
             await DebtLoanGrants.RemoveRelic(player);
             await Task.Delay(150);
-            await LoanService.GrantLoanDirect(player, 60);          // count 1 at rooms 0
+            await LoanService.GrantLoanDirect(player, 60);
+            var recI = LoanService.For(player); if (recI != null) recI.LoanFloor = player.RunState.TotalFloor - 13;   // tier 2 → 연체 injected
             await Task.Delay(150);
             bool tI = false;
             if (Engine.GetMainLoop() is SceneTree)
@@ -338,12 +338,12 @@ internal static class SoloTest
                 foreach (var pt in new[] { PileType.Draw, PileType.Hand, PileType.Discard })
                 {
                     var pile = pt.GetPile(player);
-                    if (pile != null) debtInCombat += pile.Cards.Count(c => c is MegaCrit.Sts2.Core.Models.Cards.Debt);
+                    if (pile != null) debtInCombat += pile.Cards.Count(c => c is DelinquencyCard);
                 }
-                int debtInHand = PileType.Hand.GetPile(player)?.Cards.Count(c => c is MegaCrit.Sts2.Core.Models.Cards.Debt) ?? 0;
+                int debtInHand = PileType.Hand.GetPile(player)?.Cards.Count(c => c is DelinquencyCard) ?? 0;
                 bool inCombat = MegaCrit.Sts2.Core.Combat.CombatManager.Instance?.IsInProgress ?? false;
                 tI = inCombat && debtInCombat >= 1;
-                W($"  assert combat inject: inCombat={inCombat} debtCardsInCombat={debtInCombat}(>=1) inOpeningHand={debtInHand}(random, may be 0) -> {tI}");
+                W($"  assert combat inject (tier2): inCombat={inCombat} delinquencyInCombat={debtInCombat}(>=1) inOpeningHand={debtInHand}(random, may be 0) -> {tI}");
                 await Shot("4_combat");
             }
             all &= tI;
@@ -367,10 +367,10 @@ internal static class SoloTest
                 foreach (var pt in new[] { PileType.Draw, PileType.Hand, PileType.Discard })
                 {
                     var pile = pt.GetPile(player);
-                    if (pile != null) cumulativeCurses += pile.Cards.Count(c => c is MegaCrit.Sts2.Core.Models.Cards.Debt or DelinquencyCard or SeizureCard);
+                    if (pile != null) cumulativeCurses += pile.Cards.Count(c => c is DelinquencyCard or SeizureCard);
                 }
                 tI2 = cumulativeCurses == 0;
-                W($"  assert tier4=신용불량 only: 빚/연체/차압 injected={cumulativeCurses}(=0) -> {tI2}");
+                W($"  assert tier4=신용불량 only: 연체/차압 injected={cumulativeCurses}(=0) -> {tI2}");
             }
             all &= tI2;
 
