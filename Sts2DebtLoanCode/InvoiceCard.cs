@@ -36,13 +36,14 @@ public sealed class InvoiceCard : CardModel
     private const int DamagePerPayment = 4;
     private const string CalculatedHitsKey = "CalculatedHits";
 
-    // {Damage} = damage PER HIT; {CalculatedHits} = live 납부 count this combat (Barrage's CalculatedVar pattern —
-    // base 0 + extra 1 × payments = payments). The multiplier is evaluated at render time, so the face's multi-hit
-    // "{Damage} × {CalculatedHits}" tracks payments with no preview patch needed. Outside combat it reads 0.
+    // {Damage} = damage PER HIT; {CalculatedHits} = hit count = 1 base hit + 1 per 납부 실적 (Barrage's
+    // CalculatedVar pattern — base 1 + extra 1 × payments = payments + 1). The base hit means it always lands at
+    // least one strike even at 0 tally (no dead card). The multiplier is evaluated at render time, so the face's
+    // multi-hit "{Damage} × {CalculatedHits}" tracks payments with no preview patch needed.
     protected override IEnumerable<DynamicVar> CanonicalVars => new DynamicVar[]
     {
         new DamageVar(DamagePerPayment, ValueProp.Move),
-        new CalculationBaseVar(0),
+        new CalculationBaseVar(1),   // guaranteed base hit → never a dead card at 0 납부 실적
         new CalculationExtraVar(1),
         new CalculatedVar(CalculatedHitsKey).WithMultiplier((CardModel card, Creature? _) => LoanService.PaymentsThisCombat(card.Owner)),
     };

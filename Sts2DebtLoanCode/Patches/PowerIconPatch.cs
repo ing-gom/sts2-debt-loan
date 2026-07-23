@@ -31,7 +31,6 @@ internal static class PowerIconAssets
         [typeof(CounterclaimPower)]   = "money_attack_power",
         [typeof(StatementPower)]      = "statement_power",
         [typeof(InterestSupportPower)] = "interest_support_power",
-        [typeof(PaymentStackPower)]    = "payment_stack_power",
     };
     private static readonly Dictionary<Type, Texture2D?> Cache = new();
 

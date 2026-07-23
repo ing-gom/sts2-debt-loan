@@ -570,13 +570,13 @@ internal static class SoloTest
                 for (int i = 0; i < 3; i++) await LoanService.RecordPayment(player, pcc, 10);   // 납부 시퀀스 ×3 (10 each)
                 await Task.Delay(200);
 
-                int pays = LoanService.PaymentsThisCombat(player);                               // 3 = 납부 실적 buff Amount
-                bool stackVisible = player.Creature!.GetPower<PaymentStackPower>() != null;       // the tally is a real buff
+                int pays = LoanService.PaymentsThisCombat(player);                               // 3 = 납부 실적 resource value
+                await Shot("6b_tally");   // custom HUD tally counter should now read 3 near the energy orb
                 var plating = player.Creature!.GetPower<MegaCrit.Sts2.Core.Models.Powers.PlatingPower>();
                 int platingAmt = plating != null ? (int)plating.Amount : 0;                     // 3 × 3 = 9 (if it stacks)
                 int dpGain = (PileType.Hand.GetPile(player)?.Cards.Count(c => c is DiligentPaymentCard) ?? 0) - dp0;
-                bool tP1 = pays == 3 && stackVisible && platingAmt >= 3 && dpGain >= 3;   // tally buff + both reactive powers fired 3×
-                W($"  assert payment-trigger: 납부실적={pays}(3) tallyBuff={stackVisible} plating={platingAmt}(>=3, exp 9) diligentCardsAdded={dpGain}(>=3) -> {tP1}");
+                bool tP1 = pays == 3 && platingAmt >= 3 && dpGain >= 3;   // 납부 실적 counter + both reactive powers fired 3×
+                W($"  assert payment-trigger: 납부실적={pays}(3) plating={platingAmt}(>=3, exp 9) diligentCardsAdded={dpGain}(>=3) -> {tP1}");
 
                 // Engine-expansion powers fired 3× too: 자본 타격 dealt damage, 이자 지원 refunded half, 명세서 applied.
                 int ccDrop = (ccHp0 >= 0 && enemy != null) ? ccHp0 - enemy.CurrentHp : -1;       // ~15 (3×5) if unblocked
@@ -609,8 +609,9 @@ internal static class SoloTest
                 await Task.Delay(150);
                 int blkGain = player.Creature.Block - blk0;
                 int stackAfterSettle = LoanService.PaymentsThisCombat(player);                    // consumed → 0
-                bool tP2 = settlePlayed && blkGain == pays * 4 && stackAfterSettle == 0;
-                W($"  assert settlement scale+consume: blockGain={blkGain} (exp {pays}×4={pays * 4}) tallyAfter={stackAfterSettle}(=0) -> {tP2}");
+                int expSettle = (pays + 1) * 4;   // base 4 + 4 per 납부 실적
+                bool tP2 = settlePlayed && blkGain == expSettle && stackAfterSettle == 0;
+                W($"  assert settlement scale+consume: blockGain={blkGain} (exp ({pays}+1)×4={expSettle}) tallyAfter={stackAfterSettle}(=0) -> {tP2}");
 
                 // 청구서 (Invoice): settlement just spent the tally, so REBUILD it (pay ×3), then Invoice deals
                 // damage × 납부 실적 and CONSUMES it too (stack → 0).
@@ -626,9 +627,10 @@ internal static class SoloTest
                     await Task.Delay(150);
                     int dmg = ehp0 - enemy.CurrentHp;
                     int stackAfterInv = LoanService.PaymentsThisCombat(player);                     // consumed → 0
-                    bool dmgOk = eblk == 0 ? dmg == paysInv * 4 : dmg >= 1;   // 청구서 = 납부 실적 × 4 per hit
+                    int expInv = (paysInv + 1) * 4;   // base 1 hit + 1 per 납부 실적, ×4 damage
+                    bool dmgOk = eblk == 0 ? dmg == expInv : dmg >= 1;
                     tP3 = dmgOk && stackAfterInv == 0;
-                    W($"  assert invoice scale+consume: enemyHp {ehp0}->{enemy.CurrentHp} dmg={dmg} (exp {paysInv * 4}, block={eblk}) tallyAfter={stackAfterInv}(=0) -> {tP3}");
+                    W($"  assert invoice scale+consume: enemyHp {ehp0}->{enemy.CurrentHp} dmg={dmg} (exp ({paysInv}+1)×4={expInv}, block={eblk}) tallyAfter={stackAfterInv}(=0) -> {tP3}");
                 }
                 else W("  invoice: no live enemy to target — skipped");
 
@@ -798,7 +800,6 @@ internal static class SoloTest
                         await PowerCmd.Apply<CounterclaimPower>(scc, cr, 1, cr, null);      // 자본 타격 (Money Attack)
                         await PowerCmd.Apply<StatementPower>(scc, cr, 1, cr, null);         // 명세서 (Statement)
                         await PowerCmd.Apply<InterestSupportPower>(scc, cr, 1, cr, null);   // 이자 지원 (Interest Support)
-                        await PowerCmd.Apply<PaymentStackPower>(scc, cr, 3, cr, null);      // 납부 실적 (Tally)
                         await Task.Delay(600);
                         int active = 0;
                         if (cr.GetPower<DunningLetterPower>() != null) active++;
@@ -809,8 +810,7 @@ internal static class SoloTest
                         if (cr.GetPower<CounterclaimPower>() != null) active++;
                         if (cr.GetPower<StatementPower>() != null) active++;
                         if (cr.GetPower<InterestSupportPower>() != null) active++;
-                        if (cr.GetPower<PaymentStackPower>() != null) active++;
-                        W($"  power-icon gallery: {active}/9 custom powers active (see 9_power_icons.png)");
+                        W($"  power-icon gallery: {active}/8 custom powers active (see 9_power_icons.png)");
 
                         // ── HOVER TEXT: the character-hover tooltip shows each power's Title + Description
                         // (PowerModel.Description = LocString "powers/<ENTRY>.description"). Verify every custom
@@ -820,7 +820,7 @@ internal static class SoloTest
                         {
                             cr.GetPower<DunningLetterPower>(), cr.GetPower<PaymentBenefitPower>(), cr.GetPower<RefundPower>(),
                             cr.GetPower<JobPlacementPower>(), cr.GetPower<BadCreditPower>(), cr.GetPower<CounterclaimPower>(),
-                            cr.GetPower<StatementPower>(), cr.GetPower<InterestSupportPower>(), cr.GetPower<PaymentStackPower>(),
+                            cr.GetPower<StatementPower>(), cr.GetPower<InterestSupportPower>(),
                         };
                         int descOk = 0, descTotal = 0;
                         foreach (var pw in hoverPowers)
@@ -836,7 +836,7 @@ internal static class SoloTest
                             if (ok) descOk++;
                             W($"    [hover] {pw.GetType().Name}: title='{title}' | desc='{desc}' -> {(ok ? "OK" : "MISSING")}");
                         }
-                        bool tHover = descTotal == 9 && descOk == 9;
+                        bool tHover = descTotal == 8 && descOk == 8;
                         W($"  power-hover descriptions: {descOk}/{descTotal} resolve to real text -> {tHover}");
                         all &= tHover;
                     }

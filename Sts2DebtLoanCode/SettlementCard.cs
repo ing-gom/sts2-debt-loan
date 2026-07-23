@@ -42,7 +42,7 @@ public sealed class SettlementCard : CardModel
     // face tracks payments automatically — same as Mirage scaling off enemy Poison.
     protected override IEnumerable<DynamicVar> CanonicalVars => new DynamicVar[]
     {
-        new CalculationBaseVar(0),
+        new CalculationBaseVar(BlockPerPayment),   // guaranteed base block → never a dead card at 0 납부 실적
         new CalculationExtraVar(BlockPerPayment),
         new CalculatedBlockVar(ValueProp.Move).WithMultiplier((CardModel card, Creature? _) => LoanService.PaymentsThisCombat(card.Owner)),
     };

@@ -490,28 +490,42 @@ internal static class LoanService
         SyncToRelic(player);
     }
 
-    // ── 납부 (Payment) trigger system ──────────────────────────────────────────
-    // The "how many payments this combat" count lives on a VISIBLE buff (PaymentStackPower) rather than a hidden
-    // counter: the player watches 납부 실적 climb, and 정산/청구서 read it and then CONSUME it. Being a normal power
-    // it is combat-scoped (auto-clears at fight end), so it is the single source of truth.
+    // ── 납부 (Payment) resource system ─────────────────────────────────────────
+    // 납부 실적 (payment tally) is a CUSTOM combat resource, shown on its own HUD counter near the energy orb (like
+    // Regent's Stars but our own, so no collision). It is NOT a power buff — it lives here as a per-combat value and
+    // raises TallyChanged so the custom NPaymentTallyCounter node updates. Cards read it and CONSUME it. The value is
+    // computed the same way on every peer (payments are lockstep), so the display stays in sync; the counter is local.
+    private static readonly ConditionalWeakTable<Player, int[]> _tally = new();
 
-    /// <summary>Banked 납부 (Payment) count this combat = the <see cref="PaymentStackPower"/> stack. Read by 정산
-    /// (block × payments) and 청구서 (damage × payments), which then consume it via <see cref="ConsumePaymentStack"/>.</summary>
+    /// <summary>Fired whenever a player's 납부 실적 changes → the HUD counter re-renders. (player, newValue).</summary>
+    internal static event Action<Player, int>? TallyChanged;
+
+    /// <summary>Banked 납부 (Payment) count this combat. Read by 정산 (block × tally) and 청구서 (damage × tally),
+    /// which then spend it via <see cref="ConsumePaymentStack"/>.</summary>
     internal static int PaymentsThisCombat(Player? p)
+        => p != null && _tally.TryGetValue(p, out var a) ? a[0] : 0;
+
+    private static void SetTally(Player p, int value)
     {
-        var pw = p?.Creature?.GetPower<PaymentStackPower>();
-        return pw != null ? pw.Amount : 0;
+        var cell = _tally.GetValue(p, _ => new int[1]);
+        if (cell[0] == value) return;
+        cell[0] = value < 0 ? 0 : value;
+        TallyChanged?.Invoke(p, cell[0]);
     }
 
-    /// <summary>Spend the whole 납부 실적 stack (called by 청구서/정산 after they pay out). No-op if none.</summary>
-    internal static async Task ConsumePaymentStack(Player? p)
+    /// <summary>Spend the whole 납부 실적 (called by 청구서/정산 after they pay out). No-op if none.</summary>
+    internal static Task ConsumePaymentStack(Player? p)
     {
-        if (p?.Creature?.GetPower<PaymentStackPower>() != null)
-            await PowerCmd.Remove<PaymentStackPower>(p.Creature);
+        if (p != null) SetTally(p, 0);
+        return Task.CompletedTask;
     }
 
-    /// <summary>Clear the tally (combat start belt-and-suspenders; powers already clear on their own).</summary>
-    internal static async Task ResetPaymentsThisCombat(Player p) => await ConsumePaymentStack(p);
+    /// <summary>Clear the tally at combat start (fresh each fight).</summary>
+    internal static Task ResetPaymentsThisCombat(Player p)
+    {
+        SetTally(p, 0);
+        return Task.CompletedTask;
+    }
 
     /// <summary>The unified 납부 (Payment) entry: pay the loan's PRINCIPAL down 1:1 (the whole payment goes to
     /// principal — the interest is the up-front 50% surcharge baked in at loan time, not a per-payment cut),
@@ -525,7 +539,7 @@ internal static class LoanService
         bool wasOwing = rec0 != null && rec0.Active && rec0.Principal > 0;   // did this payment have a debt to clear?
         await AccrueInterest(player, amount, principalShareOverride: 1.0);   // 100% to principal (interest = the surcharge)
         if (player?.Creature == null) return;
-        await PowerCmd.Apply<PaymentStackPower>(cc, player.Creature, 1, player.Creature, null);   // 납부 실적 +1 (visible tally)
+        SetTally(player, PaymentsThisCombat(player) + 1);   // 납부 실적 +1 → HUD counter updates
         var benefit = player.Creature.GetPower<PaymentBenefitPower>();
         if (benefit != null) await benefit.OnPayment(cc, player);
         var refund = player.Creature.GetPower<RefundPower>();
