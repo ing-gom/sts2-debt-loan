@@ -604,24 +604,24 @@ internal static class SoloTest
                 if (handClear != null && handClear.Count > 0) await CardPileCmd.RemoveFromCombat(handClear, skipVisuals: true);
                 await Task.Delay(120);
 
-                // Render standalone NCards (like §N) so the screenshot captures the custom 영수증 cost badge our
-                // overlay patch draws: 청구서 = X (spend all), 자본 타격 = 2, 이자 지원 = 1.
+                // Put 청구서/가압류/자본타격/이자지원 into the (now-empty) HAND so the screenshot shows the custom cost
+                // badges (X / 2 / 2 / 1) AND the cards' REAL titles — a hand card renders its localized title
+                // correctly, unlike a standalone NCard.Create (which mangles it to a headless-render artifact).
                 try
                 {
-                    var nInv = NCard.Create(cstate!.CreateCard<InvoiceCard>(player));            // X
-                    var nGa  = NCard.Create(cstate!.CreateCard<GarnishmentCard>(player));        // 2 (fixed-cost AoE attack)
-                    var nCc  = NCard.Create(cstate!.CreateCard<CounterclaimCard>(player));       // 2
-                    var nIs  = NCard.Create(cstate!.CreateCard<InterestSupportCard>(player));    // 1
-                    if (Engine.GetMainLoop() is SceneTree tb && nInv != null && nGa != null && nCc != null && nIs != null)
+                    var handOld = PileType.Hand.GetPile(player)?.Cards?.ToList();
+                    if (handOld != null && handOld.Count > 0) await CardPileCmd.RemoveFromCombat(handOld, skipVisuals: false);
+                    await Task.Delay(300);
+                    var badgeCards = new List<CardModel>
                     {
-                        tb.Root.AddChild(nInv); nInv.Position = new Vector2(300, 500); nInv.Scale = new Vector2(1.3f, 1.3f);
-                        tb.Root.AddChild(nGa);  nGa.Position  = new Vector2(720, 500); nGa.Scale  = new Vector2(1.3f, 1.3f);
-                        tb.Root.AddChild(nCc);  nCc.Position  = new Vector2(1140, 500); nCc.Scale = new Vector2(1.3f, 1.3f);
-                        tb.Root.AddChild(nIs);  nIs.Position  = new Vector2(1560, 500); nIs.Scale = new Vector2(1.3f, 1.3f);
-                        await Task.Delay(500);
-                        await Shot("6c_badge");   // 청구서=X / 가압류=2(AoE) / 자본타격=2 / 이자지원=1
-                        nInv.QueueFree(); nGa.QueueFree(); nCc.QueueFree(); nIs.QueueFree();
-                    }
+                        cstate!.CreateCard<InvoiceCard>(player), cstate!.CreateCard<GarnishmentCard>(player),
+                        cstate!.CreateCard<CounterclaimCard>(player), cstate!.CreateCard<InterestSupportCard>(player),
+                    };
+                    await CardPileCmd.AddGeneratedCardsToCombat(badgeCards, PileType.Hand, player, CardPilePosition.Top);
+                    await Task.Delay(500);
+                    var handNames = string.Join(" | ", PileType.Hand.GetPile(player)?.Cards?.Select(c => c.Title) ?? Enumerable.Empty<string>());
+                    W($"  cards in hand (real titles): [{handNames}]");   // 가압류 등 실제 표시명 확인
+                    await Shot("6c_badge");   // 손패: 청구서=X / 가압류=2(AoE) / 자본타격=2 / 이자지원=1, 실제 이름 표시
                 }
                 catch (Exception e) { W("  badge render failed: " + e.Message); }
 
