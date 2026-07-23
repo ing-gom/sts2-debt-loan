@@ -305,6 +305,12 @@ internal static class DebtLoanLoc
         ["INVOICE_CARD.description"] = "Deal [b]{Damage}[/b] damage [b]{CalculatedHits}[/b] times — once per [gold]Payment[/gold] you've made this combat.",
         ["BLOOD_PAYMENT_CARD.title"] = "Blood Payment",
         ["BLOOD_PAYMENT_CARD.description"] = "Lose [b]{hp}[/b] HP and make a [gold]{pay} Gold[/gold] [gold]Payment[/gold].",
+        ["COUNTERCLAIM_CARD.title"] = "Money Attack",
+        ["COUNTERCLAIM_CARD.description"] = "Whenever you make a [gold]Payment[/gold], deal [b]{dmg}[/b] damage to a random enemy.",
+        ["STATEMENT_CARD.title"] = "Statement",
+        ["STATEMENT_CARD.description"] = "Whenever you make a [gold]Payment[/gold], draw a card.",
+        ["INTEREST_SUPPORT_CARD.title"] = "Interest Support",
+        ["INTEREST_SUPPORT_CARD.description"] = "Whenever you make a [gold]Payment[/gold], gain [gold]Gold[/gold] equal to half of it.",
         ["CREDIT_RESTORED_CARD.title"] = "Credit Restored",
         ["CREDIT_RESTORED_CARD.description"] = "Gain [b]{plate}[/b] [gold]Plating[/gold].",
     };
@@ -329,6 +335,12 @@ internal static class DebtLoanLoc
         ["INVOICE_CARD.description"] = "적에게 [b]{Damage}[/b]의 피해를 [b]{CalculatedHits}[/b]번 줍니다 — 이번 전투에서 한 [gold]납부[/gold] 1회당 1타.",
         ["BLOOD_PAYMENT_CARD.title"] = "혈납",
         ["BLOOD_PAYMENT_CARD.description"] = "체력 [b]{hp}[/b]을 잃고 [gold]{pay} 골드[/gold]를 [gold]납부[/gold]합니다.",
+        ["COUNTERCLAIM_CARD.title"] = "자본 타격",
+        ["COUNTERCLAIM_CARD.description"] = "[gold]납부[/gold]할 때마다 무작위 적에게 [b]{dmg}[/b]의 피해를 줍니다.",
+        ["STATEMENT_CARD.title"] = "명세서",
+        ["STATEMENT_CARD.description"] = "[gold]납부[/gold]할 때마다 카드를 1장 뽑습니다.",
+        ["INTEREST_SUPPORT_CARD.title"] = "이자 지원",
+        ["INTEREST_SUPPORT_CARD.description"] = "[gold]납부[/gold]할 때마다 그 절반을 [gold]골드[/gold]로 돌려받습니다.",
         ["CREDIT_RESTORED_CARD.title"] = "신용 회복",
         ["CREDIT_RESTORED_CARD.description"] = "[gold]판금[/gold] [b]{plate}[/b]을 얻습니다.",
     };
@@ -343,6 +355,12 @@ internal static class DebtLoanLoc
         ["PAYMENT_BENEFIT_POWER.description"] = "Whenever you make a Payment, gain 3 Plating.",
         ["REFUND_POWER.title"] = "Refund",
         ["REFUND_POWER.description"] = "Whenever you make a Payment, add a Diligent Payment card to your hand.",
+        ["COUNTERCLAIM_POWER.title"] = "Money Attack",
+        ["COUNTERCLAIM_POWER.description"] = "Whenever you make a Payment, deal 5 damage to a random enemy.",
+        ["STATEMENT_POWER.title"] = "Statement",
+        ["STATEMENT_POWER.description"] = "Whenever you make a Payment, draw a card.",
+        ["INTEREST_SUPPORT_POWER.title"] = "Interest Support",
+        ["INTEREST_SUPPORT_POWER.description"] = "Whenever you make a Payment, gain Gold equal to half of it.",
     };
 
     private static readonly Dictionary<string, string> _powersKor = new()
@@ -355,6 +373,12 @@ internal static class DebtLoanLoc
         ["PAYMENT_BENEFIT_POWER.description"] = "납부할 때마다 판금 3을 얻습니다.",
         ["REFUND_POWER.title"] = "환급",
         ["REFUND_POWER.description"] = "납부할 때마다 성실 납부 카드를 손에 넣습니다.",
+        ["COUNTERCLAIM_POWER.title"] = "자본 타격",
+        ["COUNTERCLAIM_POWER.description"] = "납부할 때마다 무작위 적에게 5의 피해를 줍니다.",
+        ["STATEMENT_POWER.title"] = "명세서",
+        ["STATEMENT_POWER.description"] = "납부할 때마다 카드를 1장 뽑습니다.",
+        ["INTEREST_SUPPORT_POWER.title"] = "이자 지원",
+        ["INTEREST_SUPPORT_POWER.description"] = "납부할 때마다 그 절반을 골드로 돌려받습니다.",
     };
 
     // ── 12 more languages for the payment-set cards + powers (item 2). Vanilla keyword terms
@@ -380,6 +404,12 @@ internal static class DebtLoanLoc
         ["INVOICE_CARD.description"] = "[b]{Damage}[/b]のダメージを[b]{CalculatedHits}[/b]回与える — この戦闘で行った[gold]支払い[/gold]1回につき1ヒット。",
         ["BLOOD_PAYMENT_CARD.title"] = "血の支払い",
         ["BLOOD_PAYMENT_CARD.description"] = "体力を [b]{hp}[/b] 失い、[gold]{pay} ゴールド[/gold]の[gold]支払い[/gold]を行う。",
+        ["COUNTERCLAIM_CARD.title"] = "資本打撃",
+        ["COUNTERCLAIM_CARD.description"] = "[gold]支払い[/gold]を行うたびに、ランダムな敵に[b]{dmg}[/b]のダメージを与える。",
+        ["STATEMENT_CARD.title"] = "明細書",
+        ["STATEMENT_CARD.description"] = "[gold]支払い[/gold]を行うたびに、カードを1枚引く。",
+        ["INTEREST_SUPPORT_CARD.title"] = "利息補助",
+        ["INTEREST_SUPPORT_CARD.description"] = "[gold]支払い[/gold]を行うたびに、その半分の[gold]ゴールド[/gold]を得る。",
         ["CREDIT_RESTORED_CARD.title"] = "信用回復",
         ["CREDIT_RESTORED_CARD.description"] = "[gold]プレート[/gold] [b]{plate}[/b] を得る。",
     };
@@ -403,6 +433,12 @@ internal static class DebtLoanLoc
         ["INVOICE_CARD.description"] = "造成 [b]{Damage}[/b] 点伤害，共 [b]{CalculatedHits}[/b] 次——本场战斗每[gold]还款[/gold]一次便打一下。",
         ["BLOOD_PAYMENT_CARD.title"] = "血债",
         ["BLOOD_PAYMENT_CARD.description"] = "失去 [b]{hp}[/b] 点生命，并进行一次 [gold]{pay} 金币[/gold] [gold]还款[/gold]。",
+        ["COUNTERCLAIM_CARD.title"] = "金钱打击",
+        ["COUNTERCLAIM_CARD.description"] = "每次[gold]还款[/gold]时，对随机敌人造成 [b]{dmg}[/b] 点伤害。",
+        ["STATEMENT_CARD.title"] = "对账单",
+        ["STATEMENT_CARD.description"] = "每次[gold]还款[/gold]时，抽一张牌。",
+        ["INTEREST_SUPPORT_CARD.title"] = "利息补贴",
+        ["INTEREST_SUPPORT_CARD.description"] = "每次[gold]还款[/gold]时，获得其一半的[gold]金币[/gold]。",
         ["CREDIT_RESTORED_CARD.title"] = "信用恢复",
         ["CREDIT_RESTORED_CARD.description"] = "获得 [b]{plate}[/b] [gold]覆甲[/gold]。",
     };
@@ -426,6 +462,12 @@ internal static class DebtLoanLoc
         ["INVOICE_CARD.description"] = "Füge [b]{Damage}[/b] Schaden [b]{CalculatedHits}[/b]-mal zu — einmal pro [gold]Zahlung[/gold] in diesem Kampf.",
         ["BLOOD_PAYMENT_CARD.title"] = "Blutzahlung",
         ["BLOOD_PAYMENT_CARD.description"] = "Verliere [b]{hp}[/b] LP und leiste eine [gold]Zahlung[/gold] von [gold]{pay} Gold[/gold].",
+        ["COUNTERCLAIM_CARD.title"] = "Geldangriff",
+        ["COUNTERCLAIM_CARD.description"] = "Immer wenn du eine [gold]Zahlung[/gold] leistest, füge einem zufälligen Gegner [b]{dmg}[/b] Schaden zu.",
+        ["STATEMENT_CARD.title"] = "Kontoauszug",
+        ["STATEMENT_CARD.description"] = "Immer wenn du eine [gold]Zahlung[/gold] leistest, ziehe eine Karte.",
+        ["INTEREST_SUPPORT_CARD.title"] = "Zinszuschuss",
+        ["INTEREST_SUPPORT_CARD.description"] = "Immer wenn du eine [gold]Zahlung[/gold] leistest, erhalte [gold]Gold[/gold] in Höhe der Hälfte davon.",
         ["CREDIT_RESTORED_CARD.title"] = "Bonität wiederhergestellt",
         ["CREDIT_RESTORED_CARD.description"] = "Erhalte [b]{plate}[/b] [gold]Panzerung[/gold].",
     };
@@ -449,6 +491,12 @@ internal static class DebtLoanLoc
         ["INVOICE_CARD.description"] = "Inflige [b]{Damage}[/b] dégâts [b]{CalculatedHits}[/b] fois — une fois par [gold]Paiement[/gold] effectué ce combat.",
         ["BLOOD_PAYMENT_CARD.title"] = "Paiement de sang",
         ["BLOOD_PAYMENT_CARD.description"] = "Perds [b]{hp}[/b] PV et effectue un [gold]Paiement[/gold] de [gold]{pay} or[/gold].",
+        ["COUNTERCLAIM_CARD.title"] = "Attaque financière",
+        ["COUNTERCLAIM_CARD.description"] = "Chaque fois que tu effectues un [gold]Paiement[/gold], inflige [b]{dmg}[/b] dégâts à un ennemi au hasard.",
+        ["STATEMENT_CARD.title"] = "Relevé",
+        ["STATEMENT_CARD.description"] = "Chaque fois que tu effectues un [gold]Paiement[/gold], pioche une carte.",
+        ["INTEREST_SUPPORT_CARD.title"] = "Aide aux intérêts",
+        ["INTEREST_SUPPORT_CARD.description"] = "Chaque fois que tu effectues un [gold]Paiement[/gold], gagne [gold]or[/gold] égal à la moitié de celui-ci.",
         ["CREDIT_RESTORED_CARD.title"] = "Crédit rétabli",
         ["CREDIT_RESTORED_CARD.description"] = "Gagne [b]{plate}[/b] [gold]Blindage[/gold].",
     };
@@ -472,6 +520,12 @@ internal static class DebtLoanLoc
         ["INVOICE_CARD.description"] = "Inflige [b]{Damage}[/b] de daño [b]{CalculatedHits}[/b] veces — una por cada [gold]Pago[/gold] que hayas hecho este combate.",
         ["BLOOD_PAYMENT_CARD.title"] = "Pago de sangre",
         ["BLOOD_PAYMENT_CARD.description"] = "Pierde [b]{hp}[/b] de vida y haz un [gold]Pago[/gold] de [gold]{pay} de oro[/gold].",
+        ["COUNTERCLAIM_CARD.title"] = "Ataque monetario",
+        ["COUNTERCLAIM_CARD.description"] = "Cada vez que haces un [gold]Pago[/gold], inflige [b]{dmg}[/b] de daño a un enemigo al azar.",
+        ["STATEMENT_CARD.title"] = "Extracto",
+        ["STATEMENT_CARD.description"] = "Cada vez que haces un [gold]Pago[/gold], roba una carta.",
+        ["INTEREST_SUPPORT_CARD.title"] = "Ayuda de intereses",
+        ["INTEREST_SUPPORT_CARD.description"] = "Cada vez que haces un [gold]Pago[/gold], ganas [gold]oro[/gold] igual a la mitad del mismo.",
         ["CREDIT_RESTORED_CARD.title"] = "Crédito restaurado",
         ["CREDIT_RESTORED_CARD.description"] = "Gana [b]{plate}[/b] de [gold]Blindaje[/gold].",
     };
@@ -495,6 +549,12 @@ internal static class DebtLoanLoc
         ["INVOICE_CARD.description"] = "Infliggi [b]{Damage}[/b] danni [b]{CalculatedHits}[/b] volte — una per ogni [gold]Pagamento[/gold] effettuato in questo combattimento.",
         ["BLOOD_PAYMENT_CARD.title"] = "Pagamento di sangue",
         ["BLOOD_PAYMENT_CARD.description"] = "Perdi [b]{hp}[/b] PV ed effettua un [gold]Pagamento[/gold] di [gold]{pay} Oro[/gold].",
+        ["COUNTERCLAIM_CARD.title"] = "Attacco monetario",
+        ["COUNTERCLAIM_CARD.description"] = "Ogni volta che effettui un [gold]Pagamento[/gold], infliggi [b]{dmg}[/b] danni a un nemico casuale.",
+        ["STATEMENT_CARD.title"] = "Estratto conto",
+        ["STATEMENT_CARD.description"] = "Ogni volta che effettui un [gold]Pagamento[/gold], pesca una carta.",
+        ["INTEREST_SUPPORT_CARD.title"] = "Sostegno agli interessi",
+        ["INTEREST_SUPPORT_CARD.description"] = "Ogni volta che effettui un [gold]Pagamento[/gold], ottieni [gold]Oro[/gold] pari alla metà di esso.",
         ["CREDIT_RESTORED_CARD.title"] = "Credito ripristinato",
         ["CREDIT_RESTORED_CARD.description"] = "Ottieni [b]{plate}[/b] [gold]Placcatura[/gold].",
     };
@@ -518,6 +578,12 @@ internal static class DebtLoanLoc
         ["INVOICE_CARD.description"] = "Zadaj [b]{Damage}[/b] obrażeń [b]{CalculatedHits}[/b] razy — raz za każdą [gold]Spłatę[/gold] w tej walce.",
         ["BLOOD_PAYMENT_CARD.title"] = "Krwawa spłata",
         ["BLOOD_PAYMENT_CARD.description"] = "Strać [b]{hp}[/b] PŻ i dokonaj [gold]Spłaty[/gold] [gold]{pay} złota[/gold].",
+        ["COUNTERCLAIM_CARD.title"] = "Atak pieniężny",
+        ["COUNTERCLAIM_CARD.description"] = "Za każdym razem, gdy dokonasz [gold]Spłaty[/gold], zadaj [b]{dmg}[/b] obrażeń losowemu wrogowi.",
+        ["STATEMENT_CARD.title"] = "Wyciąg",
+        ["STATEMENT_CARD.description"] = "Za każdym razem, gdy dokonasz [gold]Spłaty[/gold], dobierz kartę.",
+        ["INTEREST_SUPPORT_CARD.title"] = "Dopłata do odsetek",
+        ["INTEREST_SUPPORT_CARD.description"] = "Za każdym razem, gdy dokonasz [gold]Spłaty[/gold], zyskaj [gold]złoto[/gold] równe połowie tej kwoty.",
         ["CREDIT_RESTORED_CARD.title"] = "Przywrócony kredyt",
         ["CREDIT_RESTORED_CARD.description"] = "Zyskaj [b]{plate}[/b] [gold]Opancerzenia[/gold].",
     };
@@ -541,6 +607,12 @@ internal static class DebtLoanLoc
         ["INVOICE_CARD.description"] = "Cause [b]{Damage}[/b] de dano [b]{CalculatedHits}[/b] vezes — uma por [gold]Pagamento[/gold] feito neste combate.",
         ["BLOOD_PAYMENT_CARD.title"] = "Pagamento de sangue",
         ["BLOOD_PAYMENT_CARD.description"] = "Perca [b]{hp}[/b] de Vida e faça um [gold]Pagamento[/gold] de [gold]{pay} de Ouro[/gold].",
+        ["COUNTERCLAIM_CARD.title"] = "Ataque monetário",
+        ["COUNTERCLAIM_CARD.description"] = "Sempre que fizer um [gold]Pagamento[/gold], cause [b]{dmg}[/b] de dano a um inimigo aleatório.",
+        ["STATEMENT_CARD.title"] = "Extrato",
+        ["STATEMENT_CARD.description"] = "Sempre que fizer um [gold]Pagamento[/gold], compre uma carta.",
+        ["INTEREST_SUPPORT_CARD.title"] = "Auxílio de juros",
+        ["INTEREST_SUPPORT_CARD.description"] = "Sempre que fizer um [gold]Pagamento[/gold], ganhe [gold]Ouro[/gold] igual à metade dele.",
         ["CREDIT_RESTORED_CARD.title"] = "Crédito restaurado",
         ["CREDIT_RESTORED_CARD.description"] = "Ganhe [b]{plate}[/b] de [gold]Blindagem[/gold].",
     };
@@ -564,6 +636,12 @@ internal static class DebtLoanLoc
         ["INVOICE_CARD.description"] = "Нанесите [b]{Damage}[/b] урона [b]{CalculatedHits}[/b] раз — по разу за каждый [gold]Платёж[/gold] в этом бою.",
         ["BLOOD_PAYMENT_CARD.title"] = "Кровавый платёж",
         ["BLOOD_PAYMENT_CARD.description"] = "Потеряйте [b]{hp}[/b] здоровья и совершите [gold]Платёж[/gold] в [gold]{pay} золота[/gold].",
+        ["COUNTERCLAIM_CARD.title"] = "Денежная атака",
+        ["COUNTERCLAIM_CARD.description"] = "Каждый раз, когда вы совершаете [gold]Платёж[/gold], нанесите [b]{dmg}[/b] урона случайному врагу.",
+        ["STATEMENT_CARD.title"] = "Выписка",
+        ["STATEMENT_CARD.description"] = "Каждый раз, когда вы совершаете [gold]Платёж[/gold], возьмите карту.",
+        ["INTEREST_SUPPORT_CARD.title"] = "Субсидия процентов",
+        ["INTEREST_SUPPORT_CARD.description"] = "Каждый раз, когда вы совершаете [gold]Платёж[/gold], получите [gold]золото[/gold] в размере его половины.",
         ["CREDIT_RESTORED_CARD.title"] = "Кредит восстановлен",
         ["CREDIT_RESTORED_CARD.description"] = "Получите [b]{plate}[/b] [gold]Панциря[/gold].",
     };
@@ -587,6 +665,12 @@ internal static class DebtLoanLoc
         ["INVOICE_CARD.description"] = "สร้างความเสียหาย [b]{Damage}[/b] จำนวน [b]{CalculatedHits}[/b] ครั้ง — หนึ่งครั้งต่อการ[gold]ชำระ[/gold]แต่ละครั้งในการต่อสู้นี้",
         ["BLOOD_PAYMENT_CARD.title"] = "จ่ายด้วยเลือด",
         ["BLOOD_PAYMENT_CARD.description"] = "เสียพลังชีวิต [b]{hp}[/b] และทำ[gold]การชำระ[/gold] [gold]{pay} ทอง[/gold]",
+        ["COUNTERCLAIM_CARD.title"] = "การโจมตีด้วยเงิน",
+        ["COUNTERCLAIM_CARD.description"] = "ทุกครั้งที่คุณทำ[gold]การชำระ[/gold] สร้างความเสียหาย [b]{dmg}[/b] แก่ศัตรูแบบสุ่ม",
+        ["STATEMENT_CARD.title"] = "ใบแจ้งยอด",
+        ["STATEMENT_CARD.description"] = "ทุกครั้งที่คุณทำ[gold]การชำระ[/gold] จั่วการ์ด 1 ใบ",
+        ["INTEREST_SUPPORT_CARD.title"] = "เงินช่วยดอกเบี้ย",
+        ["INTEREST_SUPPORT_CARD.description"] = "ทุกครั้งที่คุณทำ[gold]การชำระ[/gold] รับ[gold]ทอง[/gold]เท่ากับครึ่งหนึ่งของยอดนั้น",
         ["CREDIT_RESTORED_CARD.title"] = "เครดิตกลับคืน",
         ["CREDIT_RESTORED_CARD.description"] = "รับ[gold]เกราะโลหะ[/gold] [b]{plate}[/b]",
     };
@@ -610,6 +694,12 @@ internal static class DebtLoanLoc
         ["INVOICE_CARD.description"] = "[b]{Damage}[/b] hasarı [b]{CalculatedHits}[/b] kez ver — bu savaşta yaptığın her [gold]Ödeme[/gold] için bir kez.",
         ["BLOOD_PAYMENT_CARD.title"] = "Kan Ödemesi",
         ["BLOOD_PAYMENT_CARD.description"] = "[b]{hp}[/b] Can kaybet ve [gold]{pay} Altın[/gold] [gold]Ödeme[/gold] yap.",
+        ["COUNTERCLAIM_CARD.title"] = "Para Saldırısı",
+        ["COUNTERCLAIM_CARD.description"] = "Bir [gold]Ödeme[/gold] yaptığında rastgele bir düşmana [b]{dmg}[/b] hasar ver.",
+        ["STATEMENT_CARD.title"] = "Ekstre",
+        ["STATEMENT_CARD.description"] = "Bir [gold]Ödeme[/gold] yaptığında bir kart çek.",
+        ["INTEREST_SUPPORT_CARD.title"] = "Faiz Desteği",
+        ["INTEREST_SUPPORT_CARD.description"] = "Bir [gold]Ödeme[/gold] yaptığında, onun yarısı kadar [gold]Altın[/gold] kazan.",
         ["CREDIT_RESTORED_CARD.title"] = "Kredi Düzeldi",
         ["CREDIT_RESTORED_CARD.description"] = "[b]{plate}[/b] [gold]Zırh[/gold] kazan.",
     };
@@ -623,6 +713,12 @@ internal static class DebtLoanLoc
         ["PAYMENT_BENEFIT_POWER.description"] = "支払いを行うたびに、プレートを3得る。",
         ["REFUND_POWER.title"] = "払い戻し",
         ["REFUND_POWER.description"] = "支払いを行うたびに、誠実な支払いカードを手札に加える。",
+        ["COUNTERCLAIM_POWER.title"] = "資本打撃",
+        ["COUNTERCLAIM_POWER.description"] = "支払いを行うたびに、ランダムな敵に5のダメージを与える。",
+        ["STATEMENT_POWER.title"] = "明細書",
+        ["STATEMENT_POWER.description"] = "支払いを行うたびに、カードを1枚引く。",
+        ["INTEREST_SUPPORT_POWER.title"] = "利息補助",
+        ["INTEREST_SUPPORT_POWER.description"] = "支払いを行うたびに、その半分のゴールドを得る。",
     };
     private static readonly Dictionary<string, string> _powersZhs = new()
     {
@@ -634,6 +730,12 @@ internal static class DebtLoanLoc
         ["PAYMENT_BENEFIT_POWER.description"] = "每次还款时，获得3层覆甲。",
         ["REFUND_POWER.title"] = "退款",
         ["REFUND_POWER.description"] = "每次还款时，将一张按时还款牌加入手牌。",
+        ["COUNTERCLAIM_POWER.title"] = "金钱打击",
+        ["COUNTERCLAIM_POWER.description"] = "每次还款时，对随机敌人造成 5 点伤害。",
+        ["STATEMENT_POWER.title"] = "对账单",
+        ["STATEMENT_POWER.description"] = "每次还款时，抽一张牌。",
+        ["INTEREST_SUPPORT_POWER.title"] = "利息补贴",
+        ["INTEREST_SUPPORT_POWER.description"] = "每次还款时，获得其一半的金币。",
     };
     private static readonly Dictionary<string, string> _powersDeu = new()
     {
@@ -645,6 +747,12 @@ internal static class DebtLoanLoc
         ["PAYMENT_BENEFIT_POWER.description"] = "Immer wenn du eine Zahlung leistest, erhalte 3 Panzerung.",
         ["REFUND_POWER.title"] = "Rückerstattung",
         ["REFUND_POWER.description"] = "Immer wenn du eine Zahlung leistest, lege eine Pünktliche Zahlung-Karte auf deine Hand.",
+        ["COUNTERCLAIM_POWER.title"] = "Geldangriff",
+        ["COUNTERCLAIM_POWER.description"] = "Immer wenn du eine Zahlung leistest, füge einem zufälligen Gegner 5 Schaden zu.",
+        ["STATEMENT_POWER.title"] = "Kontoauszug",
+        ["STATEMENT_POWER.description"] = "Immer wenn du eine Zahlung leistest, ziehe eine Karte.",
+        ["INTEREST_SUPPORT_POWER.title"] = "Zinszuschuss",
+        ["INTEREST_SUPPORT_POWER.description"] = "Immer wenn du eine Zahlung leistest, erhalte Gold in Höhe der Hälfte davon.",
     };
     private static readonly Dictionary<string, string> _powersFra = new()
     {
@@ -656,6 +764,12 @@ internal static class DebtLoanLoc
         ["PAYMENT_BENEFIT_POWER.description"] = "Chaque fois que tu effectues un Paiement, gagne 3 Blindage.",
         ["REFUND_POWER.title"] = "Remboursement",
         ["REFUND_POWER.description"] = "Chaque fois que tu effectues un Paiement, ajoute une carte Paiement assidu à ta main.",
+        ["COUNTERCLAIM_POWER.title"] = "Attaque financière",
+        ["COUNTERCLAIM_POWER.description"] = "Chaque fois que tu effectues un Paiement, inflige 5 dégâts à un ennemi au hasard.",
+        ["STATEMENT_POWER.title"] = "Relevé",
+        ["STATEMENT_POWER.description"] = "Chaque fois que tu effectues un Paiement, pioche une carte.",
+        ["INTEREST_SUPPORT_POWER.title"] = "Aide aux intérêts",
+        ["INTEREST_SUPPORT_POWER.description"] = "Chaque fois que tu effectues un Paiement, gagne de l'or égal à la moitié de celui-ci.",
     };
     private static readonly Dictionary<string, string> _powersSpa = new()
     {
@@ -667,6 +781,12 @@ internal static class DebtLoanLoc
         ["PAYMENT_BENEFIT_POWER.description"] = "Cada vez que haces un Pago, ganas 3 de Blindaje.",
         ["REFUND_POWER.title"] = "Reembolso",
         ["REFUND_POWER.description"] = "Cada vez que haces un Pago, añade una carta de Pago diligente a tu mano.",
+        ["COUNTERCLAIM_POWER.title"] = "Ataque monetario",
+        ["COUNTERCLAIM_POWER.description"] = "Cada vez que haces un Pago, inflige 5 de daño a un enemigo al azar.",
+        ["STATEMENT_POWER.title"] = "Extracto",
+        ["STATEMENT_POWER.description"] = "Cada vez que haces un Pago, roba una carta.",
+        ["INTEREST_SUPPORT_POWER.title"] = "Ayuda de intereses",
+        ["INTEREST_SUPPORT_POWER.description"] = "Cada vez que haces un Pago, ganas oro igual a la mitad del mismo.",
     };
     private static readonly Dictionary<string, string> _powersIta = new()
     {
@@ -678,6 +798,12 @@ internal static class DebtLoanLoc
         ["PAYMENT_BENEFIT_POWER.description"] = "Ogni volta che effettui un Pagamento, ottieni 3 Placcatura.",
         ["REFUND_POWER.title"] = "Rimborso",
         ["REFUND_POWER.description"] = "Ogni volta che effettui un Pagamento, aggiungi una carta Pagamento diligente alla tua mano.",
+        ["COUNTERCLAIM_POWER.title"] = "Attacco monetario",
+        ["COUNTERCLAIM_POWER.description"] = "Ogni volta che effettui un Pagamento, infliggi 5 danni a un nemico casuale.",
+        ["STATEMENT_POWER.title"] = "Estratto conto",
+        ["STATEMENT_POWER.description"] = "Ogni volta che effettui un Pagamento, pesca una carta.",
+        ["INTEREST_SUPPORT_POWER.title"] = "Sostegno agli interessi",
+        ["INTEREST_SUPPORT_POWER.description"] = "Ogni volta che effettui un Pagamento, ottieni Oro pari alla metà di esso.",
     };
     private static readonly Dictionary<string, string> _powersPol = new()
     {
@@ -689,6 +815,12 @@ internal static class DebtLoanLoc
         ["PAYMENT_BENEFIT_POWER.description"] = "Za każdym razem, gdy dokonasz Spłaty, zyskaj 3 Opancerzenia.",
         ["REFUND_POWER.title"] = "Zwrot",
         ["REFUND_POWER.description"] = "Za każdym razem, gdy dokonasz Spłaty, dodaj kartę Sumienna spłata do ręki.",
+        ["COUNTERCLAIM_POWER.title"] = "Atak pieniężny",
+        ["COUNTERCLAIM_POWER.description"] = "Za każdym razem, gdy dokonasz Spłaty, zadaj 5 obrażeń losowemu wrogowi.",
+        ["STATEMENT_POWER.title"] = "Wyciąg",
+        ["STATEMENT_POWER.description"] = "Za każdym razem, gdy dokonasz Spłaty, dobierz kartę.",
+        ["INTEREST_SUPPORT_POWER.title"] = "Dopłata do odsetek",
+        ["INTEREST_SUPPORT_POWER.description"] = "Za każdym razem, gdy dokonasz Spłaty, zyskaj złoto równe połowie tej kwoty.",
     };
     private static readonly Dictionary<string, string> _powersPtb = new()
     {
@@ -700,6 +832,12 @@ internal static class DebtLoanLoc
         ["PAYMENT_BENEFIT_POWER.description"] = "Sempre que fizer um Pagamento, ganhe 3 de Blindagem.",
         ["REFUND_POWER.title"] = "Reembolso",
         ["REFUND_POWER.description"] = "Sempre que fizer um Pagamento, adicione uma carta de Pagamento pontual à sua mão.",
+        ["COUNTERCLAIM_POWER.title"] = "Ataque monetário",
+        ["COUNTERCLAIM_POWER.description"] = "Sempre que fizer um Pagamento, cause 5 de dano a um inimigo aleatório.",
+        ["STATEMENT_POWER.title"] = "Extrato",
+        ["STATEMENT_POWER.description"] = "Sempre que fizer um Pagamento, compre uma carta.",
+        ["INTEREST_SUPPORT_POWER.title"] = "Auxílio de juros",
+        ["INTEREST_SUPPORT_POWER.description"] = "Sempre que fizer um Pagamento, ganhe Ouro igual à metade dele.",
     };
     private static readonly Dictionary<string, string> _powersRus = new()
     {
@@ -711,6 +849,12 @@ internal static class DebtLoanLoc
         ["PAYMENT_BENEFIT_POWER.description"] = "Каждый раз, когда вы совершаете Платёж, получите 3 Панциря.",
         ["REFUND_POWER.title"] = "Возврат",
         ["REFUND_POWER.description"] = "Каждый раз, когда вы совершаете Платёж, добавьте карту Исправный платёж в руку.",
+        ["COUNTERCLAIM_POWER.title"] = "Денежная атака",
+        ["COUNTERCLAIM_POWER.description"] = "Каждый раз, когда вы совершаете Платёж, нанесите 5 урона случайному врагу.",
+        ["STATEMENT_POWER.title"] = "Выписка",
+        ["STATEMENT_POWER.description"] = "Каждый раз, когда вы совершаете Платёж, возьмите карту.",
+        ["INTEREST_SUPPORT_POWER.title"] = "Субсидия процентов",
+        ["INTEREST_SUPPORT_POWER.description"] = "Каждый раз, когда вы совершаете Платёж, получите золото в размере его половины.",
     };
     private static readonly Dictionary<string, string> _powersTha = new()
     {
@@ -722,6 +866,12 @@ internal static class DebtLoanLoc
         ["PAYMENT_BENEFIT_POWER.description"] = "ทุกครั้งที่คุณทำการชำระ รับเกราะโลหะ 3",
         ["REFUND_POWER.title"] = "เงินคืน",
         ["REFUND_POWER.description"] = "ทุกครั้งที่คุณทำการชำระ เพิ่มการ์ดชำระตรงเวลาเข้ามือ",
+        ["COUNTERCLAIM_POWER.title"] = "การโจมตีด้วยเงิน",
+        ["COUNTERCLAIM_POWER.description"] = "ทุกครั้งที่คุณทำการชำระ สร้างความเสียหาย 5 แก่ศัตรูแบบสุ่ม",
+        ["STATEMENT_POWER.title"] = "ใบแจ้งยอด",
+        ["STATEMENT_POWER.description"] = "ทุกครั้งที่คุณทำการชำระ จั่วการ์ด 1 ใบ",
+        ["INTEREST_SUPPORT_POWER.title"] = "เงินช่วยดอกเบี้ย",
+        ["INTEREST_SUPPORT_POWER.description"] = "ทุกครั้งที่คุณทำการชำระ รับทองเท่ากับครึ่งหนึ่งของยอดนั้น",
     };
     private static readonly Dictionary<string, string> _powersTur = new()
     {
@@ -733,6 +883,12 @@ internal static class DebtLoanLoc
         ["PAYMENT_BENEFIT_POWER.description"] = "Bir Ödeme yaptığında 3 Zırh kazan.",
         ["REFUND_POWER.title"] = "İade",
         ["REFUND_POWER.description"] = "Bir Ödeme yaptığında eline bir Özenli Ödeme kartı ekle.",
+        ["COUNTERCLAIM_POWER.title"] = "Para Saldırısı",
+        ["COUNTERCLAIM_POWER.description"] = "Bir Ödeme yaptığında rastgele bir düşmana 5 hasar ver.",
+        ["STATEMENT_POWER.title"] = "Ekstre",
+        ["STATEMENT_POWER.description"] = "Bir Ödeme yaptığında bir kart çek.",
+        ["INTEREST_SUPPORT_POWER.title"] = "Faiz Desteği",
+        ["INTEREST_SUPPORT_POWER.description"] = "Bir Ödeme yaptığında, onun yarısı kadar Altın kazan.",
     };
     private static readonly Dictionary<string, Dictionary<string, string>> _cardsByLang = new()
     {

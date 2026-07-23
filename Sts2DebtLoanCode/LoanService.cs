@@ -425,6 +425,7 @@ internal static class LoanService
     private static readonly System.Type[] PaymentPool =
     {
         typeof(PaymentBenefitCard), typeof(RefundCard), typeof(SettlementCard), typeof(InvoiceCard), typeof(BloodPaymentCard),
+        typeof(CounterclaimCard), typeof(StatementCard), typeof(InterestSupportCard),   // engine-expansion payoffs
     };
 
     /// <summary>Deterministic per-run shuffle of the 5 payment cards (seeded from the loan floor, so both co-op
@@ -516,6 +517,12 @@ internal static class LoanService
         if (benefit != null) await benefit.OnPayment(cc, player);
         var refund = player.Creature.GetPower<RefundPower>();
         if (refund != null) await refund.OnPayment(cc, player);
+        var counterclaim = player.Creature.GetPower<CounterclaimPower>();
+        if (counterclaim != null) await counterclaim.OnPayment(cc, player);
+        var statement = player.Creature.GetPower<StatementPower>();
+        if (statement != null) await statement.OnPayment(cc, player);
+        var interestSupport = player.Creature.GetPower<InterestSupportPower>();
+        if (interestSupport != null) await interestSupport.OnPayment(cc, player, amount);   // refunds half the payment
 
         // Paid the loan off mid-combat? Lift the whole debt right now (see SettleLoanInCombat).
         if (wasOwing)

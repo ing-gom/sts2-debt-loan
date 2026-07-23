@@ -554,14 +554,20 @@ internal static class SoloTest
                 var enemy = cstate?.HittableEnemies?.FirstOrDefault(e => e != null && e.IsAlive)
                             ?? cstate?.Enemies?.FirstOrDefault(e => e != null && e.IsAlive);
 
-                // Reactive powers: 납부 혜택 → Plating each payment, 환급 → a 성실 납부 card each payment.
+                // Reactive powers: 납부 혜택 → Plating, 환급 → 성실 납부, + the 3 engine-expansion powers:
+                // 자본 타격 → 5 dmg random enemy, 명세서 → draw a card, 이자 지원 → refund half the payment, each per payment.
                 await PowerCmd.Apply<PaymentBenefitPower>(pcc, player.Creature!, 1, player.Creature, null);
                 await PowerCmd.Apply<RefundPower>(pcc, player.Creature!, 1, player.Creature, null);
+                await PowerCmd.Apply<CounterclaimPower>(pcc, player.Creature!, 1, player.Creature, null);
+                await PowerCmd.Apply<StatementPower>(pcc, player.Creature!, 1, player.Creature, null);
+                await PowerCmd.Apply<InterestSupportPower>(pcc, player.Creature!, 1, player.Creature, null);
                 await Task.Delay(120);
 
                 LoanService.ResetPaymentsThisCombat(player);
                 int dp0 = PileType.Hand.GetPile(player)?.Cards.Count(c => c is DiligentPaymentCard) ?? 0;
-                for (int i = 0; i < 3; i++) await LoanService.RecordPayment(player, pcc, 10);   // 납부 시퀀스 ×3
+                int ccHp0 = enemy?.CurrentHp ?? -1;                                              // 자본 타격 target HP before
+                int isGold0 = (int)player.Gold;                                                  // 이자 지원 gold before
+                for (int i = 0; i < 3; i++) await LoanService.RecordPayment(player, pcc, 10);   // 납부 시퀀스 ×3 (10 each)
                 await Task.Delay(200);
 
                 int pays = LoanService.PaymentsThisCombat(player);                               // 3
@@ -570,6 +576,29 @@ internal static class SoloTest
                 int dpGain = (PileType.Hand.GetPile(player)?.Cards.Count(c => c is DiligentPaymentCard) ?? 0) - dp0;
                 bool tP1 = pays == 3 && platingAmt >= 3 && dpGain >= 3;   // count + both reactive powers fired 3×
                 W($"  assert payment-trigger: payments={pays}(3) plating={platingAmt}(>=3, exp 9) diligentCardsAdded={dpGain}(>=3) -> {tP1}");
+
+                // Engine-expansion powers fired 3× too: 자본 타격 dealt damage, 이자 지원 refunded half, 명세서 applied.
+                int ccDrop = (ccHp0 >= 0 && enemy != null) ? ccHp0 - enemy.CurrentHp : -1;       // ~15 (3×5) if unblocked
+                int subsidyGain = (int)player.Gold - isGold0;                                    // +15 (3 × 10/2)
+                bool stmt = player.Creature!.GetPower<StatementPower>() != null;
+                bool ccOK = enemy == null || ccDrop >= 3;   // some damage landed (allow enemy block)
+                bool tP1b = ccOK && subsidyGain >= 15 && stmt;
+                W($"  assert engine-expansion: moneyAttackDmg={ccDrop} interestSubsidyGold={subsidyGain}(>=15) statementApplied={stmt} -> {tP1b}");
+                all &= tP1b;
+
+                // ISOLATE the remaining sub-tests from the reactive powers just exercised. 명세서 (StatementPower)
+                // draws a card on every payment — left active it keeps the hand full, starving 취업알선's 품삯 of a
+                // hand slot (tP4). 이자 지원 (InterestSupportPower) refunds half of any payment — left active it
+                // gives back 10 of the 빚 독촉 20-gold play cost below, masking the raw deduction (tP5). Both are
+                // correct in real play; the sub-tests just need a clean slate. Remove all reactive powers + empty the hand.
+                await PowerCmd.Remove<PaymentBenefitPower>(player.Creature!);
+                await PowerCmd.Remove<RefundPower>(player.Creature!);
+                await PowerCmd.Remove<CounterclaimPower>(player.Creature!);
+                await PowerCmd.Remove<StatementPower>(player.Creature!);
+                await PowerCmd.Remove<InterestSupportPower>(player.Creature!);
+                var handClear = PileType.Hand.GetPile(player)?.Cards?.ToList();
+                if (handClear != null && handClear.Count > 0) await CardPileCmd.RemoveFromCombat(handClear, skipVisuals: true);
+                await Task.Delay(120);
 
                 // 정산 (Settlement): block gained = payments × 4.
                 int blk0 = player.Creature.Block;
@@ -758,6 +787,9 @@ internal static class SoloTest
                         await PowerCmd.Apply<RefundPower>(scc, cr, 1, cr, null);            // 환급
                         await PowerCmd.Apply<JobPlacementPower>(scc, cr, 1, cr, null);      // 취업알선
                         await PowerCmd.Apply<BadCreditPower>(scc, cr, 1, cr, null);         // 신용 불량
+                        await PowerCmd.Apply<CounterclaimPower>(scc, cr, 1, cr, null);      // 자본 타격 (Money Attack)
+                        await PowerCmd.Apply<StatementPower>(scc, cr, 1, cr, null);         // 명세서 (Statement)
+                        await PowerCmd.Apply<InterestSupportPower>(scc, cr, 1, cr, null);   // 이자 지원 (Interest Support)
                         await Task.Delay(600);
                         int active = 0;
                         if (cr.GetPower<DunningLetterPower>() != null) active++;
@@ -765,7 +797,10 @@ internal static class SoloTest
                         if (cr.GetPower<RefundPower>() != null) active++;
                         if (cr.GetPower<JobPlacementPower>() != null) active++;
                         if (cr.GetPower<BadCreditPower>() != null) active++;
-                        W($"  power-icon gallery: {active}/5 custom powers active (see 9_power_icons.png)");
+                        if (cr.GetPower<CounterclaimPower>() != null) active++;
+                        if (cr.GetPower<StatementPower>() != null) active++;
+                        if (cr.GetPower<InterestSupportPower>() != null) active++;
+                        W($"  power-icon gallery: {active}/8 custom powers active (see 9_power_icons.png)");
                     }
                     await Shot("9_power_icons");
                 }
