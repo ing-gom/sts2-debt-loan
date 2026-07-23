@@ -811,6 +811,34 @@ internal static class SoloTest
                         if (cr.GetPower<InterestSupportPower>() != null) active++;
                         if (cr.GetPower<PaymentStackPower>() != null) active++;
                         W($"  power-icon gallery: {active}/9 custom powers active (see 9_power_icons.png)");
+
+                        // ── HOVER TEXT: the character-hover tooltip shows each power's Title + Description
+                        // (PowerModel.Description = LocString "powers/<ENTRY>.description"). Verify every custom
+                        // power's description resolves to real localized text — not a raw loc key, not empty —
+                        // and log it so we can eyeball what the tooltip will read.
+                        var hoverPowers = new MegaCrit.Sts2.Core.Models.PowerModel?[]
+                        {
+                            cr.GetPower<DunningLetterPower>(), cr.GetPower<PaymentBenefitPower>(), cr.GetPower<RefundPower>(),
+                            cr.GetPower<JobPlacementPower>(), cr.GetPower<BadCreditPower>(), cr.GetPower<CounterclaimPower>(),
+                            cr.GetPower<StatementPower>(), cr.GetPower<InterestSupportPower>(), cr.GetPower<PaymentStackPower>(),
+                        };
+                        int descOk = 0, descTotal = 0;
+                        foreach (var pw in hoverPowers)
+                        {
+                            if (pw == null) continue;
+                            descTotal++;
+                            string title = "", desc = ""; bool exists = false;
+                            try { exists = pw.Description.Exists(); } catch { }
+                            try { title = pw.Title.GetFormattedText(); } catch { }
+                            try { desc = pw.Description.GetFormattedText(); } catch { }
+                            bool ok = exists && !string.IsNullOrWhiteSpace(desc)
+                                      && !desc.Contains("_POWER") && !desc.Contains(".description");
+                            if (ok) descOk++;
+                            W($"    [hover] {pw.GetType().Name}: title='{title}' | desc='{desc}' -> {(ok ? "OK" : "MISSING")}");
+                        }
+                        bool tHover = descTotal == 9 && descOk == 9;
+                        W($"  power-hover descriptions: {descOk}/{descTotal} resolve to real text -> {tHover}");
+                        all &= tHover;
                     }
                     await Shot("9_power_icons");
                 }
