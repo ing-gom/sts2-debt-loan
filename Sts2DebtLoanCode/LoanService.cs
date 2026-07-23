@@ -364,7 +364,7 @@ internal static class LoanService
             rec.DunningLetterGranted = true;
             rec.EventGrantCount = System.Math.Max(rec.EventGrantCount, 1);
             _ = DebtLoanGrants.GrantDunningLetter(player);
-            MerchantBark.SayGrant();   // merchant hands the 독촉장 + hints more payoff cards on future visits
+            MerchantBark.SayGrant(NextEventCardName(rec));   // hand the 독촉장 + hint the SPECIFIC next card
         }
         EnsureRoomWatch();   // still watch shop revisits for the REMAINING payoff cards (slots 1-6)
         SyncToRelic(player);
@@ -448,6 +448,18 @@ internal static class LoanService
         return arr;
     }
 
+    /// <summary>Localized NAME of the NEXT event card the merchant will hand out (for his hint), or null if the
+    /// sequence is finished. Deterministic (same LoanFloor → same order + persists across save/load), so the hint
+    /// always matches what actually arrives next. Call AFTER EventGrantCount has advanced past the current card.</summary>
+    private static string? NextEventCardName(LoanRecord rec)
+    {
+        int pos = rec.EventGrantCount;   // the NEXT slot
+        if (pos >= TotalEventCards) return null;
+        var type = pos < FixedOrder.Length ? FixedOrder[pos] : ShuffledRemainder(rec.LoanFloor)[pos - FixedOrder.Length];
+        try { return ModelDb.GetByIdOrNull<CardModel>(ModelDb.GetId(type))?.Title; }   // Title is already localized text
+        catch { return null; }
+    }
+
     private static void TryGrantDunningLetter(Player player)
     {
         var rec = For(player);
@@ -463,7 +475,7 @@ internal static class LoanService
         rec.EventGrantCount++;
         if (cardType == typeof(DunningLetterCard)) rec.DunningLetterGranted = true;   // repay-vanish still keys on this
         _ = DebtLoanGrants.GrantCard(player, cardType);
-        MerchantBark.SayGrant();   // merchant hands you a payoff card + hints another next visit (moved off the loan)
+        MerchantBark.SayGrant(NextEventCardName(rec));   // hand a payoff card + hint the SPECIFIC next one
         SyncToRelic(player);
     }
 

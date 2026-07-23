@@ -288,8 +288,9 @@ internal static class SoloTest
                 if ((int)player.Gold < 150) await PlayerCmd.GainGold(150 - (int)player.Gold, player, false);
                 LoanService.ResetFor(player);                       // fresh loan → the loan-time 독촉장 grant fires the bark
                 await LoanService.GrantLoanDirect(player, 120);
-                await Task.Delay(1300);                             // let the deferred (0.6s) SayGrant speech bubble render
-                await Shot("8_merchant_bark");                      // merchant speech bubble when he hands you the 독촉장
+                await Task.Delay(2300);                             // deferred (0.6s) bark; wait for the grant-card display to
+                                                                    // fade so the speech bubble (3s) is unobstructed
+                await Shot("8_merchant_bark");                      // merchant hint naming the NEXT card (정산) when handing 독촉장
                 var shopNode = FindNode<NMerchantInventory>(stree.Root);
                 var repayBtn = FindNode<NMerchantRepayButton>(stree.Root);
                 try { shopNode?.Open(); } catch { }

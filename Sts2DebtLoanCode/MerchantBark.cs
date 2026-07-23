@@ -16,11 +16,11 @@ namespace Sts2DebtLoan;
 internal static class MerchantBark
 {
     internal readonly record struct Set(string[] First, string[] O200, string[] O300,
-                                        string[] R1, string[] R2, string[] R3, string[] R4, string[] Grant);
+                                        string[] R1, string[] R2, string[] R3, string[] R4, string[] Grant, string GrantHint);
 
     private const string KFirst = "DEBT_BARK_FIRST", K200 = "DEBT_BARK_200", K300 = "DEBT_BARK_300",
                          KR1 = "DEBT_REPAY_T1", KR2 = "DEBT_REPAY_T2", KR3 = "DEBT_REPAY_T3", KR4 = "DEBT_REPAY_T4",
-                         KGrant = "DEBT_BARK_GRANT";
+                         KGrant = "DEBT_BARK_GRANT", KGrantHint = "DEBT_BARK_GRANT_HINT";
 
     private static readonly Random Rng = new();
 
@@ -39,7 +39,8 @@ internal static class MerchantBark
             new[]{ "Cutting it fine — but the debt's cleared, fair and square." },
             new[]{ "Ha! Clawed your way out of that pile of debt. Rare indeed." },
             new[]{ "Here — a little something to help with that debt of yours. Come back next visit and I'll have another for you.",
-                   "Take this, it'll help you pay down what you owe. Drop by again and I'll dig up another." }),
+                   "Take this, it'll help you pay down what you owe. Drop by again and I'll dig up another." },
+            "Come back next visit and I'll have [b]{next}[/b] waiting for you."),
 
         ["kor"] = new(
             new[]{ "대출이라… 좋지, 좋아. 자, 여기 서명만 하게.",
@@ -54,7 +55,8 @@ internal static class MerchantBark
             new[]{ "아슬아슬했지만… 빚은 깔끔히 청산됐군." },
             new[]{ "허! 그 빚더미에서 기어이 빠져나왔군. 좀처럼 없는 일이야." },
             new[]{ "자, 그 빚 갚는 데 도움 될 걸세. 다음에 또 들르면 하나 더 챙겨주지.",
-                   "이걸 받게 — 상환에 보탬이 될 거야. 다음 방문 때 또 하나 꺼내주겠네." }),
+                   "이걸 받게 — 상환에 보탬이 될 거야. 다음 방문 때 또 하나 꺼내주겠네." },
+            "다음에 또 들르면 [b]{next}[/b] 같은 걸 챙겨주지."),
 
         ["jpn"] = new(
             new[]{ "借金かね？ よしよし、結構結構。ここに署名を。",
@@ -69,7 +71,8 @@ internal static class MerchantBark
             new[]{ "際どかったが…借金はきれいに片付いたな。" },
             new[]{ "はは！ あの借金の山から這い上がったか。珍しいことよ。" },
             new[]{ "ほれ、その借金の足しになる一枚だ。次に来たら、また一枚用意しておくぞ。",
-                   "これを持っていけ、返済の助けになる。また寄っておくれ、もう一枚掘り出しておこう。" }),
+                   "これを持っていけ、返済の助けになる。また寄っておくれ、もう一枚掘り出しておこう。" },
+            "次に寄ったら [b]{next}[/b] みたいなのを用意しておくぞ。"),
 
         ["zhs"] = new(
             new[]{ "要借钱？好，好得很。来，在这儿签个名。",
@@ -84,7 +87,8 @@ internal static class MerchantBark
             new[]{ "好险，不过债务清得干干净净。" },
             new[]{ "哈！从那堆债里爬出来了。可真少见。" },
             new[]{ "来，拿着这个，帮你还还债。下次再来，我还给你留一张。",
-                   "收下吧，能帮你把欠账还上些。改天再来，我给你再翻出一张。" }),
+                   "收下吧，能帮你把欠账还上些。改天再来，我给你再翻出一张。" },
+            "下次再来，我给你留一张 [b]{next}[/b] 这样的。"),
 
         ["deu"] = new(
             new[]{ "Ein Darlehen? Vortrefflich, vortrefflich. Hier unterschreiben.",
@@ -99,7 +103,8 @@ internal static class MerchantBark
             new[]{ "Knapp — doch die Schuld ist sauber getilgt." },
             new[]{ "Ha! Dich aus dem Schuldenberg gewühlt. Wahrlich selten." },
             new[]{ "Hier — eine kleine Hilfe für deine Schuld. Komm beim nächsten Mal wieder, dann hab ich noch eine für dich.",
-                   "Nimm das, es hilft dir beim Abtragen deiner Schulden. Schau wieder vorbei, ich grabe noch eine aus." }),
+                   "Nimm das, es hilft dir beim Abtragen deiner Schulden. Schau wieder vorbei, ich grabe noch eine aus." },
+            "Komm beim nächsten Mal wieder, dann hab ich [b]{next}[/b] für dich bereit."),
 
         ["fra"] = new(
             new[]{ "Un prêt ? Parfait, parfait. Signe donc ici.",
@@ -114,7 +119,8 @@ internal static class MerchantBark
             new[]{ "Juste à temps — mais la dette est réglée, rubis sur l'ongle." },
             new[]{ "Ha ! Sorti de ce tas de dettes. Rare, vraiment." },
             new[]{ "Tiens — un petit quelque chose pour t'aider avec cette dette. Repasse la prochaine fois, j'en aurai une autre pour toi.",
-                   "Prends ça, ça t'aidera à rembourser ce que tu dois. Repasse me voir, j'en dénicherai une autre." }),
+                   "Prends ça, ça t'aidera à rembourser ce que tu dois. Repasse me voir, j'en dénicherai une autre." },
+            "Repasse la prochaine fois, et j'aurai [b]{next}[/b] qui t'attend."),
 
         ["spa"] = new(
             new[]{ "¿Un préstamo? Estupendo, estupendo. Firma aquí.",
@@ -129,7 +135,8 @@ internal static class MerchantBark
             new[]{ "Por los pelos, pero la deuda está bien saldada." },
             new[]{ "¡Ja! Saliste de ese montón de deudas. Raro, sí." },
             new[]{ "Toma — algo para ayudarte con esa deuda tuya. Vuelve en tu próxima visita y tendré otra para ti.",
-                   "Llévate esto, te ayudará a saldar lo que debes. Pásate otra vez y te sacaré otra." }),
+                   "Llévate esto, te ayudará a saldar lo que debes. Pásate otra vez y te sacaré otra." },
+            "Vuelve en tu próxima visita y tendré [b]{next}[/b] esperándote."),
 
         ["esp"] = new(
             new[]{ "¿Un préstamo? Estupendo, estupendo. Firma aquí.",
@@ -144,7 +151,8 @@ internal static class MerchantBark
             new[]{ "Por los pelos, pero la deuda está bien saldada." },
             new[]{ "¡Ja! Saliste de ese montón de deudas. Raro, sí." },
             new[]{ "Toma — algo para ayudarte con esa deuda tuya. Vuelve en tu próxima visita y tendré otra para ti.",
-                   "Llévate esto, te ayudará a saldar lo que debes. Pásate otra vez y te sacaré otra." }),
+                   "Llévate esto, te ayudará a saldar lo que debes. Pásate otra vez y te sacaré otra." },
+            "Vuelve en tu próxima visita y tendré [b]{next}[/b] esperándote."),
 
         ["ita"] = new(
             new[]{ "Un prestito? Ottimo, ottimo. Firma qui.",
@@ -159,7 +167,8 @@ internal static class MerchantBark
             new[]{ "Per un pelo — ma il debito è estinto per bene." },
             new[]{ "Ah! Uscito da quel mucchio di debiti. Raro davvero." },
             new[]{ "Tieni — un aiutino per quel tuo debito. Ripassa la prossima volta e ne avrò un'altra per te.",
-                   "Prendi questa, ti aiuterà a ripagare ciò che devi. Fatti rivedere e ne scoverò un'altra." }),
+                   "Prendi questa, ti aiuterà a ripagare ciò che devi. Fatti rivedere e ne scoverò un'altra." },
+            "Ripassa la prossima volta e avrò [b]{next}[/b] pronta per te."),
 
         ["pol"] = new(
             new[]{ "Pożyczka? Wyśmienicie, wyśmienicie. Podpisz tutaj.",
@@ -174,7 +183,8 @@ internal static class MerchantBark
             new[]{ "Na styk — ale dług spłacony jak należy." },
             new[]{ "Ha! Wygrzebałeś się z tej góry długów. Rzadkość." },
             new[]{ "Masz — coś, co pomoże ci z tym długiem. Wpadnij następnym razem, a będę miał dla ciebie kolejną.",
-                   "Weź to, pomoże ci spłacić, coś winien. Zajrzyj znowu, a wygrzebię następną." }),
+                   "Weź to, pomoże ci spłacić, coś winien. Zajrzyj znowu, a wygrzebię następną." },
+            "Wpadnij następnym razem, a będę miał dla ciebie [b]{next}[/b]."),
 
         ["ptb"] = new(
             new[]{ "Um empréstimo? Ótimo, ótimo. Assine aqui.",
@@ -189,7 +199,8 @@ internal static class MerchantBark
             new[]{ "No limite — mas a dívida foi quitada direitinho." },
             new[]{ "Ha! Escapou daquele monte de dívidas. Coisa rara." },
             new[]{ "Toma — algo para ajudar com essa sua dívida. Volte na próxima visita que eu terei outra pra você.",
-                   "Leve isto, vai ajudar a abater o que você deve. Passe aqui de novo e eu desencavo outra." }),
+                   "Leve isto, vai ajudar a abater o que você deve. Passe aqui de novo e eu desencavo outra." },
+            "Volte na próxima visita que eu terei [b]{next}[/b] à sua espera."),
 
         ["rus"] = new(
             new[]{ "Заём? Прекрасно, прекрасно. Подпишите здесь.",
@@ -204,7 +215,8 @@ internal static class MerchantBark
             new[]{ "Впритык — но долг закрыт как положено." },
             new[]{ "Ха! Выбрался из той горы долгов. Редкость, право." },
             new[]{ "Вот — кое-что в помощь с твоим долгом. Загляни в следующий раз, и у меня найдётся ещё одна.",
-                   "Возьми, поможет расплатиться с тем, что задолжал. Заходи снова, откопаю тебе ещё одну." }),
+                   "Возьми, поможет расплатиться с тем, что задолжал. Заходи снова, откопаю тебе ещё одну." },
+            "Загляни в следующий раз, и [b]{next}[/b] будет тебя дожидаться."),
 
         ["tha"] = new(
             new[]{ "จะกู้หรือ? ดี ดีมาก มาเซ็นตรงนี้เลย",
@@ -219,7 +231,8 @@ internal static class MerchantBark
             new[]{ "หวุดหวิด แต่หนี้ก็เคลียร์เรียบร้อยดี" },
             new[]{ "ฮ่า! ปีนออกจากกองหนี้นั่นได้ หายากจริงๆ" },
             new[]{ "เอ้า รับไป ช่วยเรื่องหนี้ของเจ้าได้อยู่ มาอีกครั้งหน้า เดี๋ยวข้าหาอีกใบไว้ให้",
-                   "เอาไปสิ ช่วยให้เจ้าปลดหนี้ได้บ้าง แวะมาอีกนะ เดี๋ยวข้าขุดอีกใบมาให้" }),
+                   "เอาไปสิ ช่วยให้เจ้าปลดหนี้ได้บ้าง แวะมาอีกนะ เดี๋ยวข้าขุดอีกใบมาให้" },
+            "คราวหน้าแวะมาอีก เดี๋ยวข้าหาอย่าง [b]{next}[/b] ไว้ให้เจ้า"),
 
         ["tur"] = new(
             new[]{ "Borç mu? Âlâ, âlâ. Şuraya imzayı at.",
@@ -234,7 +247,8 @@ internal static class MerchantBark
             new[]{ "Kıl payı — ama borç tam olarak kapandı." },
             new[]{ "Ha! Şu borç yığınından sıyrıldın. Nadir iş doğrusu." },
             new[]{ "Al bakalım — şu borcuna bir nebze yardımı dokunur. Bir dahaki gelişinde uğra, sana bir tane daha ayırırım.",
-                   "Şunu al, borcunu azaltmana yarar. Yine bir uğra, sana bir tane daha çıkarırım." }),
+                   "Şunu al, borcunu azaltmana yarar. Yine bir uğra, sana bir tane daha çıkarırım." },
+            "Bir dahaki gelişinde uğra, sana [b]{next}[/b] gibisini ayırmış olurum."),
     };
 
     internal static Set For(string? lang) => lang != null && Lines.TryGetValue(lang, out var s) ? s : Lines["eng"];
@@ -250,6 +264,7 @@ internal static class MerchantBark
         Add(KFirst, s.First); Add(K200, s.O200); Add(K300, s.O300);
         Add(KR1, s.R1); Add(KR2, s.R2); Add(KR3, s.R3); Add(KR4, s.R4);
         Add(KGrant, s.Grant);
+        d[KGrantHint] = s.GrantHint;
         return d;
     }
 
@@ -265,15 +280,25 @@ internal static class MerchantBark
 
     /// <summary>Sly line said when the merchant hands the player a debt-payoff card. Deferred a beat so the
     /// merchant room UI is ready when this fires on shop-enter.</summary>
-    internal static void SayGrant()
+    internal static void SayGrant(string? nextCardName)
     {
         var s = For(CurrentLang);
-        if (Godot.Engine.GetMainLoop() is Godot.SceneTree tree)
+        void Fire()
         {
-            var timer = tree.CreateTimer(0.6);
-            timer.Timeout += () => SayRandom(KGrant, s.Grant);
+            try
+            {
+                if (!string.IsNullOrEmpty(nextCardName))
+                {
+                    var line = new LocString("relics", KGrantHint);
+                    line.Add("next", nextCardName);
+                    NMerchantRoom.Instance?.MerchantButton?.PlayDialogue(line, 3.0);
+                }
+                else SayRandom(KGrant, s.Grant);
+            }
+            catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] merchant grant bark failed: {e.Message}"); }
         }
-        else SayRandom(KGrant, s.Grant);
+        if (Godot.Engine.GetMainLoop() is Godot.SceneTree tree) { var t = tree.CreateTimer(0.6); t.Timeout += Fire; }
+        else Fire();
     }
     internal static void Say200()  { var s = For(CurrentLang); SayRandom(K200,   s.O200); }
     internal static void Say300()  { var s = For(CurrentLang); SayRandom(K300,   s.O300); }
