@@ -364,7 +364,7 @@ internal static class LoanService
             rec.DunningLetterGranted = true;
             rec.EventGrantCount = System.Math.Max(rec.EventGrantCount, 1);
             _ = DebtLoanGrants.GrantDunningLetter(player);
-            MerchantBark.SayGrant(NextEventCardName(rec));   // hand the 정기 납부 + hint the SPECIFIC next card
+            MerchantBark.SayGrant(NextEventCardHintKey(rec));   // hand the 정기 납부 + hint the SPECIFIC next card
         }
         EnsureRoomWatch();   // still watch shop revisits for the REMAINING payoff cards (slots 1-6)
         SyncToRelic(player);
@@ -448,16 +448,25 @@ internal static class LoanService
         return arr;
     }
 
-    /// <summary>Localized NAME of the NEXT event card the merchant will hand out (for his hint), or null if the
-    /// sequence is finished. Deterministic (same LoanFloor → same order + persists across save/load), so the hint
-    /// always matches what actually arrives next. Call AFTER EventGrantCount has advanced past the current card.</summary>
-    private static string? NextEventCardName(LoanRecord rec)
+    /// <summary>The INDIRECT-hint key for the NEXT event card the merchant will hand out (the merchant alludes to
+    /// its effect without naming it), or null if the sequence is finished. Deterministic (same LoanFloor → same
+    /// order + persists across save/load), so the hint always matches what actually arrives next. Call AFTER
+    /// EventGrantCount has advanced past the current card.</summary>
+    private static string? NextEventCardHintKey(LoanRecord rec)
     {
         int pos = rec.EventGrantCount;   // the NEXT slot
         if (pos >= TotalEventCards) return null;
         var type = pos < FixedOrder.Length ? FixedOrder[pos] : ShuffledRemainder(rec.LoanFloor)[pos - FixedOrder.Length];
-        try { return ModelDb.GetByIdOrNull<CardModel>(ModelDb.GetId(type))?.Title; }   // Title is already localized text
-        catch { return null; }
+        if (type == typeof(SettlementCard))       return "SETTLEMENT";
+        if (type == typeof(InvoiceCard))          return "INVOICE";
+        if (type == typeof(InterestSupportCard))  return "INTEREST_SUPPORT";
+        if (type == typeof(JobPlacementCard))     return "JOB_PLACEMENT";
+        if (type == typeof(PaymentBenefitCard))   return "PAYMENT_BENEFIT";
+        if (type == typeof(RefundCard))           return "REFUND";
+        if (type == typeof(BloodPaymentCard))     return "BLOOD_PAYMENT";
+        if (type == typeof(CounterclaimCard))     return "COUNTERCLAIM";
+        if (type == typeof(StatementCard))        return "STATEMENT";
+        return null;   // 정기 납부 (never "next") or unmapped → generic bark
     }
 
     private static void TryGrantDunningLetter(Player player)
@@ -475,7 +484,7 @@ internal static class LoanService
         rec.EventGrantCount++;
         if (cardType == typeof(DunningLetterCard)) rec.DunningLetterGranted = true;   // repay-vanish still keys on this
         _ = DebtLoanGrants.GrantCard(player, cardType);
-        MerchantBark.SayGrant(NextEventCardName(rec));   // hand a payoff card + hint the SPECIFIC next one
+        MerchantBark.SayGrant(NextEventCardHintKey(rec));   // hand a payoff card + hint the SPECIFIC next one
         SyncToRelic(player);
     }
 

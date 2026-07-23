@@ -16,11 +16,11 @@ namespace Sts2DebtLoan;
 internal static class MerchantBark
 {
     internal readonly record struct Set(string[] First, string[] O200, string[] O300,
-                                        string[] R1, string[] R2, string[] R3, string[] R4, string[] Grant, string GrantHint);
+                                        string[] R1, string[] R2, string[] R3, string[] R4, string[] Grant);
 
     private const string KFirst = "DEBT_BARK_FIRST", K200 = "DEBT_BARK_200", K300 = "DEBT_BARK_300",
                          KR1 = "DEBT_REPAY_T1", KR2 = "DEBT_REPAY_T2", KR3 = "DEBT_REPAY_T3", KR4 = "DEBT_REPAY_T4",
-                         KGrant = "DEBT_BARK_GRANT", KGrantHint = "DEBT_BARK_GRANT_HINT";
+                         KGrant = "DEBT_BARK_GRANT";
 
     private static readonly Random Rng = new();
 
@@ -39,8 +39,7 @@ internal static class MerchantBark
             new[]{ "Cutting it fine — but the debt's cleared, fair and square." },
             new[]{ "Ha! Clawed your way out of that pile of debt. Rare indeed." },
             new[]{ "Here — a little something to help with that debt of yours. Come back next visit and I'll have another for you.",
-                   "Take this, it'll help you pay down what you owe. Drop by again and I'll dig up another." },
-            "Come back next visit and I'll have [b]{next}[/b] waiting for you."),
+                   "Take this, it'll help you pay down what you owe. Drop by again and I'll dig up another." }),
 
         ["kor"] = new(
             new[]{ "대출이라… 좋지, 좋아. 자, 여기 서명만 하게.",
@@ -55,8 +54,7 @@ internal static class MerchantBark
             new[]{ "아슬아슬했지만… 빚은 깔끔히 청산됐군." },
             new[]{ "허! 그 빚더미에서 기어이 빠져나왔군. 좀처럼 없는 일이야." },
             new[]{ "자, 그 빚 갚는 데 도움 될 걸세. 다음에 또 들르면 하나 더 챙겨주지.",
-                   "이걸 받게 — 상환에 보탬이 될 거야. 다음 방문 때 또 하나 꺼내주겠네." },
-            "다음에 또 들르면 [b]{next}[/b] 같은 걸 챙겨주지."),
+                   "이걸 받게 — 상환에 보탬이 될 거야. 다음 방문 때 또 하나 꺼내주겠네." }),
 
         ["jpn"] = new(
             new[]{ "借金かね？ よしよし、結構結構。ここに署名を。",
@@ -71,8 +69,7 @@ internal static class MerchantBark
             new[]{ "際どかったが…借金はきれいに片付いたな。" },
             new[]{ "はは！ あの借金の山から這い上がったか。珍しいことよ。" },
             new[]{ "ほれ、その借金の足しになる一枚だ。次に来たら、また一枚用意しておくぞ。",
-                   "これを持っていけ、返済の助けになる。また寄っておくれ、もう一枚掘り出しておこう。" },
-            "次に寄ったら [b]{next}[/b] みたいなのを用意しておくぞ。"),
+                   "これを持っていけ、返済の助けになる。また寄っておくれ、もう一枚掘り出しておこう。" }),
 
         ["zhs"] = new(
             new[]{ "要借钱？好，好得很。来，在这儿签个名。",
@@ -87,8 +84,7 @@ internal static class MerchantBark
             new[]{ "好险，不过债务清得干干净净。" },
             new[]{ "哈！从那堆债里爬出来了。可真少见。" },
             new[]{ "来，拿着这个，帮你还还债。下次再来，我还给你留一张。",
-                   "收下吧，能帮你把欠账还上些。改天再来，我给你再翻出一张。" },
-            "下次再来，我给你留一张 [b]{next}[/b] 这样的。"),
+                   "收下吧，能帮你把欠账还上些。改天再来，我给你再翻出一张。" }),
 
         ["deu"] = new(
             new[]{ "Ein Darlehen? Vortrefflich, vortrefflich. Hier unterschreiben.",
@@ -103,8 +99,7 @@ internal static class MerchantBark
             new[]{ "Knapp — doch die Schuld ist sauber getilgt." },
             new[]{ "Ha! Dich aus dem Schuldenberg gewühlt. Wahrlich selten." },
             new[]{ "Hier — eine kleine Hilfe für deine Schuld. Komm beim nächsten Mal wieder, dann hab ich noch eine für dich.",
-                   "Nimm das, es hilft dir beim Abtragen deiner Schulden. Schau wieder vorbei, ich grabe noch eine aus." },
-            "Komm beim nächsten Mal wieder, dann hab ich [b]{next}[/b] für dich bereit."),
+                   "Nimm das, es hilft dir beim Abtragen deiner Schulden. Schau wieder vorbei, ich grabe noch eine aus." }),
 
         ["fra"] = new(
             new[]{ "Un prêt ? Parfait, parfait. Signe donc ici.",
@@ -119,8 +114,7 @@ internal static class MerchantBark
             new[]{ "Juste à temps — mais la dette est réglée, rubis sur l'ongle." },
             new[]{ "Ha ! Sorti de ce tas de dettes. Rare, vraiment." },
             new[]{ "Tiens — un petit quelque chose pour t'aider avec cette dette. Repasse la prochaine fois, j'en aurai une autre pour toi.",
-                   "Prends ça, ça t'aidera à rembourser ce que tu dois. Repasse me voir, j'en dénicherai une autre." },
-            "Repasse la prochaine fois, et j'aurai [b]{next}[/b] qui t'attend."),
+                   "Prends ça, ça t'aidera à rembourser ce que tu dois. Repasse me voir, j'en dénicherai une autre." }),
 
         ["spa"] = new(
             new[]{ "¿Un préstamo? Estupendo, estupendo. Firma aquí.",
@@ -135,8 +129,7 @@ internal static class MerchantBark
             new[]{ "Por los pelos, pero la deuda está bien saldada." },
             new[]{ "¡Ja! Saliste de ese montón de deudas. Raro, sí." },
             new[]{ "Toma — algo para ayudarte con esa deuda tuya. Vuelve en tu próxima visita y tendré otra para ti.",
-                   "Llévate esto, te ayudará a saldar lo que debes. Pásate otra vez y te sacaré otra." },
-            "Vuelve en tu próxima visita y tendré [b]{next}[/b] esperándote."),
+                   "Llévate esto, te ayudará a saldar lo que debes. Pásate otra vez y te sacaré otra." }),
 
         ["esp"] = new(
             new[]{ "¿Un préstamo? Estupendo, estupendo. Firma aquí.",
@@ -151,8 +144,7 @@ internal static class MerchantBark
             new[]{ "Por los pelos, pero la deuda está bien saldada." },
             new[]{ "¡Ja! Saliste de ese montón de deudas. Raro, sí." },
             new[]{ "Toma — algo para ayudarte con esa deuda tuya. Vuelve en tu próxima visita y tendré otra para ti.",
-                   "Llévate esto, te ayudará a saldar lo que debes. Pásate otra vez y te sacaré otra." },
-            "Vuelve en tu próxima visita y tendré [b]{next}[/b] esperándote."),
+                   "Llévate esto, te ayudará a saldar lo que debes. Pásate otra vez y te sacaré otra." }),
 
         ["ita"] = new(
             new[]{ "Un prestito? Ottimo, ottimo. Firma qui.",
@@ -167,8 +159,7 @@ internal static class MerchantBark
             new[]{ "Per un pelo — ma il debito è estinto per bene." },
             new[]{ "Ah! Uscito da quel mucchio di debiti. Raro davvero." },
             new[]{ "Tieni — un aiutino per quel tuo debito. Ripassa la prossima volta e ne avrò un'altra per te.",
-                   "Prendi questa, ti aiuterà a ripagare ciò che devi. Fatti rivedere e ne scoverò un'altra." },
-            "Ripassa la prossima volta e avrò [b]{next}[/b] pronta per te."),
+                   "Prendi questa, ti aiuterà a ripagare ciò che devi. Fatti rivedere e ne scoverò un'altra." }),
 
         ["pol"] = new(
             new[]{ "Pożyczka? Wyśmienicie, wyśmienicie. Podpisz tutaj.",
@@ -183,8 +174,7 @@ internal static class MerchantBark
             new[]{ "Na styk — ale dług spłacony jak należy." },
             new[]{ "Ha! Wygrzebałeś się z tej góry długów. Rzadkość." },
             new[]{ "Masz — coś, co pomoże ci z tym długiem. Wpadnij następnym razem, a będę miał dla ciebie kolejną.",
-                   "Weź to, pomoże ci spłacić, coś winien. Zajrzyj znowu, a wygrzebię następną." },
-            "Wpadnij następnym razem, a będę miał dla ciebie [b]{next}[/b]."),
+                   "Weź to, pomoże ci spłacić, coś winien. Zajrzyj znowu, a wygrzebię następną." }),
 
         ["ptb"] = new(
             new[]{ "Um empréstimo? Ótimo, ótimo. Assine aqui.",
@@ -199,8 +189,7 @@ internal static class MerchantBark
             new[]{ "No limite — mas a dívida foi quitada direitinho." },
             new[]{ "Ha! Escapou daquele monte de dívidas. Coisa rara." },
             new[]{ "Toma — algo para ajudar com essa sua dívida. Volte na próxima visita que eu terei outra pra você.",
-                   "Leve isto, vai ajudar a abater o que você deve. Passe aqui de novo e eu desencavo outra." },
-            "Volte na próxima visita que eu terei [b]{next}[/b] à sua espera."),
+                   "Leve isto, vai ajudar a abater o que você deve. Passe aqui de novo e eu desencavo outra." }),
 
         ["rus"] = new(
             new[]{ "Заём? Прекрасно, прекрасно. Подпишите здесь.",
@@ -215,8 +204,7 @@ internal static class MerchantBark
             new[]{ "Впритык — но долг закрыт как положено." },
             new[]{ "Ха! Выбрался из той горы долгов. Редкость, право." },
             new[]{ "Вот — кое-что в помощь с твоим долгом. Загляни в следующий раз, и у меня найдётся ещё одна.",
-                   "Возьми, поможет расплатиться с тем, что задолжал. Заходи снова, откопаю тебе ещё одну." },
-            "Загляни в следующий раз, и [b]{next}[/b] будет тебя дожидаться."),
+                   "Возьми, поможет расплатиться с тем, что задолжал. Заходи снова, откопаю тебе ещё одну." }),
 
         ["tha"] = new(
             new[]{ "จะกู้หรือ? ดี ดีมาก มาเซ็นตรงนี้เลย",
@@ -231,8 +219,7 @@ internal static class MerchantBark
             new[]{ "หวุดหวิด แต่หนี้ก็เคลียร์เรียบร้อยดี" },
             new[]{ "ฮ่า! ปีนออกจากกองหนี้นั่นได้ หายากจริงๆ" },
             new[]{ "เอ้า รับไป ช่วยเรื่องหนี้ของเจ้าได้อยู่ มาอีกครั้งหน้า เดี๋ยวข้าหาอีกใบไว้ให้",
-                   "เอาไปสิ ช่วยให้เจ้าปลดหนี้ได้บ้าง แวะมาอีกนะ เดี๋ยวข้าขุดอีกใบมาให้" },
-            "คราวหน้าแวะมาอีก เดี๋ยวข้าหาอย่าง [b]{next}[/b] ไว้ให้เจ้า"),
+                   "เอาไปสิ ช่วยให้เจ้าปลดหนี้ได้บ้าง แวะมาอีกนะ เดี๋ยวข้าขุดอีกใบมาให้" }),
 
         ["tur"] = new(
             new[]{ "Borç mu? Âlâ, âlâ. Şuraya imzayı at.",
@@ -247,11 +234,195 @@ internal static class MerchantBark
             new[]{ "Kıl payı — ama borç tam olarak kapandı." },
             new[]{ "Ha! Şu borç yığınından sıyrıldın. Nadir iş doğrusu." },
             new[]{ "Al bakalım — şu borcuna bir nebze yardımı dokunur. Bir dahaki gelişinde uğra, sana bir tane daha ayırırım.",
-                   "Şunu al, borcunu azaltmana yarar. Yine bir uğra, sana bir tane daha çıkarırım." },
-            "Bir dahaki gelişinde uğra, sana [b]{next}[/b] gibisini ayırmış olurum."),
+                   "Şunu al, borcunu azaltmana yarar. Yine bir uğra, sana bir tane daha çıkarırım." }),
+    };
+
+    /// <summary>Per-language, per-card INDIRECT hints. When the merchant hands a debt-payoff card he alludes
+    /// to what's coming NEXT without naming it — keyed by the next card's CARD KEY. Injected into the "relics"
+    /// LocTable by LocInjectionPatch as DEBT_HINT_&lt;KEY&gt; so PlayDialogue's LocString can resolve them.</summary>
+    private static readonly Dictionary<string, Dictionary<string, string>> HintsByLang = new()
+    {
+        ["eng"] = new()
+        {
+            ["SETTLEMENT"]       = "Next time, I'll set aside something to shield you when the blows rain down.",
+            ["INVOICE"]          = "Come back and I'll have a way to bill your foes back for all you've paid.",
+            ["INTEREST_SUPPORT"] = "I'll dig up something that lets a bit of your coin find its way home.",
+            ["JOB_PLACEMENT"]    = "Next visit I might line up a spot of honest work to fatten your purse.",
+            ["PAYMENT_BENEFIT"]  = "I'll keep something that toughens your hide the more you pay.",
+            ["REFUND"]           = "For a diligent payer, I'll tuck away a little reward.",
+            ["BLOOD_PAYMENT"]    = "Should your coin run dry, I know a way to settle in... redder currency.",
+            ["COUNTERCLAIM"]     = "Next time, a trinket so every payment jabs at your enemies.",
+            ["STATEMENT"]        = "I'll leave a ledger-trick that turns each payment into a fresh card in hand.",
+        },
+        ["kor"] = new()
+        {
+            ["SETTLEMENT"]       = "다음엔 매질이 쏟아질 때 자넬 막아줄 만한 걸 챙겨두지.",
+            ["INVOICE"]          = "다음에 오면 자네가 낸 만큼 적에게 되청구할 한 방을 마련해두마.",
+            ["INTEREST_SUPPORT"] = "낸 돈이 조금은 자네 주머니로 돌아오게 해줄 물건을 찾아두지.",
+            ["JOB_PLACEMENT"]    = "다음엔 자네 손에 일감 쥐여 주머니 불릴 만한 걸 알아봐 두겠네.",
+            ["PAYMENT_BENEFIT"]  = "갚으면 갚을수록 몸이 단단해지는 걸 하나 준비해두지.",
+            ["REFUND"]           = "성실히 갚는 자에게 돌아갈 소소한 보답을 챙겨두마.",
+            ["BLOOD_PAYMENT"]    = "돈이 마르거든, 더 붉은 값으로 빚을 치르는 수를 일러주지.",
+            ["COUNTERCLAIM"]     = "다음엔 낼 때마다 적을 쿡 찌르는 물건을 챙겨두겠네.",
+            ["STATEMENT"]        = "낼 때마다 장부를 넘겨 새 패를 뽑게 해줄 재주를 남겨두지.",
+        },
+        ["jpn"] = new()
+        {
+            ["SETTLEMENT"]       = "次は、殴りが降り注ぐときにお前を守ってくれる一品を取っておこう。",
+            ["INVOICE"]          = "また来い。お前が払った分、敵に付け回してやる手を用意しておく。",
+            ["INTEREST_SUPPORT"] = "払った銭が少しはお前の懐に戻るような品を掘り出しておくぞ。",
+            ["JOB_PLACEMENT"]    = "次の来店じゃ、懐を潤す真っ当な仕事の口を見繕っておこうかの。",
+            ["PAYMENT_BENEFIT"]  = "払えば払うほど体が頑丈になる一品を取っておこう。",
+            ["REFUND"]           = "真面目に払う者にはな、ちょいとした礼を取っておいてやる。",
+            ["BLOOD_PAYMENT"]    = "銭が尽きたときはな…もっと赤い通貨で払う手を教えてやろう。",
+            ["COUNTERCLAIM"]     = "次は、払うたびに敵をチクリと刺す小物を取っておこう。",
+            ["STATEMENT"]        = "払うたびに帳面をめくって新しい札を引かせる、そんな仕掛けを残しておこう。",
+        },
+        ["zhs"] = new()
+        {
+            ["SETTLEMENT"]       = "下回，我给你留件挨打时能替你挡上一挡的东西。",
+            ["INVOICE"]          = "再来一趟，我备下一招，把你付的账统统回敬给敌人。",
+            ["INTEREST_SUPPORT"] = "我给你翻出件宝贝，让你付的钱有一小部分能回到你兜里。",
+            ["JOB_PLACEMENT"]    = "下次来，我或许给你张罗份正经营生，好让你的钱袋鼓起来。",
+            ["PAYMENT_BENEFIT"]  = "我给你留件东西，你付得越多，身子骨就越结实。",
+            ["REFUND"]           = "对按时还钱的主顾嘛，我会藏下一点小回报。",
+            ["BLOOD_PAYMENT"]    = "等你的钱花光了…我有个法子，让你用更红的通货来还账。",
+            ["COUNTERCLAIM"]     = "下回给你留个小玩意儿，每回付账都戳敌人一下。",
+            ["STATEMENT"]        = "我给你留一手账本的把戏，每付一次账就翻出一张新牌到手里。",
+        },
+        ["deu"] = new()
+        {
+            ["SETTLEMENT"]       = "Nächstes Mal lege ich dir etwas beiseite, das dich schützt, wenn die Hiebe niederprasseln.",
+            ["INVOICE"]          = "Komm wieder, dann hab ich einen Weg, deinen Feinden alles zurückzustellen, was du gezahlt hast.",
+            ["INTEREST_SUPPORT"] = "Ich grabe dir etwas aus, das ein wenig von deinem Geld den Heimweg finden lässt.",
+            ["JOB_PLACEMENT"]    = "Beim nächsten Besuch besorge ich dir vielleicht ehrliche Arbeit, die deinen Beutel füllt.",
+            ["PAYMENT_BENEFIT"]  = "Ich behalte etwas, das deine Haut härter macht, je mehr du zahlst.",
+            ["REFUND"]           = "Für einen fleißigen Zahler lege ich eine kleine Belohnung zurück.",
+            ["BLOOD_PAYMENT"]    = "Sollte dein Geld versiegen, kenne ich einen Weg, in… röterer Währung zu begleichen.",
+            ["COUNTERCLAIM"]     = "Nächstes Mal ein Schmuckstück, damit jede Zahlung deine Feinde sticht.",
+            ["STATEMENT"]        = "Ich hinterlasse dir einen Buchhalter-Trick, der jede Zahlung in eine frische Karte auf der Hand verwandelt.",
+        },
+        ["fra"] = new()
+        {
+            ["SETTLEMENT"]       = "La prochaine fois, je te mettrai de côté de quoi te protéger quand les coups pleuvront.",
+            ["INVOICE"]          = "Reviens, et j'aurai un moyen de refacturer à tes ennemis tout ce que tu as payé.",
+            ["INTEREST_SUPPORT"] = "Je te dénicherai de quoi faire revenir un peu de ta monnaie dans ta poche.",
+            ["JOB_PLACEMENT"]    = "À ta prochaine visite, je pourrais te trouver un honnête travail pour garnir ta bourse.",
+            ["PAYMENT_BENEFIT"]  = "Je te garde de quoi durcir ta peau à mesure que tu paies.",
+            ["REFUND"]           = "Pour un payeur assidu, je mettrai de côté une petite récompense.",
+            ["BLOOD_PAYMENT"]    = "Si ta monnaie vient à manquer, je connais un moyen de régler en… monnaie plus rouge.",
+            ["COUNTERCLAIM"]     = "La prochaine fois, un bibelot pour que chaque paiement pique tes ennemis.",
+            ["STATEMENT"]        = "Je te laisserai un tour de grand livre qui change chaque paiement en une carte fraîche en main.",
+        },
+        ["spa"] = new()
+        {
+            ["SETTLEMENT"]       = "La próxima vez te apartaré algo que te proteja cuando lluevan los golpes.",
+            ["INVOICE"]          = "Vuelve y tendré un modo de refacturar a tus enemigos todo lo que has pagado.",
+            ["INTEREST_SUPPORT"] = "Te desenterraré algo que haga que parte de tu moneda regrese a tu bolsillo.",
+            ["JOB_PLACEMENT"]    = "En tu próxima visita quizá te consiga un trabajo honrado para engordar tu bolsa.",
+            ["PAYMENT_BENEFIT"]  = "Te guardaré algo que te endurece el pellejo cuanto más pagas.",
+            ["REFUND"]           = "Para un pagador diligente, apartaré una pequeña recompensa.",
+            ["BLOOD_PAYMENT"]    = "Si tu moneda se agota… conozco un modo de saldar en moneda más roja.",
+            ["COUNTERCLAIM"]     = "La próxima vez, un dije para que cada pago pinche a tus enemigos.",
+            ["STATEMENT"]        = "Te dejaré un truco de libro de cuentas que convierte cada pago en una carta nueva en la mano.",
+        },
+        ["esp"] = new()
+        {
+            ["SETTLEMENT"]       = "La próxima vez te apartaré algo que te proteja cuando lluevan los golpes.",
+            ["INVOICE"]          = "Vuelve y tendré un modo de refacturar a tus enemigos todo lo que has pagado.",
+            ["INTEREST_SUPPORT"] = "Te desenterraré algo que haga que parte de tu moneda regrese a tu bolsillo.",
+            ["JOB_PLACEMENT"]    = "En tu próxima visita quizá te consiga un trabajo honrado para engordar tu bolsa.",
+            ["PAYMENT_BENEFIT"]  = "Te guardaré algo que te endurece el pellejo cuanto más pagas.",
+            ["REFUND"]           = "Para un pagador diligente, apartaré una pequeña recompensa.",
+            ["BLOOD_PAYMENT"]    = "Si tu moneda se agota… conozco un modo de saldar en moneda más roja.",
+            ["COUNTERCLAIM"]     = "La próxima vez, un dije para que cada pago pinche a tus enemigos.",
+            ["STATEMENT"]        = "Te dejaré un truco de libro de cuentas que convierte cada pago en una carta nueva en la mano.",
+        },
+        ["ita"] = new()
+        {
+            ["SETTLEMENT"]       = "La prossima volta ti metterò da parte qualcosa che ti ripari quando piovono i colpi.",
+            ["INVOICE"]          = "Torna e avrò un modo per riaddebitare ai tuoi nemici tutto ciò che hai pagato.",
+            ["INTEREST_SUPPORT"] = "Ti scoverò qualcosa che faccia tornare un po' delle tue monete in tasca.",
+            ["JOB_PLACEMENT"]    = "Alla prossima visita magari ti procuro un onesto lavoro per gonfiarti la borsa.",
+            ["PAYMENT_BENEFIT"]  = "Ti terrò qualcosa che ti indurisce la pelle più paghi.",
+            ["REFUND"]           = "Per un pagatore diligente, metterò da parte una piccola ricompensa.",
+            ["BLOOD_PAYMENT"]    = "Se le monete ti si esauriscono… conosco un modo per saldare in valuta più rossa.",
+            ["COUNTERCLAIM"]     = "La prossima volta, un ninnolo perché ogni pagamento punga i tuoi nemici.",
+            ["STATEMENT"]        = "Ti lascerò un trucco da libro mastro che trasforma ogni pagamento in una carta fresca in mano.",
+        },
+        ["pol"] = new()
+        {
+            ["SETTLEMENT"]       = "Następnym razem odłożę ci coś, co osłoni cię, gdy posypią się ciosy.",
+            ["INVOICE"]          = "Wróć, a znajdę sposób, by odbić twoim wrogom wszystko, coś zapłacił.",
+            ["INTEREST_SUPPORT"] = "Wygrzebię ci coś, dzięki czemu część twojej monety wróci do kieszeni.",
+            ["JOB_PLACEMENT"]    = "Przy następnej wizycie może załatwię ci uczciwą robotę, by napełnić sakiewkę.",
+            ["PAYMENT_BENEFIT"]  = "Zachowam ci coś, co hartuje skórę, im więcej płacisz.",
+            ["REFUND"]           = "Dla pilnego płatnika odłożę drobną nagrodę.",
+            ["BLOOD_PAYMENT"]    = "Gdy zabraknie ci monet… znam sposób, by spłacić w bardziej czerwonej walucie.",
+            ["COUNTERCLAIM"]     = "Następnym razem błyskotka, by każda zapłata kłuła twoich wrogów.",
+            ["STATEMENT"]        = "Zostawię ci sztuczkę z ksiąg, co zamienia każdą zapłatę w świeżą kartę w ręce.",
+        },
+        ["ptb"] = new()
+        {
+            ["SETTLEMENT"]       = "Da próxima vez, vou separar algo que te proteja quando os golpes chovem.",
+            ["INVOICE"]          = "Volte, e terei um jeito de cobrar de volta dos teus inimigos tudo o que pagaste.",
+            ["INTEREST_SUPPORT"] = "Vou desencavar algo que faça parte da tua moeda voltar pro teu bolso.",
+            ["JOB_PLACEMENT"]    = "Na próxima visita talvez eu arranje um trabalho honesto pra encher tua bolsa.",
+            ["PAYMENT_BENEFIT"]  = "Vou guardar algo que endurece teu couro quanto mais você paga.",
+            ["REFUND"]           = "Para um pagador aplicado, vou reservar uma pequena recompensa.",
+            ["BLOOD_PAYMENT"]    = "Se tua moeda secar… conheço um jeito de quitar em moeda mais vermelha.",
+            ["COUNTERCLAIM"]     = "Da próxima vez, um berloque pra que cada pagamento espete teus inimigos.",
+            ["STATEMENT"]        = "Vou te deixar um truque de livro-caixa que transforma cada pagamento numa carta nova na mão.",
+        },
+        ["rus"] = new()
+        {
+            ["SETTLEMENT"]       = "В следующий раз припасу тебе кое-что, что прикроет, когда посыплются удары.",
+            ["INVOICE"]          = "Загляни снова, и у меня найдётся способ выставить твоим врагам счёт за всё, что ты заплатил.",
+            ["INTEREST_SUPPORT"] = "Откопаю тебе штуковину, чтоб хоть часть твоих монет возвращалась в карман.",
+            ["JOB_PLACEMENT"]    = "В следующий заход, глядишь, подыщу тебе честную работёнку, чтоб набить кошель.",
+            ["PAYMENT_BENEFIT"]  = "Приберегу тебе кое-что, от чего шкура крепчает, чем больше платишь.",
+            ["REFUND"]           = "Прилежному плательщику припрячу небольшую награду.",
+            ["BLOOD_PAYMENT"]    = "Коли монета иссякнет… знаю способ расплатиться валютой покраснее.",
+            ["COUNTERCLAIM"]     = "В следующий раз — безделицу, чтоб каждая уплата колола твоих врагов.",
+            ["STATEMENT"]        = "Оставлю тебе бухгалтерский трюк, что превращает каждую уплату в свежую карту в руке.",
+        },
+        ["tha"] = new()
+        {
+            ["SETTLEMENT"]       = "คราวหน้า ข้าจะเก็บของไว้ให้สักอย่าง คอยกำบังเจ้ายามหมัดกระหน่ำลงมา",
+            ["INVOICE"]          = "กลับมาอีก แล้วข้าจะมีวิธีทวงคืนศัตรูตามที่เจ้าจ่ายไปทั้งหมด",
+            ["INTEREST_SUPPORT"] = "ข้าจะขุดของมาให้ ที่ทำให้เงินของเจ้าบางส่วนหาทางกลับเข้ากระเป๋า",
+            ["JOB_PLACEMENT"]    = "คราวหน้าที่แวะมา ข้าอาจหางานสุจริตให้เจ้าทำ เพิ่มพูนถุงเงินเสียหน่อย",
+            ["PAYMENT_BENEFIT"]  = "ข้าจะเก็บของไว้ให้ ยิ่งเจ้าจ่ายมาก ตัวก็ยิ่งแกร่ง",
+            ["REFUND"]           = "สำหรับคนที่ชำระอย่างขยันขันแข็ง ข้าจะกันรางวัลเล็กๆ ไว้ให้",
+            ["BLOOD_PAYMENT"]    = "หากเงินของเจ้าเหือดแห้ง… ข้ารู้วิธีชำระด้วยสกุลเงินที่แดงกว่านั้น",
+            ["COUNTERCLAIM"]     = "คราวหน้า ของกระจุกสักชิ้น ให้ทุกครั้งที่จ่ายได้ทิ่มแทงศัตรู",
+            ["STATEMENT"]        = "ข้าจะทิ้งกลเม็ดบัญชีไว้ให้ ที่พลิกทุกการจ่ายเป็นไพ่ใบใหม่ในมือ",
+        },
+        ["tur"] = new()
+        {
+            ["SETTLEMENT"]       = "Bir dahakine, darbeler yağarken seni koruyacak bir şey ayırırım.",
+            ["INVOICE"]          = "Yine gel, ödediğin her kuruşu düşmanlarına geri fatura edecek bir yol bulurum.",
+            ["INTEREST_SUPPORT"] = "Sana öyle bir şey çıkarırım ki paranın bir kısmı cebine geri döner.",
+            ["JOB_PLACEMENT"]    = "Bir sonraki gelişinde belki kesen dolsun diye sana dürüst bir iş ayarlarım.",
+            ["PAYMENT_BENEFIT"]  = "Ödedikçe derini sertleştiren bir şey saklarım sana.",
+            ["REFUND"]           = "Gayretli bir ödeyiciye ufak bir ödül ayırırım.",
+            ["BLOOD_PAYMENT"]    = "Paran suyunu çekerse… daha kırmızı bir akçeyle ödemenin yolunu bilirim.",
+            ["COUNTERCLAIM"]     = "Bir dahakine, her ödeme düşmanlarını dürtsün diye bir ıvır zıvır.",
+            ["STATEMENT"]        = "Sana bir defter oyunu bırakırım; her ödemeyi eline taze bir karta çevirir.",
+        },
     };
 
     internal static Set For(string? lang) => lang != null && Lines.TryGetValue(lang, out var s) ? s : Lines["eng"];
+
+    /// <summary>Loc keys (DEBT_HINT_&lt;CARD KEY&gt; → hint) to inject for a language; falls back to English.
+    /// Called by LocInjectionPatch when merging into the "relics" LocTable.</summary>
+    internal static Dictionary<string, string> HintLocKeys(string? lang)
+    {
+        var src = (lang != null && HintsByLang.TryGetValue(lang, out var d)) ? d : HintsByLang["eng"];
+        var outd = new Dictionary<string, string>();
+        foreach (var kv in src) outd[$"DEBT_HINT_{kv.Key}"] = kv.Value;
+        return outd;
+    }
 
     private static string CurrentLang => LocManager.Instance?.Language ?? "eng";
 
@@ -264,7 +435,6 @@ internal static class MerchantBark
         Add(KFirst, s.First); Add(K200, s.O200); Add(K300, s.O300);
         Add(KR1, s.R1); Add(KR2, s.R2); Add(KR3, s.R3); Add(KR4, s.R4);
         Add(KGrant, s.Grant);
-        d[KGrantHint] = s.GrantHint;
         return d;
     }
 
@@ -278,22 +448,20 @@ internal static class MerchantBark
 
     internal static void SayFirst() { var s = For(CurrentLang); SayRandom(KFirst, s.First); }
 
-    /// <summary>Sly line said when the merchant hands the player a debt-payoff card. Deferred a beat so the
-    /// merchant room UI is ready when this fires on shop-enter.</summary>
-    internal static void SayGrant(string? nextCardName)
+    /// <summary>Sly line said when the merchant hands the player a debt-payoff card. Given a HINT KEY (the next
+    /// card's CARD KEY) he alludes to its effect without naming it; with none, falls back to the generic Grant
+    /// lines. Deferred a beat so the merchant room UI is ready when this fires on shop-enter.</summary>
+    internal static void SayGrant(string? hintKey)
     {
         var s = For(CurrentLang);
         void Fire()
         {
             try
             {
-                if (!string.IsNullOrEmpty(nextCardName))
-                {
-                    var line = new LocString("relics", KGrantHint);
-                    line.Add("next", nextCardName);
-                    NMerchantRoom.Instance?.MerchantButton?.PlayDialogue(line, 3.0);
-                }
-                else SayRandom(KGrant, s.Grant);
+                if (!string.IsNullOrEmpty(hintKey))
+                    NMerchantRoom.Instance?.MerchantButton?.PlayDialogue(new LocString("relics", $"DEBT_HINT_{hintKey}"), 3.0);
+                else
+                    SayRandom(KGrant, s.Grant);
             }
             catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] merchant grant bark failed: {e.Message}"); }
         }

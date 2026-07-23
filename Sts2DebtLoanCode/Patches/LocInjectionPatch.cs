@@ -39,6 +39,8 @@ internal static class LocInjectionPatch
             };
             // Merchant loan/repay barks (indexed variants, one picked at random by MerchantBark).
             foreach (var kv in MerchantBark.LocKeys(MerchantBark.For(manager.Language))) relics[kv.Key] = kv.Value;
+            // Per-card INDIRECT next-card hints (DEBT_HINT_<CARDKEY>) the merchant alludes to on each grant.
+            foreach (var kv in MerchantBark.HintLocKeys(manager.Language)) relics[kv.Key] = kv.Value;
             // 납부 (Payment) hover tip shown on the 빚 독촉 card (custom HoverTip references these keys).
             var pay = DebtLoanLoc.PaymentFor(manager.Language);
             relics["DEBT_PAYMENT.title"] = pay.Title;
