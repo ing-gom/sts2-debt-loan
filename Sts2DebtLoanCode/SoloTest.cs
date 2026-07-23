@@ -158,10 +158,34 @@ internal static class SoloTest
             await LoanService.GrantLoanDirect(player, 100);
             await Task.Delay(300);
             var rec = LoanService.For(player);
-            bool tA = LoanService.PlayerHasLedger(player) && rec != null && rec.Borrowed == 100 && rec.Principal == 150 // 100 + 50% surcharge
+            bool tA = LoanService.PlayerHasLedger(player) && rec != null && rec.Borrowed == 100 && rec.Principal == 120 // 100 + 20% origination (fresh, 0 rooms)
                       && rec.Active && LoanService.DebtCardCountFor(player) == 1;
             W($"  assert loan: ledger={LoanService.PlayerHasLedger(player)} borrowed={rec?.Borrowed} owed={rec?.Principal} active={rec?.Active} cards@0={LoanService.DebtCardCountFor(player)} -> {tA}");
             all &= tA;
+
+            // A2) Node interest: +5% of borrowed per room carried, up to 8 rooms (+40%); on top of the 20% origination
+            //     that's a 60% ceiling. Idempotent per room (no double-charge on re-fire/reload).
+            Step("node interest accrual");
+            LoanService.ResetFor(player);
+            await LoanService.GrantLoanDirect(player, 100);         // owed 120 (20% origination), 0 rooms applied
+            await Task.Delay(200);
+            var recN = LoanService.For(player)!;
+            int owedN0 = recN.Principal;                            // 120
+            recN.LoanFloor = player.RunState.TotalFloor - 4;        // simulate carrying the debt 4 rooms
+            LoanService.AccrueNodeInterest(player);                 // +100×5%×4 = +20 → 140
+            int owedN4 = recN.Principal;
+            LoanService.AccrueNodeInterest(player);                 // idempotent (same 4 rooms) → still 140
+            int owedN4b = recN.Principal;
+            recN.LoanFloor = player.RunState.TotalFloor - 20;       // 20 rooms → capped at 8 (max +40%)
+            LoanService.AccrueNodeInterest(player);                 // +100×5%×(8−4)=+20 → 160 (60% total)
+            int owedNMax = recN.Principal;
+            bool tA2 = owedN0 == 120 && owedN4 == 140 && owedN4b == 140 && owedNMax == 160;
+            W($"  assert node-interest: owed0={owedN0}(120) 4rooms={owedN4}(140) idempotent={owedN4b}(140) capped={owedNMax}(160) -> {tA2}");
+            all &= tA2;
+            // Restore a fresh owed-120 loan (0 rooms) for the sections below, which back-date LoanFloor and expect 120.
+            LoanService.ResetFor(player);
+            await LoanService.GrantLoanDirect(player, 100);
+            await Task.Delay(200);
 
             // B) Debt-curse TIER schedule: accelerating gaps 0/10/17/22 (each tier unlocks a new curse),
             //    capped at 4. Rooms are COMPUTED as TotalFloor − LoanFloor, so we simulate by back-dating.
@@ -203,11 +227,11 @@ internal static class SoloTest
             var reloaded = RunState.FromSerializable(save);
             var rp = reloaded.Players.First();
             var rrelic = LoanService.LedgerRelicOf(rp);
-            bool tC = rrelic != null && rrelic.Borrowed == 100 && rrelic.Principal == 150 && rrelic.LoanFloor == baseFloor - 30 && rrelic.Active;
+            bool tC = rrelic != null && rrelic.Borrowed == 100 && rrelic.Principal == 120 && rrelic.LoanFloor == baseFloor - 30 && rrelic.Active;
             LoanService.RestoreFromRelic(rp);
             var rrec = LoanService.For(rp);
             // rooms-since-loan (30 → tier 4) is re-derived from the restored LoanFloor, not stored.
-            bool tC2 = rrec != null && rrec.Borrowed == 100 && rrec.Principal == 150 && rrec.LoanFloor == baseFloor - 30 && rrec.Active
+            bool tC2 = rrec != null && rrec.Borrowed == 100 && rrec.Principal == 120 && rrec.LoanFloor == baseFloor - 30 && rrec.Active
                        && LoanService.DebtCardCountFor(rp) == 4;
             W($"  assert persist: relic borrowed={rrelic?.Borrowed} owed={rrelic?.Principal} loanFloor={rrelic?.LoanFloor} -> {tC}; restore owed={rrec?.Principal} cards={LoanService.DebtCardCountFor(rp)}(4) -> {tC2}");
             all &= tC && tC2;
@@ -274,22 +298,21 @@ internal static class SoloTest
             }
             all &= tG;
 
-            // H) Amortization: borrow 100 → owe 150 (100 + 50% surcharge). Each Payment now goes 100% to
-            //    principal (interest = the up-front surcharge), so the owed drops by the full amount paid.
-            //    5 drains of 10 → 150 − 50 = 100, paid 50.
-            Step("amortization (100% to principal, on 150 owed)");
+            // H) Amortization: borrow 100 → owe 120 (100 + 20% origination, fresh/0 rooms). Each Payment goes 100%
+            //    to the owed, so it drops by the full amount paid. 5 drains of 10 → 120 − 50 = 70, paid 50.
+            Step("amortization (100% to owed, on 120 owed)");
             LoanService.ResetFor(player);
             await DebtLoanGrants.RemoveRelic(player);
             await Task.Delay(150);
-            await LoanService.GrantLoanDirect(player, 100);   // borrowed 100 → principal 150
+            await LoanService.GrantLoanDirect(player, 100);   // borrowed 100 → owed 120 (20% origination)
             await Task.Delay(150);
             for (int i = 0; i < 5; i++) await LoanService.AccrueInterest(player, 10, principalShareOverride: 1.0);   // 5 × 10 principal
             await Task.Delay(200);
             var rh = LoanService.For(player);
             var hRelic = LoanService.LedgerRelicOf(player);
-            // owed 100, paid 50; relic KEPT + still active (only a shop repay removes it); hover reflects it.
-            bool tH = rh != null && rh.Active && rh.Borrowed == 100 && rh.Principal == 100 && rh.TotalPaid == 50
-                      && hRelic != null && hRelic.Principal == 100 && hRelic.TotalPaid == 50;
+            // owed 70, paid 50; relic KEPT + still active (only a shop repay removes it); hover reflects it.
+            bool tH = rh != null && rh.Active && rh.Borrowed == 100 && rh.Principal == 70 && rh.TotalPaid == 50
+                      && hRelic != null && hRelic.Principal == 70 && hRelic.TotalPaid == 50;
             string hover = "";
             try { hover = hRelic?.DynamicDescription.GetFormattedText() ?? ""; } catch { }
             W($"  assert amortize: borrowed={rh?.Borrowed}(100) owed={rh?.Principal}(100) paid={rh?.TotalPaid}(50) relicOwed={hRelic?.Principal} -> {tH}");
@@ -403,7 +426,7 @@ internal static class SoloTest
             await DebtLoanGrants.RemoveRelic(player);
             await Task.Delay(120);
             DebtLoanConfig.MaxLoan = 300;
-            await LoanService.GrantLoanDirect(player, 125);          // (grants a loan; surcharge would make it 163)
+            await LoanService.GrantLoanDirect(player, 125);          // (grants a loan; 20% origination → owed 150)
             await Task.Delay(120);
             var recL = LoanService.For(player)!;
             recL.Principal = 125;                                     // pin to a clean value = exactly 5+10+30+80 for this focused test
@@ -759,7 +782,7 @@ internal static class SoloTest
                 await DebtLoanGrants.RemoveRelic(player);
                 await Task.Delay(120);
                 DebtLoanConfig.MaxLoan = 9999;
-                await LoanService.GrantLoanDirect(player, 60);        // owe 90 (60 + 50% surcharge)
+                await LoanService.GrantLoanDirect(player, 60);        // owe 72 (60 + 20% origination)
                 await Task.Delay(120);
                 if (!(MegaCrit.Sts2.Core.Combat.CombatManager.Instance?.IsInProgress ?? false))
                 {
@@ -789,12 +812,12 @@ internal static class SoloTest
                 LoanService.ResetFor(player);
                 await DebtLoanGrants.RemoveRelic(player);
                 await Task.Delay(120);
-                await LoanService.GrantLoanDirect(player, 300);      // owe 450
-                await LoanService.DebugSetTier(player, 25);          // rooms-since-loan 25 → tier 4 (keeps owed 450)
+                await LoanService.GrantLoanDirect(player, 350);      // owe 420 (350 + 20% origination)
+                await LoanService.DebugSetTier(player, 25);          // rooms-since-loan 25 → tier 4 (keeps owed 420)
                 await Task.Delay(120);
                 int reward0 = player.Deck.Cards.Count(c => c is CreditRestoredCard);
-                int owedT2 = LoanService.For(player)?.Principal ?? 0;   // 450
-                await LoanService.RecordPayment(player, tcc, owedT2); // pay exactly owed → TotalPaid 450 (≥400) → settle+reward
+                int owedT2 = LoanService.For(player)?.Principal ?? 0;   // 420
+                await LoanService.RecordPayment(player, tcc, owedT2); // pay exactly owed → TotalPaid 420 (≥400) → settle+reward
                 await Task.Delay(200);
                 var rewardCards = player.Deck.Cards.OfType<CreditRestoredCard>().ToList();
                 int rewardGain = rewardCards.Count - reward0;
@@ -808,7 +831,7 @@ internal static class SoloTest
                 LoanService.ResetFor(player);
                 await DebtLoanGrants.RemoveRelic(player);
                 await Task.Delay(120);
-                await LoanService.GrantLoanDirect(player, 100);      // owe 150
+                await LoanService.GrantLoanDirect(player, 100);      // owe 120
                 var smallRec = LoanService.For(player); if (smallRec != null) smallRec.LoanFloor = player.RunState.TotalFloor - 25;   // tier 4 by rooms
                 await Task.Delay(120);
                 int reward0b = player.Deck.Cards.Count(c => c is CreditRestoredCard);

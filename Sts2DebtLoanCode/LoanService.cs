@@ -32,6 +32,10 @@ internal sealed class LoanRecord
     /// <summary>Cumulative gold the Debt cards have drained = total paid so far (interest + amortized principal).</summary>
     internal int TotalPaid;
 
+    /// <summary>How many rooms of node-interest have already been baked into <see cref="Principal"/> (0..
+    /// MaxNodeInterestRooms). Tracked so room-entry accrual is idempotent and survives save/load.</summary>
+    internal int InterestRoomsApplied;
+
     /// <summary>TotalFloor of the shop where the loan was taken. Top-ups are allowed only at THAT shop.
     /// Rooms-since-loan (which drives the Debt-card count) is computed as TotalFloor − LoanFloor.</summary>
     internal int LoanFloor = -1;
@@ -178,6 +182,7 @@ internal static class LoanService
             relic.Borrowed = rec.Borrowed;
             relic.Principal = rec.Principal;
             relic.TotalPaid = rec.TotalPaid;
+            relic.InterestRoomsApplied = rec.InterestRoomsApplied;
             relic.LoanFloor = rec.LoanFloor;
             relic.Active = rec.Active;
             relic.DunningLetterGranted = rec.DunningLetterGranted;
@@ -202,6 +207,7 @@ internal static class LoanService
         rec.Borrowed = relic.Borrowed;
         rec.Principal = relic.Principal;
         rec.TotalPaid = relic.TotalPaid;
+        rec.InterestRoomsApplied = relic.InterestRoomsApplied;
         rec.LoanFloor = relic.LoanFloor;
         rec.Active = relic.Active;
         rec.DunningLetterGranted = relic.DunningLetterGranted;
@@ -319,10 +325,11 @@ internal static class LoanService
         var existing = For(player);
         int oldBorrowed = existing?.Borrowed ?? 0;
         int borrowed  = oldBorrowed + amount;                  // lifetime borrowed (drives the cap + hover)
-        // Repayable > borrowed: you owe the gold you took PLUS a 50% surcharge. Borrowed is what you received
-        // (drives the cap); Principal is what you must repay (drives the shop cost + badge), amortized by cards.
-        int surcharge = (int)Math.Round(amount * DebtLoanConfig.RepaySurcharge);
-        int principal = (existing?.Principal ?? 0) + amount + surcharge;
+        // Repayable > borrowed: you owe the gold you took PLUS interest. 20% ORIGINATION is added right now on
+        // this amount; the rest accrues per-room (see AccrueNodeInterest). Borrowed is what you received (drives
+        // the cap); Principal is what you must repay (shop cost + badge), amortized 1:1 by payments.
+        int origination = (int)Math.Round(amount * (DebtLoanConfig.BorrowOriginationPct / 100.0));
+        int principal = (existing?.Principal ?? 0) + amount + origination;
         int totalPaid = existing?.TotalPaid ?? 0;
         int loanFloor = (existing != null && existing.RelicGranted)
                         ? existing.LoanFloor                   // top-up keeps the original shop floor
@@ -383,6 +390,22 @@ internal static class LoanService
         _roomWatchSubscribed = true;
     }
 
+    /// <summary>Accrue per-room interest into the owed Principal: +NodeInterestPct% of Borrowed for each new room
+    /// carried, up to MaxNodeInterestRooms. Idempotent (only adds the rooms not yet applied) so re-fires and
+    /// reloads don't double-charge. Room count is deterministic (TotalFloor − LoanFloor) → co-op peers match.</summary>
+    internal static void AccrueNodeInterest(Player? player)
+    {
+        var rec = For(player);
+        if (rec == null || !rec.Active || rec.Principal <= 0 || player?.RunState == null) return;
+        int rooms = Math.Min(DebtLoanConfig.MaxNodeInterestRooms, Math.Max(0, player.RunState.TotalFloor - rec.LoanFloor));
+        if (rooms <= rec.InterestRoomsApplied) return;
+        int deltaRooms = rooms - rec.InterestRoomsApplied;
+        int add = (int)Math.Round(rec.Borrowed * (DebtLoanConfig.NodeInterestPct / 100.0) * deltaRooms);
+        rec.Principal += add;
+        rec.InterestRoomsApplied = rooms;
+        SyncToRelic(player);
+    }
+
     private static void OnRoomEntered()
     {
         try
@@ -391,7 +414,7 @@ internal static class LoanService
             if (run?.Players == null) return;
             // Every room: refresh each ledger's badge (rooms-until-next-tier) so it visibly counts DOWN as you
             // walk the map — TotalFloor changed, so the live DisplayAmount must be re-pushed to the widget.
-            foreach (var p in run.Players) RefreshRelicDisplay(p);
+            foreach (var p in run.Players) { AccrueNodeInterest(p); RefreshRelicDisplay(p); }
             if (run.CurrentRoom?.RoomType != RoomType.Shop) return;
             foreach (var p in run.Players) TryGrantDunningLetter(p);
         }

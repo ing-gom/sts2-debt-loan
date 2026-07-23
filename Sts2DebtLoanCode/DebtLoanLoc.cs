@@ -234,20 +234,20 @@ internal static class DebtLoanLoc
 
     private static readonly Dictionary<string, PayRow> PayByLang = new()
     {
-        ["eng"] = new("Payment", "All the gold you pay goes toward the loan's [b]principal[/b] — the [b]interest[/b] is the up-front 50% surcharge. Paying down the principal shrinks the shop repay cost."),
-        ["kor"] = new("납부", "납부한 골드 전액이 대출 [b]원금[/b] 상환에 쓰입니다 — [b]이자[/b]는 대출 시 붙는 50% 할증입니다. 원금을 갚을수록 상점 상환액이 줄어듭니다."),
-        ["jpn"] = new("支払い", "支払ったゴールドは全額が借金の[b]元金[/b]の返済に充てられる — [b]利息[/b]は借入時の50%割増だ。元金を返すほど、ショップでの返済額が減る。"),
-        ["zhs"] = new("还款", "所付金币全部用于偿还贷款[b]本金[/b]——[b]利息[/b]是借款时的50%附加费。偿还本金越多，商店的还款额越低。"),
-        ["deu"] = new("Zahlung", "Das gesamte gezahlte Gold geht an den [b]Kapitalbetrag[/b] der Schuld — die [b]Zinsen[/b] sind der 50%-Aufschlag beim Leihen. Je mehr du tilgst, desto geringer die Rückzahlung im Laden."),
-        ["fra"] = new("Paiement", "Tout l'or payé rembourse le [b]capital[/b] de la dette — les [b]intérêts[/b] sont la majoration de 50% à l'emprunt. Rembourser le capital réduit le coût de remboursement en boutique."),
-        ["spa"] = new("Pago", "Todo el oro pagado se destina al [b]capital[/b] del préstamo — los [b]intereses[/b] son el recargo del 50% inicial. Amortizar el capital reduce el coste de pago en la tienda."),
-        ["esp"] = new("Pago", "Todo el oro pagado se destina al [b]capital[/b] del préstamo — los [b]intereses[/b] son el recargo del 50% inicial. Amortizar el capital reduce el coste de pago en la tienda."),
-        ["ita"] = new("Pagamento", "Tutto l'oro pagato va al [b]capitale[/b] del debito — gli [b]interessi[/b] sono la maggiorazione del 50% al prestito. Ridurre il capitale abbassa il costo di rimborso nel negozio."),
-        ["pol"] = new("Spłata", "Całe zapłacone złoto idzie na [b]kapitał[/b] pożyczki — [b]odsetki[/b] to 50% dopłata przy pożyczaniu. Spłacanie kapitału zmniejsza koszt spłaty w sklepie."),
-        ["ptb"] = new("Pagamento", "Todo o ouro pago vai para o [b]principal[/b] do empréstimo — os [b]juros[/b] são a sobretaxa de 50% inicial. Reduzir o principal diminui o custo de quitação na loja."),
-        ["rus"] = new("Платёж", "Всё уплаченное золото идёт на [b]основной долг[/b] — [b]проценты[/b] это 50% надбавка при займе. Погашение основного долга снижает стоимость выплаты в магазине."),
-        ["tha"] = new("การชำระ", "ทองที่จ่ายทั้งหมดใช้ชำระ[b]เงินต้น[/b]ของหนี้ — [b]ดอกเบี้ย[/b]คือค่าธรรมเนียม 50% ตอนกู้ ยิ่งชำระเงินต้นมาก ค่าชำระที่ร้านค้ายิ่งลดลง"),
-        ["tur"] = new("Ödeme", "Ödenen altının tamamı borcun [b]anaparasına[/b] gider — [b]faiz[/b] borç alırken eklenen %50 ek ücrettir. Anaparayı azaltmak dükkândaki ödeme maliyetini düşürür."),
+        ["eng"] = new("Payment", "Every gold you pay comes off what you [b]owe[/b] (interest included). The longer you carry the debt, the more [b]interest[/b] it gathers — repay early to keep the shop cost down."),
+        ["kor"] = new("납부", "납부하는 골드는 [b]갚을 금액[/b]에서 그대로 차감됩니다(이자 포함). 빚을 오래 짊어질수록 [b]이자[/b]가 늘어나니 일찍 갚을수록 상점 상환액이 줄어듭니다."),
+        ["jpn"] = new("支払い", "支払ったゴールドは全額が[b]返済額[/b]から差し引かれる（利息込み）。借金を長く抱えるほど[b]利息[/b]が増えるので、早く返すほどショップでの返済額が減る。"),
+        ["zhs"] = new("还款", "所付金币全部从你的[b]欠款[/b]中扣除（含利息）。欠债越久，[b]利息[/b]越多——尽早偿还可降低商店还款额。"),
+        ["deu"] = new("Zahlung", "Jedes gezahlte Gold wird von deiner [b]Schuld[/b] abgezogen (Zinsen inklusive). Je länger du die Schuld trägst, desto mehr [b]Zinsen[/b] fallen an — zahle früh zurück, um die Ladenkosten gering zu halten."),
+        ["fra"] = new("Paiement", "Chaque or payé est déduit de ce que tu [b]dois[/b] (intérêts inclus). Plus tu gardes la dette longtemps, plus les [b]intérêts[/b] s'accumulent — rembourse tôt pour réduire le coût en boutique."),
+        ["spa"] = new("Pago", "Cada oro pagado se descuenta de lo que [b]debes[/b] (intereses incluidos). Cuanto más tiempo mantengas la deuda, más [b]intereses[/b] se acumulan; paga pronto para reducir el coste en la tienda."),
+        ["esp"] = new("Pago", "Cada oro pagado se descuenta de lo que [b]debes[/b] (intereses incluidos). Cuanto más tiempo mantengas la deuda, más [b]intereses[/b] se acumulan; paga pronto para reducir el coste en la tienda."),
+        ["ita"] = new("Pagamento", "Ogni oro pagato viene sottratto da ciò che [b]devi[/b] (interessi inclusi). Più a lungo porti il debito, più [b]interessi[/b] si accumulano — rimborsa presto per ridurre il costo nel negozio."),
+        ["pol"] = new("Spłata", "Każde zapłacone złoto odejmuje się od twojego [b]długu[/b] (z odsetkami). Im dłużej masz dług, tym więcej [b]odsetek[/b] narasta — spłać wcześnie, by obniżyć koszt w sklepie."),
+        ["ptb"] = new("Pagamento", "Cada ouro pago é descontado do que você [b]deve[/b] (juros incluídos). Quanto mais tempo mantiver a dívida, mais [b]juros[/b] se acumulam — quite cedo para reduzir o custo na loja."),
+        ["rus"] = new("Платёж", "Каждое уплаченное золото вычитается из вашего [b]долга[/b] (с процентами). Чем дольше вы держите долг, тем больше [b]процентов[/b] набегает — гасите раньше, чтобы снизить стоимость в магазине."),
+        ["tha"] = new("การชำระ", "ทองที่จ่ายทุกเหรียญจะถูกหักจาก[b]ยอดที่ค้าง[/b] (รวมดอกเบี้ย) ยิ่งเป็นหนี้นาน [b]ดอกเบี้ย[/b]ยิ่งเพิ่ม — ชำระเร็วเพื่อลดค่าใช้จ่ายที่ร้านค้า"),
+        ["tur"] = new("Ödeme", "Ödediğin her altın [b]borcundan[/b] düşülür (faiz dahil). Borcu ne kadar uzun taşırsan o kadar çok [b]faiz[/b] birikir — erken öde, dükkân maliyetini düşük tut."),
     };
 
     // ── Shop "Repay Loan" button hover tooltip (14 languages). {0} = outstanding principal (gold owed). The

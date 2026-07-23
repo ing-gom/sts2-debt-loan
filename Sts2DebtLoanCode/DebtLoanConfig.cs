@@ -30,11 +30,15 @@ internal static class DebtLoanConfig
     /// slowly amortizes and the shop repay cost shrinks over time.</summary>
     internal static double PrincipalRepayShare = 0.2;
 
-    /// <summary>Interest surcharge baked into the outstanding principal at loan time: you must repay the gold
-    /// you borrowed PLUS this fraction of it. At 0.5, borrowing 200 means owing 300 at the shop (before any
-    /// amortization). This is what separates "borrowed" (the cap-driving amount you received) from the higher
-    /// "repayable" principal shown on the Ledger badge / repay button.</summary>
-    internal static double RepaySurcharge = 0.5;
+    // ── Interest (all of it is baked into the owed Principal = shop repay cost / badge / hover) ──────────
+    /// <summary>Origination interest added the MOMENT you borrow (per borrow, on that amount). 20% → borrowing
+    /// 100 immediately owes 120. Keeps a quick borrow-and-repay from being nearly free.</summary>
+    internal static int BorrowOriginationPct = 20;
+    /// <summary>Interest added per ROOM you carry the debt, on the borrowed amount, on top of origination.</summary>
+    internal static int NodeInterestPct = 5;
+    /// <summary>How many rooms of <see cref="NodeInterestPct"/> accrue before it caps. 8 × 5% = +40% on top of
+    /// the 20% origination = a 60% ceiling.</summary>
+    internal static int MaxNodeInterestRooms = 8;
 
     /// <summary>Highest act (0-based) where the merchant still lends: 0 = Act 1 only (default), 1 = through
     /// Act 2, 2 = through Act 3. Compared against <c>RunState.CurrentActIndex</c>.</summary>
