@@ -107,7 +107,7 @@ internal static class LoanService
         var combat = injectee?.Creature?.CombatState;
         if (combat == null || run?.Players == null) return;
 
-        ResetPaymentsThisCombat(injectee!);   // fresh 납부 counter each combat (drives 정산/청구서 scaling)
+        await ResetPaymentsThisCombat(injectee!);   // fresh 납부 실적 each combat (drives 정산/청구서 scaling)
 
         var cards = new List<CardModel>();
         foreach (var owner in run.Players)
@@ -491,14 +491,27 @@ internal static class LoanService
     }
 
     // ── 납부 (Payment) trigger system ──────────────────────────────────────────
-    private static readonly ConditionalWeakTable<Player, int[]> _paymentsThisCombat = new();
+    // The "how many payments this combat" count lives on a VISIBLE buff (PaymentStackPower) rather than a hidden
+    // counter: the player watches 납부 실적 climb, and 정산/청구서 read it and then CONSUME it. Being a normal power
+    // it is combat-scoped (auto-clears at fight end), so it is the single source of truth.
 
-    /// <summary>Times a Debt card has made a 납부 (Payment) this combat — read by the 정산 (block × payments) and
-    /// 청구서 (damage × payments) cards. Reset at combat start by the injector.</summary>
+    /// <summary>Banked 납부 (Payment) count this combat = the <see cref="PaymentStackPower"/> stack. Read by 정산
+    /// (block × payments) and 청구서 (damage × payments), which then consume it via <see cref="ConsumePaymentStack"/>.</summary>
     internal static int PaymentsThisCombat(Player? p)
-        => p != null && _paymentsThisCombat.TryGetValue(p, out var a) ? a[0] : 0;
+    {
+        var pw = p?.Creature?.GetPower<PaymentStackPower>();
+        return pw != null ? pw.Amount : 0;
+    }
 
-    internal static void ResetPaymentsThisCombat(Player p) => _paymentsThisCombat.GetValue(p, _ => new int[1])[0] = 0;
+    /// <summary>Spend the whole 납부 실적 stack (called by 청구서/정산 after they pay out). No-op if none.</summary>
+    internal static async Task ConsumePaymentStack(Player? p)
+    {
+        if (p?.Creature?.GetPower<PaymentStackPower>() != null)
+            await PowerCmd.Remove<PaymentStackPower>(p.Creature);
+    }
+
+    /// <summary>Clear the tally (combat start belt-and-suspenders; powers already clear on their own).</summary>
+    internal static async Task ResetPaymentsThisCombat(Player p) => await ConsumePaymentStack(p);
 
     /// <summary>The unified 납부 (Payment) entry: pay the loan's PRINCIPAL down 1:1 (the whole payment goes to
     /// principal — the interest is the up-front 50% surcharge baked in at loan time, not a per-payment cut),
@@ -511,8 +524,8 @@ internal static class LoanService
         var rec0 = For(player);
         bool wasOwing = rec0 != null && rec0.Active && rec0.Principal > 0;   // did this payment have a debt to clear?
         await AccrueInterest(player, amount, principalShareOverride: 1.0);   // 100% to principal (interest = the surcharge)
-        _paymentsThisCombat.GetValue(player, _ => new int[1])[0]++;
         if (player?.Creature == null) return;
+        await PowerCmd.Apply<PaymentStackPower>(cc, player.Creature, 1, player.Creature, null);   // 납부 실적 +1 (visible tally)
         var benefit = player.Creature.GetPower<PaymentBenefitPower>();
         if (benefit != null) await benefit.OnPayment(cc, player);
         var refund = player.Creature.GetPower<RefundPower>();

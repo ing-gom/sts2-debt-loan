@@ -59,6 +59,7 @@ public sealed class SettlementCard : CardModel
         int block = (int)DynamicVars.CalculatedBlock.Calculate(cardPlay.Target);
         if (block <= 0) return;
         await CreatureCmd.GainBlock(Owner.Creature, block, DynamicVars.CalculatedBlock.Props, cardPlay);
+        await LoanService.ConsumePaymentStack(Owner);   // spend the whole 납부 실적 stack (bank → unleash)
     }
 
     protected override void OnUpgrade()

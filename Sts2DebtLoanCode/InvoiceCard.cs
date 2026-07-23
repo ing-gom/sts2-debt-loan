@@ -61,6 +61,7 @@ public sealed class InvoiceCard : CardModel
         await DamageCmd.Attack(DynamicVars.Damage.BaseValue).WithHitCount(hits).FromCard(this)
             .Targeting(cardPlay.Target)
             .Execute(choiceContext);
+        await LoanService.ConsumePaymentStack(Owner);   // spend the whole 납부 실적 stack (bank → unleash)
     }
 
     protected override void OnUpgrade()

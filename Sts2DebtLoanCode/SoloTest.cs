@@ -563,19 +563,20 @@ internal static class SoloTest
                 await PowerCmd.Apply<InterestSupportPower>(pcc, player.Creature!, 1, player.Creature, null);
                 await Task.Delay(120);
 
-                LoanService.ResetPaymentsThisCombat(player);
+                await LoanService.ResetPaymentsThisCombat(player);
                 int dp0 = PileType.Hand.GetPile(player)?.Cards.Count(c => c is DiligentPaymentCard) ?? 0;
                 int ccHp0 = enemy?.CurrentHp ?? -1;                                              // 자본 타격 target HP before
                 int isGold0 = (int)player.Gold;                                                  // 이자 지원 gold before
                 for (int i = 0; i < 3; i++) await LoanService.RecordPayment(player, pcc, 10);   // 납부 시퀀스 ×3 (10 each)
                 await Task.Delay(200);
 
-                int pays = LoanService.PaymentsThisCombat(player);                               // 3
+                int pays = LoanService.PaymentsThisCombat(player);                               // 3 = 납부 실적 buff Amount
+                bool stackVisible = player.Creature!.GetPower<PaymentStackPower>() != null;       // the tally is a real buff
                 var plating = player.Creature!.GetPower<MegaCrit.Sts2.Core.Models.Powers.PlatingPower>();
                 int platingAmt = plating != null ? (int)plating.Amount : 0;                     // 3 × 3 = 9 (if it stacks)
                 int dpGain = (PileType.Hand.GetPile(player)?.Cards.Count(c => c is DiligentPaymentCard) ?? 0) - dp0;
-                bool tP1 = pays == 3 && platingAmt >= 3 && dpGain >= 3;   // count + both reactive powers fired 3×
-                W($"  assert payment-trigger: payments={pays}(3) plating={platingAmt}(>=3, exp 9) diligentCardsAdded={dpGain}(>=3) -> {tP1}");
+                bool tP1 = pays == 3 && stackVisible && platingAmt >= 3 && dpGain >= 3;   // tally buff + both reactive powers fired 3×
+                W($"  assert payment-trigger: 납부실적={pays}(3) tallyBuff={stackVisible} plating={platingAmt}(>=3, exp 9) diligentCardsAdded={dpGain}(>=3) -> {tP1}");
 
                 // Engine-expansion powers fired 3× too: 자본 타격 dealt damage, 이자 지원 refunded half, 명세서 applied.
                 int ccDrop = (ccHp0 >= 0 && enemy != null) ? ccHp0 - enemy.CurrentHp : -1;       // ~15 (3×5) if unblocked
@@ -600,27 +601,34 @@ internal static class SoloTest
                 if (handClear != null && handClear.Count > 0) await CardPileCmd.RemoveFromCombat(handClear, skipVisuals: true);
                 await Task.Delay(120);
 
-                // 정산 (Settlement): block gained = payments × 4.
+                // 정산 (Settlement): block = 납부 실적 × 4, THEN it CONSUMES the whole tally (stack → 0).
                 int blk0 = player.Creature.Block;
                 var settle = cstate!.CreateCard<SettlementCard>(player);
                 bool settlePlayed = true;
                 try { await CardCmd.AutoPlay(pcc, settle, null); } catch (Exception e) { settlePlayed = false; W("  settlement play failed: " + e.Message); }
                 await Task.Delay(150);
                 int blkGain = player.Creature.Block - blk0;
-                bool tP2 = settlePlayed && blkGain == pays * 4;
-                W($"  assert settlement scale: blockGain={blkGain} (exp {pays}×4={pays * 4}) -> {tP2}");
+                int stackAfterSettle = LoanService.PaymentsThisCombat(player);                    // consumed → 0
+                bool tP2 = settlePlayed && blkGain == pays * 4 && stackAfterSettle == 0;
+                W($"  assert settlement scale+consume: blockGain={blkGain} (exp {pays}×4={pays * 4}) tallyAfter={stackAfterSettle}(=0) -> {tP2}");
 
-                // 청구서 (Invoice): damage to the enemy = payments × 5 (exact when the enemy carries no Block).
+                // 청구서 (Invoice): settlement just spent the tally, so REBUILD it (pay ×3), then Invoice deals
+                // damage × 납부 실적 and CONSUMES it too (stack → 0).
                 bool tP3 = true;
                 if (enemy != null)
                 {
+                    for (int i = 0; i < 3; i++) await LoanService.RecordPayment(player, pcc, 10);   // rebuild tally to 3
+                    await Task.Delay(120);
+                    int paysInv = LoanService.PaymentsThisCombat(player);                           // 3
                     int ehp0 = enemy.CurrentHp, eblk = enemy.Block;
                     var inv = cstate!.CreateCard<InvoiceCard>(player);
                     try { await CardCmd.AutoPlay(pcc, inv, enemy); } catch (Exception e) { W("  invoice play failed: " + e.Message); }
                     await Task.Delay(150);
                     int dmg = ehp0 - enemy.CurrentHp;
-                    tP3 = eblk == 0 ? dmg == pays * 4 : dmg >= 1;   // 청구서 = payments × 4 (was ×5)
-                    W($"  assert invoice scale: enemyHp {ehp0}->{enemy.CurrentHp} dmg={dmg} (exp {pays * 4}, enemyBlock={eblk}) -> {tP3}");
+                    int stackAfterInv = LoanService.PaymentsThisCombat(player);                     // consumed → 0
+                    bool dmgOk = eblk == 0 ? dmg == paysInv * 4 : dmg >= 1;   // 청구서 = 납부 실적 × 4 per hit
+                    tP3 = dmgOk && stackAfterInv == 0;
+                    W($"  assert invoice scale+consume: enemyHp {ehp0}->{enemy.CurrentHp} dmg={dmg} (exp {paysInv * 4}, block={eblk}) tallyAfter={stackAfterInv}(=0) -> {tP3}");
                 }
                 else W("  invoice: no live enemy to target — skipped");
 
@@ -790,6 +798,7 @@ internal static class SoloTest
                         await PowerCmd.Apply<CounterclaimPower>(scc, cr, 1, cr, null);      // 자본 타격 (Money Attack)
                         await PowerCmd.Apply<StatementPower>(scc, cr, 1, cr, null);         // 명세서 (Statement)
                         await PowerCmd.Apply<InterestSupportPower>(scc, cr, 1, cr, null);   // 이자 지원 (Interest Support)
+                        await PowerCmd.Apply<PaymentStackPower>(scc, cr, 3, cr, null);      // 납부 실적 (Tally)
                         await Task.Delay(600);
                         int active = 0;
                         if (cr.GetPower<DunningLetterPower>() != null) active++;
@@ -800,7 +809,8 @@ internal static class SoloTest
                         if (cr.GetPower<CounterclaimPower>() != null) active++;
                         if (cr.GetPower<StatementPower>() != null) active++;
                         if (cr.GetPower<InterestSupportPower>() != null) active++;
-                        W($"  power-icon gallery: {active}/8 custom powers active (see 9_power_icons.png)");
+                        if (cr.GetPower<PaymentStackPower>() != null) active++;
+                        W($"  power-icon gallery: {active}/9 custom powers active (see 9_power_icons.png)");
                     }
                     await Shot("9_power_icons");
                 }
