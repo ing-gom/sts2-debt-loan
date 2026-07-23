@@ -609,7 +609,7 @@ internal static class SoloTest
                 try
                 {
                     var nInv = NCard.Create(cstate!.CreateCard<InvoiceCard>(player));            // X
-                    var nGa  = NCard.Create(cstate!.CreateCard<GarnishmentCard>(player));        // X (new AoE attack)
+                    var nGa  = NCard.Create(cstate!.CreateCard<GarnishmentCard>(player));        // 2 (fixed-cost AoE attack)
                     var nCc  = NCard.Create(cstate!.CreateCard<CounterclaimCard>(player));       // 2
                     var nIs  = NCard.Create(cstate!.CreateCard<InterestSupportCard>(player));    // 1
                     if (Engine.GetMainLoop() is SceneTree tb && nInv != null && nGa != null && nCc != null && nIs != null)
@@ -619,7 +619,7 @@ internal static class SoloTest
                         tb.Root.AddChild(nCc);  nCc.Position  = new Vector2(1140, 500); nCc.Scale = new Vector2(1.3f, 1.3f);
                         tb.Root.AddChild(nIs);  nIs.Position  = new Vector2(1560, 500); nIs.Scale = new Vector2(1.3f, 1.3f);
                         await Task.Delay(500);
-                        await Shot("6c_badge");   // 청구서=X / 가압류=X(AoE) / 자본타격=2 / 이자지원=1
+                        await Shot("6c_badge");   // 청구서=X / 가압류=2(AoE) / 자본타격=2 / 이자지원=1
                         nInv.QueueFree(); nGa.QueueFree(); nCc.QueueFree(); nIs.QueueFree();
                     }
                 }
