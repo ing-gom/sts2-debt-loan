@@ -45,12 +45,12 @@ internal sealed class LoanRecord
 
     internal bool RelicGranted;
 
-    /// <summary>Whether the 독촉장 (Dunning Letter) leverage card has been handed to the deck this loan (once,
+    /// <summary>Whether the 정기 납부 (Standing Order) leverage card has been handed to the deck this loan (once,
     /// on the first visit to a shop other than the loan shop). Persisted on the relic so a reload keeps it.</summary>
     internal bool DunningLetterGranted;
 
     /// <summary>How many of the 7 debt event cards have been handed out (one per shop-revisit). Drives the fixed
-    /// order — 1st = 독촉장, 5th = 취업알선, the rest a per-run shuffle of the payment cards. Persisted.</summary>
+    /// order — 1st = 정기 납부, 5th = 취업알선, the rest a per-run shuffle of the payment cards. Persisted.</summary>
     internal int EventGrantCount;
 
     /// <summary>PER-COMBAT transient: the 신용 불량 (Bad Credit) collection level 0..3. Reset to 0 at each
@@ -338,7 +338,7 @@ internal static class LoanService
         MainFile.Logger.Info($"[{MainFile.ModId}] loan +{amount}g (borrowed {borrowed}/{DebtLoanConfig.MaxLoan}, owed {principal}=+30%).");
 
         // (No merchant bark on the loan itself any more — the merchant now speaks when he HANDS you a payoff card,
-        //  see the 독촉장 loan-time grant + TryGrantDunningLetter, hinting another card comes next visit.)
+        //  see the 정기 납부 loan-time grant + TryGrantDunningLetter, hinting another card comes next visit.)
     }
 
     /// <summary>Apply an ACTIVE loan state locally: set the record, grant the Ledger relic if the player
@@ -364,16 +364,16 @@ internal static class LoanService
             rec.DunningLetterGranted = true;
             rec.EventGrantCount = System.Math.Max(rec.EventGrantCount, 1);
             _ = DebtLoanGrants.GrantDunningLetter(player);
-            MerchantBark.SayGrant(NextEventCardName(rec));   // hand the 독촉장 + hint the SPECIFIC next card
+            MerchantBark.SayGrant(NextEventCardName(rec));   // hand the 정기 납부 + hint the SPECIFIC next card
         }
         EnsureRoomWatch();   // still watch shop revisits for the REMAINING payoff cards (slots 1-6)
         SyncToRelic(player);
     }
 
-    // ── 독촉장 (Dunning Letter) shop-revisit grant ─────────────────────────────
+    // ── 정기 납부 (Standing Order) shop-revisit grant ─────────────────────────────
     private static bool _roomWatchSubscribed;
 
-    /// <summary>Subscribe (once) to room changes so we can hand the 독촉장 leverage card to a debtor the first
+    /// <summary>Subscribe (once) to room changes so we can hand the 정기 납부 leverage card to a debtor the first
     /// time they shop somewhere OTHER than where they borrowed. Fires per-peer (like the ledger overlay's own
     /// RoomEntered hook); the grant is flag-guarded + deterministic from synced loan state → converges in co-op.
     /// ⚠️ co-op: verify with coop-verify before release (local deck mutation off a per-peer event).</summary>
@@ -417,11 +417,11 @@ internal static class LoanService
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] room-watch grant failed: {e.Message}"); }
     }
 
-    /// <summary>Grant the 독촉장 once per loan, when the debtor enters a shop that isn't the one they borrowed
+    /// <summary>Grant the 정기 납부 once per loan, when the debtor enters a shop that isn't the one they borrowed
     /// at (TotalFloor != LoanFloor). Deck mutation is local + deterministic → the same card lands on each peer.</summary>
-    // The event-card grant SEQUENCE across shop revisits — 10 cards, each once. Slot 0 (독촉장) is handed at LOAN
+    // The event-card grant SEQUENCE across shop revisits — 10 cards, each once. Slot 0 (정기 납부) is handed at LOAN
     // TIME; slots 1-9 come on shop revisits. The FIRST slots are a FIXED priority order so even a short run gets the
-    // core of the 영수증 (Receipt) loop early — 독촉장(repay engine), 정산 + 청구서(the Receipt spenders), 이자 지원
+    // core of the 영수증 (Receipt) loop early — 정기 납부(repay engine), 정산 + 청구서(the Receipt spenders), 이자 지원
     // (cheap engine), 취업알선 — then the REMAINING five cards come SHUFFLED per run (variety; they're secondary).
     private static readonly System.Type[] FixedOrder =
     {
