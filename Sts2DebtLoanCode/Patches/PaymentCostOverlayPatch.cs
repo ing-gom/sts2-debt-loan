@@ -28,7 +28,7 @@ internal static class PaymentCostOverlayPatch
 {
     private const string BadgeName = "DebtLoanTallyBadge";
     private const string IconPath = "res://Sts2DebtLoan/power_icons/payment_stack_power.png";
-    private const float Size = 46f;
+    private const float Size = 66f;
 
     private static Texture2D? _icon;
     private static readonly FieldInfo? EnergyIconF = typeof(NCard).GetField("_energyIcon",
@@ -86,7 +86,7 @@ internal static class PaymentCostOverlayPatch
             VerticalAlignment = VerticalAlignment.Center,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
-        txt.AddThemeFontSizeOverride("font_size", 26);
+        txt.AddThemeFontSizeOverride("font_size", 38);
         txt.AddThemeColorOverride("font_color", new Color(1f, 0.97f, 0.75f));
         txt.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0));
         txt.AddThemeConstantOverride("outline_size", 6);

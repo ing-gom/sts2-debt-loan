@@ -100,9 +100,9 @@ internal static class PaymentTallyCounterInjectPatch
             if (me == null) return;
             var counter = NPaymentTallyCounter.Create(me);
             container.AddChild(counter);
-            // sit just to the LEFT of the energy orb, a bit smaller, so it never overlaps the native Star counter
-            // (which reparents onto the energy counter, sitting at/below it). Offset is relative to the energy container.
-            counter.Position = new Vector2(-96f, 18f);
+            // sit to the RIGHT of the energy orb with a comfortable gap. Offset is relative to the energy container
+            // (energy orb ≈ 100px at origin), tuned against the 1780×1080 combat HUD.
+            counter.Position = new Vector2(132f, 18f);
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] tally counter inject failed: {e.Message}"); }
     }
