@@ -14,13 +14,13 @@ using MegaCrit.Sts2.Core.Models.Powers;               // PlatingPower
 namespace Sts2DebtLoan;
 
 /// <summary>
-/// 빚 독촉 (Dunning) — the base Debt curse the loan seeps into combat. Unlike a plain unplayable curse, this
-/// gives the player AGENCY:
-///   • It is ETHEREAL — if you leave it in hand, at END OF TURN it collects 10 gold (20% toward principal,
-///     the rest interest) and then vanishes. The turn-end effect fires BEFORE the Ethereal exhaust (confirmed
-///     against OnTurnEndInHandWrapper), so it's a clean "collect, then disappear".
-///   • You may instead PLAY it (energy cost 1) to pay 20 gold, split 50/50 principal/interest — VOLUNTARY
-///     faster repayment, and it's gone (Exhaust). You can only play it if you have the gold (IsPlayable gate).
+/// 빚 독촉 (Dunning) — the base Debt curse the loan seeps into combat. It is injected into the DRAW pile
+/// BEFORE the opening hand is dealt (see <see cref="BeforeHandDrawInjectPatch"/>), so you draw it turn 1.
+/// Unlike a plain unplayable curse, it gives the player AGENCY, with NO passive drain:
+///   • It is ETHEREAL — if you leave it in hand it simply exhausts at end of turn, costing nothing.
+///     There is no automatic collection any more (the old end-of-turn 10-gold drain was removed).
+///   • You may PLAY it (energy cost 1) to pay 20 gold, split 50/50 principal/interest — VOLUNTARY faster
+///     repayment, and it's gone (Exhaust). You can only play it if you have the gold (IsPlayable gate).
 ///     While the 독촉장 (Dunning Letter) power is active, playing it also grants Plating (판금) — the power is
 ///     what makes dumping your debt cards worthwhile (a defensive/repayment engine, no offense).
 /// The UPGRADED form (빚 독촉+, fed by the 독촉장+ power) is identical but 0-energy. Auto-registered;
@@ -45,11 +45,10 @@ public sealed class DebtCurseCard : CardModel
     // NOT Unplayable — the player may choose to play it (to repay faster).
     public override IEnumerable<CardKeyword> CanonicalKeywords => new[] { CardKeyword.Ethereal, CardKeyword.Exhaust };
 
-    private int DrawCost => 10;   // the passive turn-end collection ({draw} in loc)
     private int PlayCost => 20;
 
     protected override IEnumerable<DynamicVar> CanonicalVars =>
-        new[] { new DynamicVar("draw", DrawCost), new DynamicVar("play", PlayCost) };
+        new[] { new DynamicVar("play", PlayCost) };
 
     // Hover tips: 휘발(Ethereal) + 소멸(Exhaust) keywords, and a custom 납부 (Payment) tip explaining the
     // 50% principal / 50% interest split. (Plating is no longer granted by the card — see the 납부 혜택 power.)
@@ -60,24 +59,11 @@ public sealed class DebtCurseCard : CardModel
         new HoverTip(new LocString("relics", "DEBT_PAYMENT.title"), new LocString("relics", "DEBT_PAYMENT.description")),
     };
 
-    public override bool HasTurnEndInHandEffect => true;
-
     public DebtCurseCard() : base(canonicalEnergyCost: 1, CardType.Curse, CardRarity.Curse, TargetType.None) { }
 
     /// <summary>Gold gate: you can't play it unless you can actually pay the play cost (energy alone isn't
     /// enough). Grayed out when broke (BlockedByCardLogic), like Grand Finale's draw-pile check.</summary>
     protected override bool IsPlayable => Owner != null && (int)Owner.Gold >= PlayCost;
-
-    /// <summary>The passive collection: if it's still in hand at TURN END, lose DrawCost gold (20% toward
-    /// principal), then the Ethereal keyword exhausts it (collect → vanish).</summary>
-    protected override async Task OnTurnEndInHand(PlayerChoiceContext choiceContext)
-    {
-        if (Owner == null) return;
-        int drain = Mathf.Min(DrawCost, (int)Owner.Gold);
-        if (drain <= 0) return;
-        await PlayerCmd.LoseGold(drain, Owner);
-        await LoanService.RecordPayment(Owner, choiceContext, drain);   // 납부: 50/50 split + counter + fire payment powers
-    }
 
     /// <summary>Playing it: pay PlayCost gold at a 50% principal split (voluntary FAST repayment). If the 독촉장
     /// (Dunning Letter) power is active, ALSO gain Plating (판금) — the power is what turns playing your debt
@@ -95,7 +81,7 @@ public sealed class DebtCurseCard : CardModel
     }
 
     /// <summary>빚 독촉+ (the upgraded form the 독촉장+ power injects): drop to 0 energy (vanilla cost-reduction
-    /// path). Otherwise identical — DrawCost/PlayCost are flat.</summary>
+    /// path). Otherwise identical — PlayCost is a flat 20.</summary>
     protected override void OnUpgrade()
     {
         base.OnUpgrade();

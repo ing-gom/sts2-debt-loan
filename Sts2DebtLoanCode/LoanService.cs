@@ -16,8 +16,9 @@ using MegaCrit.Sts2.Core.Runs;
 namespace Sts2DebtLoan;
 
 /// <summary>One player's outstanding loan for the run. The Debt cards are NOT stored here — they are
-/// injected fresh into each combat's draw pile (see <see cref="DebtLoanRelic.BeforeCombatStart"/>), so
-/// this only tracks the numeric state, which is persisted onto the relic as [SavedProperty] fields.</summary>
+/// injected fresh into each combat's draw pile before the opening hand (see
+/// <see cref="BeforeHandDrawInjectPatch"/>), so this only tracks the numeric state, which is persisted
+/// onto the relic as [SavedProperty] fields.</summary>
 internal sealed class LoanRecord
 {
     /// <summary>Total gold ever borrowed this run (fixed once taken; rises on a top-up). Shown in the
@@ -27,6 +28,11 @@ internal sealed class LoanRecord
     /// <summary>Gold still owed = the shop repay cost + the relic's badge. Starts equal to
     /// <see cref="Borrowed"/> and shrinks as each Debt-card payment retires a share of it (amortization).</summary>
     internal int Principal;
+
+    /// <summary>Highest the owed <see cref="Principal"/> ever reached this loan (never shrinks with payments).
+    /// This is the "상환금액 you carried" — the 신용 회복 reward gates on it (≥ 400) since Principal is already 0
+    /// by the time the loan is cleared. Bumped on every loan/top-up/fee; persisted on the relic.</summary>
+    internal int PeakPrincipal;
 
     /// <summary>Cumulative gold the Debt cards have drained = total paid so far (interest + amortized principal).</summary>
     internal int TotalPaid;
@@ -93,8 +99,8 @@ internal static class LoanService
     /// pile — the run-wide contagion (a partner's loan seeps into your combat too; multiple loans stack).
     /// Each loan contributes an escalating SET by rooms-since-loan: 빚 독촉 (Dunning, upgraded to '+' once
     /// that loan is over the soft cap) always; +연체 (Delinquency) at 10 rooms; +차압 (Seizure) at 20. The
-    /// cards pop into the centre of the screen and fly into the draw pile (native PreviewCardPileAdd, local-
-    /// player-gated). Temporary — gone at combat end.</summary>
+    /// cards are placed at the TOP of the draw pile so the opening hand (drawn right after this, in the same
+    /// StartTurn) pulls them straight into hand. Temporary — gone at combat end.</summary>
     internal static async Task InjectAllDebtsForCombat(Player injectee, IRunState run)
     {
         var combat = injectee?.Creature?.CombatState;
@@ -124,9 +130,10 @@ internal static class LoanService
         }
         if (cards.Count == 0) return;
 
-        var results = await CardPileCmd.AddGeneratedCardsToCombat(cards, PileType.Draw, injectee, CardPilePosition.Random);
-        CardCmd.PreviewCardPileAdd(results);
-        MainFile.Logger.Info($"[{MainFile.ModId}] injected {cards.Count} Debt curse card(s) into the draw pile.");
+        // Top of pile → the opening Draw (fired right after this in StartTurn) pulls them into hand. The
+        // normal draw animation shows them entering hand, so no separate PreviewCardPileAdd reveal is needed.
+        await CardPileCmd.AddGeneratedCardsToCombat(cards, PileType.Draw, injectee, CardPilePosition.Top);
+        MainFile.Logger.Info($"[{MainFile.ModId}] injected {cards.Count} Debt curse card(s) at the top of the draw pile.");
     }
 
     /// <summary>True if the player already carries the Merchant's Ledger relic.</summary>
@@ -164,6 +171,7 @@ internal static class LoanService
         {
             relic.Borrowed = rec.Borrowed;
             relic.Principal = rec.Principal;
+            relic.PeakPrincipal = rec.PeakPrincipal;
             relic.TotalPaid = rec.TotalPaid;
             relic.LoanFloor = rec.LoanFloor;
             relic.Active = rec.Active;
@@ -188,6 +196,7 @@ internal static class LoanService
         var rec = GetOrCreate(player);
         rec.Borrowed = relic.Borrowed;
         rec.Principal = relic.Principal;
+        rec.PeakPrincipal = relic.PeakPrincipal;
         rec.TotalPaid = relic.TotalPaid;
         rec.LoanFloor = relic.LoanFloor;
         rec.Active = relic.Active;
@@ -210,6 +219,7 @@ internal static class LoanService
         if (rec == null) return;
         rec.LoanFloor = player.RunState.TotalFloor - rooms;   // rooms-since-loan = TotalFloor − LoanFloor
         if (rec.Principal <= 0) rec.Principal = 200;
+        rec.PeakPrincipal = System.Math.Max(rec.PeakPrincipal, rec.Principal);
         SyncToRelic(player);
         RefreshRelicDisplay(player);
         LedgerOverlay.Refresh();
@@ -334,6 +344,7 @@ internal static class LoanService
         var rec = GetOrCreate(player);
         rec.Borrowed     = borrowed;
         rec.Principal    = principal;
+        rec.PeakPrincipal = System.Math.Max(rec.PeakPrincipal, principal);   // track the biggest debt carried (reward gate)
         rec.TotalPaid    = totalPaid;
         rec.LoanFloor    = loanFloor;
         rec.Active       = true;
@@ -434,16 +445,16 @@ internal static class LoanService
         await Task.CompletedTask;
     }
 
-    /// <summary>취업알선 (Job Placement) fee: borrow <paramref name="amount"/> gold IN COMBAT — you gain the gold
-    /// now but it's added to the loan (borrowed + a surcharge onto the principal, like a shop top-up). Needs an
-    /// active loan. ⚠️ co-op: gold + principal mutation off a lockstep card play — verify with coop-verify.</summary>
-    internal static async Task AddCombatDebt(Player player, int amount)
+    /// <summary>취업알선 (Job Placement) placement fee: add <paramref name="amount"/> gold straight onto what you
+    /// OWE (the shop repay cost / relic badge). You do NOT receive the gold — it's a fee, not a loan, so no gold
+    /// enters your pocket and there is no surcharge. The payoff is the 품삯 (Wages) the power feeds you each turn.
+    /// Needs an active loan. Pure record math off a lockstep card play → co-op safe.</summary>
+    internal static void AddCombatDebt(Player player, int amount)
     {
         var rec = For(player);
         if (rec == null || !rec.Active || amount <= 0) return;
-        await PlayerCmd.GainGold(amount, player, false);
-        rec.Borrowed += amount;
-        rec.Principal += amount + (int)Math.Round(amount * DebtLoanConfig.RepaySurcharge);
+        rec.Principal += amount;   // owed goes up; the player gains no gold (it's a fee, not a loan)
+        rec.PeakPrincipal = System.Math.Max(rec.PeakPrincipal, rec.Principal);   // fees count toward the reward gate
         SyncToRelic(player);
     }
 
@@ -465,6 +476,8 @@ internal static class LoanService
     /// co-op safe.</summary>
     internal static async Task RecordPayment(Player player, PlayerChoiceContext cc, int amount)
     {
+        var rec0 = For(player);
+        bool wasOwing = rec0 != null && rec0.Active && rec0.Principal > 0;   // did this payment have a debt to clear?
         await AccrueInterest(player, amount, principalShareOverride: 1.0);   // 100% to principal (interest = the surcharge)
         _paymentsThisCombat.GetValue(player, _ => new int[1])[0]++;
         if (player?.Creature == null) return;
@@ -472,6 +485,29 @@ internal static class LoanService
         if (benefit != null) await benefit.OnPayment(cc, player);
         var refund = player.Creature.GetPower<RefundPower>();
         if (refund != null) await refund.OnPayment(cc, player);
+
+        // Paid the loan off mid-combat? Lift the whole debt right now (see SettleLoanInCombat).
+        if (wasOwing)
+        {
+            var rec = For(player);
+            if (rec != null && rec.Active && rec.Principal <= 0) await SettleLoanInCombat(player);
+        }
+    }
+
+    /// <summary>A payment drove the principal to 0 DURING combat — settle the loan immediately instead of waiting
+    /// for a shop. Strips the injected Debt curses from combat (so 강제 징수 stops collecting the moment you're
+    /// square), removes the 신용 불량 spawner power, then runs the normal repay settle (remove the Ledger relic +
+    /// clear the record so credit is restored). The satisfying "debt cleared, curse lifted" beat — and it fixes
+    /// collections continuing after you no longer owe anything. Runs in the lockstep payment path (principal hits
+    /// 0 identically on both peers; relic/card removals are local per-peer). ⚠️ co-op contagion: this clears ALL
+    /// Debt curses in your combat, including any seeped from a partner's still-active loan — verify coop-verify.</summary>
+    internal static async Task SettleLoanInCombat(Player player)
+    {
+        MainFile.Logger.Info($"[{MainFile.ModId}] loan paid off in combat — lifting the debt immediately.");
+        await DebtLoanGrants.RemoveDebtCardsFromCombat(player);      // stop the injected curses taxing/debuffing NOW
+        if (player.Creature != null && player.Creature.GetPower<BadCreditPower>() != null)
+            await PowerCmd.Remove<BadCreditPower>(player.Creature);  // kill the 강제 징수 spawner so its icon clears too
+        await ApplyRepay(player);                                   // Active=false + deck sweep + remove relic + reset record
     }
 
     /// <summary>The 강제 징수 (Forced Collection) writes principal off DIRECTLY — no gold, it's paid in HP. So
@@ -517,9 +553,18 @@ internal static class LoanService
     internal static async Task ApplyRepay(Player player)
     {
         var rec = For(player);
+        // The tier the loan REACHED, computed from rooms directly (DebtCardCountFor returns 0 once Principal hits
+        // 0, so it can't be used here — the loan is being cleared). tier ≥3 earns the 신용 회복 reward card.
+        int rewardTier = (rec != null && player?.RunState != null)
+            ? DebtLoanConfig.TargetDebtCards(player.RunState.TotalFloor - rec.LoanFloor) : 0;
         if (rec != null) { rec.Active = false; SyncToRelic(player); }   // reflect "settled" for one frame
         await DebtLoanGrants.RemoveAllDebtLoanCards(player);            // the WHOLE debt kit evaporates with the loan
         await DebtLoanGrants.RemoveRelic(player);                        // clean slate — no inert relic left behind
+        // Reward for climbing out of DEEP, BIG debt: a permanent 신용 회복 (Credit Restored) card — but ONLY if the
+        // loan hit tier 4 AND the owed amount you carried peaked at ≥ 400 gold. Both gates (deep + large) mean it's
+        // a real achievement, not something you can farm with quick small loans. tier 4 → upgraded (신용 회복+).
+        if (rec != null && rewardTier >= DebtLoanConfig.RewardMinTier && rec.PeakPrincipal >= DebtLoanConfig.RewardMinOwed)
+            await DebtLoanGrants.GrantRewardCard(player, upgraded: rewardTier >= 4);
         ResetFor(player);                                               // record gone → next loan is a fresh first loan
     }
 }

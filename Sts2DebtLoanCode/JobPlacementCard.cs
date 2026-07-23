@@ -11,10 +11,10 @@ using MegaCrit.Sts2.Core.Models.CardPools;            // ColorlessCardPool
 namespace Sts2DebtLoan;
 
 /// <summary>
-/// 취업알선 (Job Placement) — a Power card. Playing it takes a 50-gold placement fee ONTO your loan (you gain
-/// 50 gold now, but it's borrowed — debt goes up), then for the rest of combat the start of each turn slips a
-/// 품삯 (Wages) card into your hand: steady income to work off what you owe. Upgraded (취업알선+) it keeps the
-/// same 50-gold fee but feeds the 품삯+ form (0-cost, 15 gold). Same 1-energy cost as the 독촉장.
+/// 취업알선 (Job Placement) — a Power card. Playing it adds a 50-gold placement fee straight ONTO your debt (you
+/// do NOT receive the gold — it's a fee, so what you owe goes up by 50), then for the rest of combat the start of
+/// each turn slips a 품삯 (Wages) card into your hand: steady income to work off what you owe. Upgraded (취업알선+)
+/// it keeps the same 50-gold fee but feeds the 품삯+ form (0-cost, 15 gold). Same 1-energy cost as the 정기 납부.
 /// Colorless/Event; the guaranteed 5th-shop grant. Auto-registered.
 /// </summary>
 public sealed class JobPlacementCard : CardModel
@@ -42,7 +42,7 @@ public sealed class JobPlacementCard : CardModel
     protected override async Task OnPlay(PlayerChoiceContext choiceContext, CardPlay cardPlay)
     {
         if (Owner?.Creature == null) return;
-        await LoanService.AddCombatDebt(Owner, Fee);   // borrow the 50-gold placement fee onto the loan
+        LoanService.AddCombatDebt(Owner, Fee);   // add the 50-gold placement fee onto what you OWE (no gold gained)
         await PowerCmd.Apply<JobPlacementPower>(choiceContext, Owner.Creature, IsUpgraded ? 2 : 1, Owner.Creature, null);   // 2 = 품삯+
     }
 }

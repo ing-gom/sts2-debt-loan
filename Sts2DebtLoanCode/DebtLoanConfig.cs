@@ -49,6 +49,13 @@ internal static class DebtLoanConfig
     /// feeds you a 빚 독촉 each turn, so this is a repeatable defensive/repayment engine (no offense).</summary>
     internal static int LeveragePlating = 3;
 
+    // ── 신용 회복 (Credit Restored) reward gate ──────────────────────────────────────────────────────────
+    /// <summary>Clearing a loan grants the permanent 신용 회복 reward card ONLY if it reached at least this tier…</summary>
+    internal static int RewardMinTier = 4;
+    /// <summary>…AND the owed amount (상환금액) it peaked at was at least this many gold. Both gates must hold, so
+    /// the reward is for clearing a genuinely deep + large debt, not a quick small loan.</summary>
+    internal static int RewardMinOwed = 400;
+
     // Debt-curse ESCALATION tier by rooms-since-loan. Each tier UNLOCKS a new curse in the injected set (see
     // LoanService.InjectAllDebtsForCombat): 1=빚 독촉(Dunning), 2=+연체(Delinquency), 3=+차압(Seizure),
     // 4=+신용 불량(Bad Credit). Injected fresh into the draw pile each combat (temporary — gone at combat end).

@@ -297,8 +297,9 @@ internal static class SoloTest
             W($"  amortized hover: {hover}");
             all &= tH;
 
-            // I) Combat-start injection: a fresh loan (count 1) → entering a Monster room fires
-            //    the first player turn (AfterPlayerTurnStart), which must put the Debt card(s) into the piles.
+            // I) Combat-start injection: a fresh loan (count 1) → entering a Monster room. Injection now runs
+            //    at BeforeHandDraw (before the opening deal) and inserts at the TOP of the draw pile, so the
+            //    Debt card should be DRAWN into the OPENING HAND (not merely sitting in the draw pile).
             Step("combat-start injection");
             LoanService.ResetFor(player);
             await DebtLoanGrants.RemoveRelic(player);
@@ -316,9 +317,10 @@ internal static class SoloTest
                     var pile = pt.GetPile(player);
                     if (pile != null) debtInCombat += pile.Cards.Count(c => c is DebtCurseCard);
                 }
+                int debtInHand = PileType.Hand.GetPile(player)?.Cards.Count(c => c is DebtCurseCard) ?? 0;
                 bool inCombat = MegaCrit.Sts2.Core.Combat.CombatManager.Instance?.IsInProgress ?? false;
                 tI = inCombat && debtInCombat >= 1;
-                W($"  assert combat inject: inCombat={inCombat} debtCardsInCombat={debtInCombat}(>=1) -> {tI}");
+                W($"  assert combat inject: inCombat={inCombat} debtCardsInCombat={debtInCombat}(>=1) inOpeningHand={debtInHand}(expect>=1) -> {tI}");
                 await Shot("4_combat");
             }
             all &= tI;
@@ -547,21 +549,24 @@ internal static class SoloTest
                 }
                 else W("  invoice: no live enemy to target — skipped");
 
-                // 취업알선 (Job Placement): play → borrow Fee(50, +surcharge) onto the loan + apply JobPlacementPower;
-                // a turn-start then slips a 품삯(Wages) card into hand.
+                // 취업알선 (Job Placement): play → add Fee(50) straight onto the OWED principal WITHOUT giving the
+                // player any gold (fee, not a loan) + apply JobPlacementPower; a turn-start then slips a 품삯(Wages)
+                // card into hand.
                 var recP = LoanService.For(player)!;
                 int owed0 = recP.Principal;
+                int jobGold0 = (int)player.Gold;                     // must NOT rise (no gold handed to the player)
                 var job = cstate!.CreateCard<JobPlacementCard>(player);
                 try { await CardCmd.AutoPlay(pcc, job, null); } catch (Exception e) { W("  job-placement play failed: " + e.Message); }
                 await Task.Delay(150);
                 int owedGain = recP.Principal - owed0;
+                int jobGoldGain = (int)player.Gold - jobGold0;       // expect 0 (the fee is added to debt, not paid out)
                 var jobPow = player.Creature.GetPower<JobPlacementPower>();
                 int w0 = PileType.Hand.GetPile(player)?.Cards.Count(c => c is WagesCard) ?? 0;
                 if (jobPow != null) await jobPow.AfterPlayerTurnStart(pcc, player);
                 await Task.Delay(150);
                 int wagesGain = (PileType.Hand.GetPile(player)?.Cards.Count(c => c is WagesCard) ?? 0) - w0;
-                bool tP4 = owedGain >= 50 && jobPow != null && wagesGain >= 1;
-                W($"  assert job-placement: owedGain={owedGain}(>=50) power={(jobPow != null)} wagesAdded={wagesGain}(>=1) -> {tP4}");
+                bool tP4 = owedGain == 50 && jobGoldGain == 0 && jobPow != null && wagesGain >= 1;
+                W($"  assert job-placement: owedGain={owedGain}(=50) playerGoldGain={jobGoldGain}(=0) power={(jobPow != null)} wagesAdded={wagesGain}(>=1) -> {tP4}");
 
                 // tP5) EMPIRICAL 골드 차감: play a real 빚 독촉 (Dunning) through the pipeline and assert the player's
                 //      ACTUAL held gold drops by the 20-gold play cost (bug report: "납부했을 때 실제 보유 골드가 안 줄어듦").
@@ -683,6 +688,112 @@ internal static class SoloTest
                 all &= tR;
             }
             catch (Exception e) { W("  bad-credit section failed: " + e); all = false; }
+
+            // S) POWER-ICON GALLERY (user request): apply all 5 custom-PowerModel powers at once and screenshot the
+            //    player's status bar, so the icons served by PowerIconPatch (res://Sts2DebtLoan/power_icons/*.png)
+            //    can be eyeballed in-game. Display-only; not part of PASS/FAIL.
+            Step("power-icon gallery");
+            try
+            {
+                if (Engine.GetMainLoop() is SceneTree)
+                {
+                    if (!(MegaCrit.Sts2.Core.Combat.CombatManager.Instance?.IsInProgress ?? false))
+                    {
+                        await RunManager.Instance.EnterRoomDebug(RoomType.Monster);
+                        await Task.Delay(4000);
+                    }
+                    var scc = new MegaCrit.Sts2.Core.GameActions.Multiplayer.BlockingPlayerChoiceContext();
+                    var cr = player.Creature;
+                    if (cr != null)
+                    {
+                        await PowerCmd.Apply<DunningLetterPower>(scc, cr, 1, cr, null);     // 정기 납부 (Standing Order)
+                        await PowerCmd.Apply<PaymentBenefitPower>(scc, cr, 1, cr, null);    // 납부 혜택
+                        await PowerCmd.Apply<RefundPower>(scc, cr, 1, cr, null);            // 환급
+                        await PowerCmd.Apply<JobPlacementPower>(scc, cr, 1, cr, null);      // 취업알선
+                        await PowerCmd.Apply<BadCreditPower>(scc, cr, 1, cr, null);         // 신용 불량
+                        await Task.Delay(600);
+                        int active = 0;
+                        if (cr.GetPower<DunningLetterPower>() != null) active++;
+                        if (cr.GetPower<PaymentBenefitPower>() != null) active++;
+                        if (cr.GetPower<RefundPower>() != null) active++;
+                        if (cr.GetPower<JobPlacementPower>() != null) active++;
+                        if (cr.GetPower<BadCreditPower>() != null) active++;
+                        W($"  power-icon gallery: {active}/5 custom powers active (see 9_power_icons.png)");
+                    }
+                    await Shot("9_power_icons");
+                }
+            }
+            catch (Exception e) { W("  power-icon gallery failed: " + e.Message); }
+
+            // T) MID-COMBAT PAYOFF SETTLE (user request): paying the loan down to 0 DURING combat must lift the debt
+            //    at once — relic removed, record reset (credit restored), and the injected Debt cards swept out of
+            //    combat so 강제 징수 stops collecting the instant you're square.
+            Step("mid-combat payoff settle");
+            try
+            {
+                LoanService.ResetFor(player);
+                await DebtLoanGrants.RemoveRelic(player);
+                await Task.Delay(120);
+                DebtLoanConfig.MaxLoan = 9999;
+                await LoanService.GrantLoanDirect(player, 60);        // owe 90 (60 + 50% surcharge)
+                await Task.Delay(120);
+                if (!(MegaCrit.Sts2.Core.Combat.CombatManager.Instance?.IsInProgress ?? false))
+                {
+                    await RunManager.Instance.EnterRoomDebug(RoomType.Monster);
+                    await Task.Delay(4000);
+                }
+                var tcc = new MegaCrit.Sts2.Core.GameActions.Multiplayer.BlockingPlayerChoiceContext();
+                var tcs = player.Creature?.CombatState;
+                if (tcs != null && tcs.CreateCard<DebtorCard>(player) is DebtorCard dcard)   // a 강제 징수 that must get swept
+                    await CardPileCmd.AddGeneratedCardToCombat(dcard, PileType.Hand, player, CardPilePosition.Bottom);
+                await Task.Delay(120);
+                int CountDebtInCombat() { int n = 0; foreach (var pt in new[] { PileType.Hand, PileType.Draw, PileType.Discard }) { var pl = pt.GetPile(player); if (pl != null) n += pl.Cards.Count(c => c is DebtCurseCard or DelinquencyCard or SeizureCard or BadCreditCard or DebtorCard); } return n; }
+                bool stRelicBefore = LoanService.LedgerRelicOf(player) != null;
+                int stDebtBefore = CountDebtInCombat();
+                await LoanService.RecordPayment(player, tcc, 500);    // pay far more than owed → principal hits 0 → settle
+                await Task.Delay(250);
+                bool stRelicGone = LoanService.LedgerRelicOf(player) == null;
+                bool stRecordReset = LoanService.For(player) == null;
+                int stDebtAfter = CountDebtInCombat();
+                bool tT = stRelicBefore && stDebtBefore >= 1 && stRelicGone && stRecordReset && stDebtAfter == 0;
+                W($"  assert mid-combat settle: relicBefore={stRelicBefore} debtBefore={stDebtBefore}(>=1) -> relicGone={stRelicGone} recordReset={stRecordReset} debtAfter={stDebtAfter}(0) -> {tT}");
+                all &= tT;
+
+                // T2) Reward gate = tier 4 AND owed peaked ≥ 400. A DEEP + BIG loan (borrow 300 → owe 450) cleared at
+                //     tier 4 drops a permanent 신용 회복+ card into the deck.
+                LoanService.ResetFor(player);
+                await DebtLoanGrants.RemoveRelic(player);
+                await Task.Delay(120);
+                await LoanService.GrantLoanDirect(player, 300);      // owe 450 → PeakPrincipal 450 (≥ 400)
+                await LoanService.DebugSetTier(player, 25);          // rooms-since-loan 25 → tier 4 (keeps owed 450)
+                await Task.Delay(120);
+                int reward0 = player.Deck.Cards.Count(c => c is CreditRestoredCard);
+                await LoanService.RecordPayment(player, tcc, 999);   // overpay → principal 0 → settle → grant reward
+                await Task.Delay(200);
+                var rewardCards = player.Deck.Cards.OfType<CreditRestoredCard>().ToList();
+                int rewardGain = rewardCards.Count - reward0;
+                bool rewardUpgraded = rewardCards.Any(c => c.IsUpgraded);
+                bool tT2 = rewardGain == 1 && rewardUpgraded;
+                W($"  assert reward (tier4 + owed>=400): added={rewardGain}(=1) upgraded={rewardUpgraded} -> {tT2}");
+                all &= tT2;
+
+                // T2b) NEGATIVE: tier 4 but a SMALL loan (owe 150 < 400) must NOT grant the reward (the 400 gate).
+                LoanService.ResetFor(player);
+                await DebtLoanGrants.RemoveRelic(player);
+                await Task.Delay(120);
+                await LoanService.GrantLoanDirect(player, 100);      // owe 150 → PeakPrincipal 150 (< 400)
+                var smallRec = LoanService.For(player); if (smallRec != null) smallRec.LoanFloor = player.RunState.TotalFloor - 25;   // tier 4 by rooms, but keep owed 150
+                await Task.Delay(120);
+                int reward0b = player.Deck.Cards.Count(c => c is CreditRestoredCard);
+                await LoanService.RecordPayment(player, tcc, 999);   // pay off tier-4-but-small loan → NO reward expected
+                await Task.Delay(200);
+                int rewardGainB = player.Deck.Cards.Count(c => c is CreditRestoredCard) - reward0b;
+                bool tT2b = rewardGainB == 0;
+                W($"  assert reward gate (tier4 + owed<400 → none): added={rewardGainB}(=0) -> {tT2b}");
+                all &= tT2b;
+                await Shot("10_settled");
+            }
+            catch (Exception e) { W("  mid-combat settle failed: " + e); all = false; }
 
             await Shot("2_final");
             W($"=== solo test done: {(all ? "ALL PASS" : "FAIL")} ===");

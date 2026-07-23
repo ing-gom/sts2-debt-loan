@@ -27,7 +27,7 @@ public sealed class DebtLoanRelic : RelicModel
     protected override string PackedIconOutlinePath => "res://Sts2DebtLoan/icons/debt_loan_relic_outline.png";
     protected override string BigIconPath => "res://Sts2DebtLoan/icons/debt_loan_relic.png";
 
-    private int _borrowed, _principal, _totalPaid, _loanFloor;
+    private int _borrowed, _principal, _totalPaid, _loanFloor, _peakPrincipal;
     private bool _active;
     private int _cards;   // transient (not saved): current per-combat Debt-card count, for the hover {cards}
 
@@ -39,6 +39,10 @@ public sealed class DebtLoanRelic : RelicModel
 
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public int TotalPaid { get => _totalPaid; set { AssertMutable(); _totalPaid = value; } }
+
+    /// <summary>Biggest owed amount this loan ever reached (never shrinks). Gates the 신용 회복 reward (≥400).</summary>
+    [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
+    public int PeakPrincipal { get => _peakPrincipal; set { AssertMutable(); _peakPrincipal = value; } }
 
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public int LoanFloor { get => _loanFloor; set { AssertMutable(); _loanFloor = value; } }
@@ -187,6 +191,30 @@ internal static class DebtLoanGrants
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] card grant failed ({cardType.Name}): {e.Message}"); }
     }
 
+    /// <summary>Reward for clearing a tier-3+ loan: add the 신용 회복 (Credit Restored) card PERMANENTLY to the
+    /// deck (upgraded at tier 4). If this happens mid-combat, also drop a temporary copy into hand so it helps
+    /// THIS fight too. The deck copy survives future debt-kit sweeps (it's exempt in RemoveAllDebtLoanCards).
+    /// Local per-peer mutation, applied inside the settle path → co-op safe (⚠️ verify with coop-verify).</summary>
+    internal static async Task GrantRewardCard(Player player, bool upgraded)
+    {
+        try
+        {
+            var deckCard = player.RunState.CreateCard<CreditRestoredCard>(player);
+            if (upgraded) { deckCard.UpgradeInternal(); deckCard.FinalizeUpgradeInternal(); }
+            CardCmd.PreviewCardPileAdd(await CardPileCmd.Add(deckCard, PileType.Deck));   // permanent keepsake
+            // Mid-combat payoff? Give a temporary copy in hand so the reward is usable in the current fight too.
+            var combat = player.Creature?.CombatState;
+            if (combat != null && (MegaCrit.Sts2.Core.Combat.CombatManager.Instance?.IsInProgress ?? false)
+                && combat.CreateCard<CreditRestoredCard>(player) is CreditRestoredCard handCard)
+            {
+                if (upgraded) { handCard.UpgradeInternal(); handCard.FinalizeUpgradeInternal(); }
+                await CardPileCmd.AddGeneratedCardToCombat(handCard, PileType.Hand, player, CardPilePosition.Bottom);
+            }
+            MainFile.Logger.Info($"[{MainFile.ModId}] granted 신용 회복 (Credit Restored{(upgraded ? "+" : "")}) reward card.");
+        }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] reward-card grant failed: {e.Message}"); }
+    }
+
     /// <summary>Repay path: strip every 독촉장 (base or +) from the deck — the leverage tool evaporates with
     /// the debt. Uses CardPileCmd.RemoveFromDeck so the Deck pile updates too. Local, applied per-peer.</summary>
     internal static async Task RemoveDunningLetter(Player player)
@@ -209,8 +237,30 @@ internal static class DebtLoanGrants
         {
             var own = typeof(DebtLoanGrants).Assembly;
             foreach (var card in new List<CardModel>(player.Deck.Cards))
-                if (card.GetType().Assembly == own) await CardPileCmd.RemoveFromDeck(card);
+                // Sweep the whole debt kit — but NOT the 신용 회복 reward (a permanent keepsake; a later loan's
+                // repay must not strip a reward you already earned).
+                if (card.GetType().Assembly == own && card is not CreditRestoredCard) await CardPileCmd.RemoveFromDeck(card);
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] DebtLoan card sweep failed: {e.Message}"); }
+    }
+
+    /// <summary>Mid-combat settle: strip the TEMPORARY injected Debt curses (납부/연체/차압/신용 불량/강제 징수) from the
+    /// player's COMBAT piles (hand/draw/discard) so they stop taxing and debuffing the instant the loan is paid
+    /// off. <see cref="RemoveAllDebtLoanCards"/> only clears the DECK; these injected cards never join the deck,
+    /// so they need this separate sweep. Local per-peer; runs inside the lockstep payment path.</summary>
+    internal static async Task RemoveDebtCardsFromCombat(Player player)
+    {
+        try
+        {
+            foreach (var pt in new[] { PileType.Hand, PileType.Draw, PileType.Discard })
+            {
+                var pile = pt.GetPile(player);
+                if (pile == null) continue;
+                foreach (var card in new List<CardModel>(pile.Cards))
+                    if (card is DebtCurseCard or DelinquencyCard or SeizureCard or BadCreditCard or DebtorCard or ForcedCollectionCard)
+                        await CardPileCmd.RemoveFromCombat(card);
+            }
+        }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] combat Debt-card sweep failed: {e.Message}"); }
     }
 }

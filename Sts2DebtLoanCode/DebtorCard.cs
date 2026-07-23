@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Godot;                                          // Mathf
 using MegaCrit.Sts2.Core.Commands;                    // PlayerCmd, CreatureCmd, CardPileCmd
-using MegaCrit.Sts2.Core.Entities.Cards;              // CardType, CardRarity, TargetType, CardKeyword, CardPlay
+using MegaCrit.Sts2.Core.Entities.Cards;              // CardType, CardRarity, TargetType, CardKeyword
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;     // PlayerChoiceContext
 using MegaCrit.Sts2.Core.HoverTips;                   // IHoverTip
 using MegaCrit.Sts2.Core.Localization.DynamicVars;    // DynamicVar
@@ -13,13 +13,14 @@ using MegaCrit.Sts2.Core.ValueProps;                  // ValueProp
 namespace Sts2DebtLoan;
 
 /// <summary>
-/// 빚쟁이 (Debtor) — the escalating collector the 신용 불량 (Bad Credit) power drops into your hand EVERY turn once
-/// you're deep in debt. Costs 1 (0 when upgraded). PLAY it to make a [gold]{gold}[/gold]-gold 납부 (Payment) —
-/// you pay the gold. LEAVE it in hand and, at turn end, the collector takes it in BLOOD instead: lose
-/// [b]{hp}[/b] HP and it STILL makes the {gold}-gold Payment (no gold needed), then Exhausts. Either path is a
-/// 납부, so it amortizes the loan and fires your payment-reactive powers (납부 혜택 → Plating, 환급 → a card).
-/// Its gold + HP scale with the level 신용 불량 ratchets up over the fight (every 3rd turn): gold = 20 + 10·level,
-/// HP = 2 + 2·level. Curse / temporary; Exhausts.
+/// 강제 징수 (Forced Collection) — the escalating collector the 신용 불량 (Bad Credit) power drops into your hand
+/// EVERY turn once you're deep in debt. It is UNPLAYABLE — there is no dodging it. At the END OF YOUR TURN the
+/// collector takes its cut: if you can afford it you make a [gold]{gold}[/gold]-gold 납부 (Payment); if you're
+/// short on gold it takes the same Payment out of your HIDE instead — lose [b]{hp}[/b] HP — then the card
+/// leaves combat (no Exhaust/Ethereal keyword; it removes itself). Either path counts as a 납부, so it
+/// amortizes the loan and fires your payment-reactive powers
+/// (납부 혜택 → Plating, 환급 → a card). Its gold + HP scale with the level 신용 불량 ratchets up over the fight
+/// (every 3rd turn): gold = 20 + 10·level, HP = 2 + 2·level. Curse / temporary; Exhausts.
 /// </summary>
 public sealed class DebtorCard : CardModel
 {
@@ -28,8 +29,10 @@ public sealed class DebtorCard : CardModel
     private static CardPoolModel? _cursePool;
     public override CardPoolModel Pool => _cursePool ??= ModelDb.CardPool<CurseCardPool>();
 
-    public override int MaxUpgradeLevel => 1;   // 빚쟁이 vs 빚쟁이+ (0-cost)
-    public override IEnumerable<CardKeyword> CanonicalKeywords => new[] { CardKeyword.Exhaust };
+    public override int MaxUpgradeLevel => 0;
+    // Unplayable ONLY — no Ethereal, no Exhaust keyword. It collects on its own at turn end and then quietly
+    // leaves via RemoveFromCombat (a temporary generated card), so it needs neither keyword tag on its face.
+    public override IEnumerable<CardKeyword> CanonicalKeywords => new[] { CardKeyword.Unplayable };
     public override bool HasTurnEndInHandEffect => true;
 
     public override string PortraitPath => "res://Sts2DebtLoan/card_art/debtor.png";
@@ -56,33 +59,20 @@ public sealed class DebtorCard : CardModel
     // Hover: explain the 납부 (Payment) it makes.
     protected override IEnumerable<IHoverTip> ExtraHoverTips => new[] { DebtLoanHoverTips.Payment() };
 
-    public DebtorCard() : base(canonicalEnergyCost: 1, CardType.Curse, CardRarity.Curse, TargetType.None) { }
+    // Unplayable curse → no energy cost (mirrors vanilla forced curses; ForcedCollectionCard uses the same -1).
+    public DebtorCard() : base(-1, CardType.Curse, CardRarity.Curse, TargetType.None) { }
 
-    /// <summary>Gold gate: only playable when you can actually pay the gold (like 빚 독촉). Broke → leave it and
-    /// pay in blood at turn end instead.</summary>
-    protected override bool IsPlayable => Owner != null && (int)Owner.Gold >= Gold;
-
-    /// <summary>Play: pay {gold} gold as a Payment; the Exhaust keyword removes it.</summary>
-    protected override async Task OnPlay(PlayerChoiceContext choiceContext, CardPlay cardPlay)
-    {
-        if (Owner?.Creature == null) return;
-        int pay = Mathf.Min(Gold, (int)Owner.Gold);
-        if (pay > 0) await PlayerCmd.LoseGold(pay, Owner);
-        await LoanService.RecordPayment(Owner, choiceContext, Gold);   // 납부: amortize + counter + fire payment powers
-    }
-
-    /// <summary>Left in hand at turn end: pay in blood — lose {hp} HP, still make the {gold} Payment, then gone.</summary>
+    /// <summary>Forced collection at TURN END: pay {gold} gold if you can afford it, otherwise pay in blood —
+    /// lose {hp} HP. Either way it makes the {gold} Payment (amortizes + fires payment powers), then Exhausts.</summary>
     protected override async Task OnTurnEndInHand(PlayerChoiceContext choiceContext)
     {
         if (Owner?.Creature == null) return;
-        await CreatureCmd.Damage(choiceContext, Owner.Creature, Hp, ValueProp.Unblockable | ValueProp.Unpowered | ValueProp.Move, this);
-        await LoanService.RecordPayment(Owner, choiceContext, Gold);   // paid in HP, not gold
-        await CardPileCmd.RemoveFromCombat(this);
-    }
-
-    protected override void OnUpgrade()
-    {
-        base.OnUpgrade();
-        EnergyCost.UpgradeBy(-1);   // 1 → 0
+        if ((int)Owner.Gold >= Gold)
+            await PlayerCmd.LoseGold(Gold, Owner);                                     // enough gold → pay in coin
+        else
+            await CreatureCmd.Damage(choiceContext, Owner.Creature, Hp,                 // broke → pay in blood
+                                     ValueProp.Unblockable | ValueProp.Unpowered | ValueProp.Move, this);
+        await LoanService.RecordPayment(Owner, choiceContext, Gold);   // 납부: amortize + counter + fire payment powers
+        await CardPileCmd.RemoveFromCombat(this);                      // one collection per card, then gone
     }
 }
