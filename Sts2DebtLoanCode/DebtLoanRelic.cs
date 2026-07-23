@@ -58,10 +58,21 @@ public sealed class DebtLoanRelic : RelicModel
     public bool DunningLetterGranted { get => _dunningLetterGranted; set { AssertMutable(); _dunningLetterGranted = value; } }
 
     private int _eventGrantCount;
-    /// <summary>How many of the 7 debt event cards have been handed out (one per shop-revisit). Persisted so the
-    /// fixed order (1st=독촉장, 5th=취업알선) survives reloads.</summary>
+    /// <summary>How many of the SHOP power cards have been handed out (one per shop-revisit). Persisted so the
+    /// fixed order (1st=정기 납부) + per-run shuffle survives reloads.</summary>
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public int EventGrantCount { get => _eventGrantCount; set { AssertMutable(); _eventGrantCount = value; } }
+
+    private int _lifetimePayments;
+    /// <summary>Run-wide 납부 count while this loan is active — the milestone counter that earns the non-power
+    /// combat cards (정산/청구서/혈납), one per 10. Persisted so the milestone survives reloads.</summary>
+    [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
+    public int LifetimePayments { get => _lifetimePayments; set { AssertMutable(); _lifetimePayments = value; } }
+
+    private int _combatCardsGranted;
+    /// <summary>How many combat payoff cards have been earned so far (0..3). Persisted.</summary>
+    [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
+    public int CombatCardsGranted { get => _combatCardsGranted; set { AssertMutable(); _combatCardsGranted = value; } }
 
     /// <summary>Live badge: rooms remaining until the NEXT escalation ("N rooms until it gets worse"),
     /// computed live from the current floor so it ticks down as you walk the map. 0 once at the top tier

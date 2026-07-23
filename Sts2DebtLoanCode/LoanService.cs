@@ -49,9 +49,16 @@ internal sealed class LoanRecord
     /// on the first visit to a shop other than the loan shop). Persisted on the relic so a reload keeps it.</summary>
     internal bool DunningLetterGranted;
 
-    /// <summary>How many of the 7 debt event cards have been handed out (one per shop-revisit). Drives the fixed
-    /// order — 1st = 정기 납부, 5th = 취업알선, the rest a per-run shuffle of the payment cards. Persisted.</summary>
+    /// <summary>How many of the SHOP power cards have been handed out (one per shop-revisit). Drives the fixed
+    /// order — 1st = 정기 납부, the rest a per-run shuffle of the power cards. Persisted.</summary>
     internal int EventGrantCount;
+
+    /// <summary>Total 납부 (Payment) made while this loan was active — the run-wide milestone counter that earns the
+    /// non-power combat cards (정산/청구서/혈납), one per <c>PaymentsPerCombatCard</c>. Persisted.</summary>
+    internal int LifetimePayments;
+
+    /// <summary>How many combat payoff cards have been earned so far (0..CombatPool.Length). Persisted.</summary>
+    internal int CombatCardsGranted;
 
     /// <summary>PER-COMBAT transient: the 신용 불량 (Bad Credit) collection level 0..3. Reset to 0 at each
     /// combat start (by the injector) and ratcheted up by BadCreditCard every turn it sits in hand. Not
@@ -184,6 +191,8 @@ internal static class LoanService
             relic.Active = rec.Active;
             relic.DunningLetterGranted = rec.DunningLetterGranted;
             relic.EventGrantCount = rec.EventGrantCount;
+            relic.LifetimePayments = rec.LifetimePayments;
+            relic.CombatCardsGranted = rec.CombatCardsGranted;
             relic.RefreshVars(DebtCardCountFor(player));   // borrowed/paid/cards into the relic's own DynamicVars (per-relic hover)
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] relic sync failed: {e.Message}"); }
@@ -209,8 +218,11 @@ internal static class LoanService
         rec.Active = relic.Active;
         rec.DunningLetterGranted = relic.DunningLetterGranted;
         rec.EventGrantCount = relic.EventGrantCount;
+        rec.LifetimePayments = relic.LifetimePayments;
+        rec.CombatCardsGranted = relic.CombatCardsGranted;
         rec.RelicGranted = true;
         EnsureRoomWatch();   // resubscribe the shop-revisit grant watcher after a load
+        EnsureCombatWatch(); // and the combat payment-milestone grant watcher
         relic.RefreshVars(DebtCardCountFor(player));
         MainFile.Logger.Info($"[{MainFile.ModId}] restored loan: borrowed {rec.Borrowed}, owed {rec.Principal}, paid {rec.TotalPaid}, loanFloor {rec.LoanFloor}, active {rec.Active}.");
     }
@@ -366,7 +378,8 @@ internal static class LoanService
             _ = DebtLoanGrants.GrantDunningLetter(player);
             MerchantBark.SayGrant(NextEventCardHintKey(rec));   // hand the 정기 납부 + hint the SPECIFIC next card
         }
-        EnsureRoomWatch();   // still watch shop revisits for the REMAINING payoff cards (slots 1-6)
+        EnsureRoomWatch();   // still watch shop revisits for the REMAINING power cards (slots 1-6)
+        EnsureCombatWatch(); // watch combat wins for the payment-milestone payoff cards (정산/청구서/혈납)
         SyncToRelic(player);
     }
 
@@ -384,6 +397,49 @@ internal static class LoanService
         if (rm == null) return;
         rm.RoomEntered += OnRoomEntered;
         _roomWatchSubscribed = true;
+    }
+
+    private static bool _combatWatchSubscribed;
+
+    /// <summary>Subscribe (once) to combat WINS so the payment MILESTONES hand out the non-power payoff cards
+    /// (정산/청구서/혈납) at the end of the fight where each 10-payment threshold is crossed. CombatManager.Instance
+    /// is a persistent singleton, so one subscription covers every combat. Per-peer local grant off synced loan
+    /// state → co-op converges. ⚠️ verify with coop-verify before release.</summary>
+    internal static void EnsureCombatWatch()
+    {
+        if (_combatWatchSubscribed) return;
+        var cm = MegaCrit.Sts2.Core.Combat.CombatManager.Instance;
+        if (cm == null) return;
+        cm.CombatWon += OnCombatWon;
+        _combatWatchSubscribed = true;
+    }
+
+    private static void OnCombatWon(CombatRoom room)
+    {
+        try
+        {
+            var run = RunManager.Instance?.State;
+            if (run?.Players == null) return;
+            foreach (var p in run.Players) TryGrantCombatCards(p);
+        }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] combat-milestone grant failed: {e.Message}"); }
+    }
+
+    /// <summary>Grant any not-yet-earned combat payoff cards whose payment milestone the player has crossed this run
+    /// (정산 at 10, 청구서 at 20, 혈납 at 30). Removed on repay like every other debt card (RemoveAllDebtLoanCards).
+    /// internal so the self-test can invoke it directly (what a combat win does).</summary>
+    internal static void TryGrantCombatCards(Player player)
+    {
+        var rec = For(player);
+        if (rec == null || !rec.Active) return;
+        int earned = rec.LifetimePayments / PaymentsPerCombatCard;   // milestones reached
+        while (rec.CombatCardsGranted < CombatPool.Length && rec.CombatCardsGranted < earned)
+        {
+            var type = CombatPool[rec.CombatCardsGranted];
+            rec.CombatCardsGranted++;
+            _ = DebtLoanGrants.GrantCard(player, type);
+        }
+        SyncToRelic(player);
     }
 
     /// <summary>Accrue per-room interest into the owed Principal: +NodeInterestPct% of Borrowed for each new room
@@ -419,24 +475,30 @@ internal static class LoanService
 
     /// <summary>Grant the 정기 납부 once per loan, when the debtor enters a shop that isn't the one they borrowed
     /// at (TotalFloor != LoanFloor). Deck mutation is local + deterministic → the same card lands on each peer.</summary>
-    // The event-card grant SEQUENCE across shop revisits — 10 cards, each once. Slot 0 (정기 납부) is handed at LOAN
-    // TIME; slots 1-9 come on shop revisits. The FIRST 4 slots are a FIXED priority order so even a short run gets the
-    // core of the 영수증 (Receipt) loop early — 정기 납부(repay engine), 정산 + 청구서(the Receipt spenders), 취업알선 —
-    // then the REMAINING six cards (incl. 이자 지원) come SHUFFLED per run (variety; they're secondary). 이자 지원 is
-    // pooled here rather than fixed after 취업알선 so the two gold cards aren't handed back-to-back.
+    // SHOP channel = POWER cards only. 정기 납부 (the repay engine) at LOAN TIME (slot 0); the other 6 power
+    // engines come SHUFFLED across shop revisits (slots 1-6). The non-power payoff cards (정산/청구서/혈납) are NOT
+    // here — you EARN those in combat, one per 10 payments (see CombatPool + OnCombatWon), so the core 영수증 loop
+    // no longer hinges on shop RNG.
     private static readonly System.Type[] FixedOrder =
     {
         typeof(DunningLetterCard),    // slot 0 — granted at loan time
-        typeof(SettlementCard),       // slot 1
-        typeof(InvoiceCard),          // slot 2
-        typeof(JobPlacementCard),     // slot 3
     };
     private static readonly System.Type[] RemainderPool =
     {
-        typeof(InterestSupportCard), typeof(PaymentBenefitCard), typeof(RefundCard),
-        typeof(BloodPaymentCard), typeof(CounterclaimCard), typeof(StatementCard),
+        typeof(JobPlacementCard), typeof(PaymentBenefitCard), typeof(RefundCard),
+        typeof(CounterclaimCard), typeof(StatementCard), typeof(InterestSupportCard),
     };
-    private const int TotalEventCards = 10;   // FixedOrder(4) + RemainderPool(6)
+    private const int TotalEventCards = 7;   // FixedOrder(1) + RemainderPool(6) — POWER cards
+
+    // COMBAT channel = the non-power payoff cards, earned one per <see cref="PaymentsPerCombatCard"/> payments
+    // (run-wide, tracked on the loan), granted at that combat's WIN. Removed on repay like every other debt card.
+    private static readonly System.Type[] CombatPool =
+    {
+        typeof(SettlementCard),    // at 10 payments
+        typeof(InvoiceCard),       // at 20 payments
+        typeof(BloodPaymentCard),  // at 30 payments
+    };
+    private const int PaymentsPerCombatCard = 10;
 
     /// <summary>Deterministic per-run shuffle of the remainder pool (seeded from the loan floor → same order on both
     /// co-op peers with no networking).</summary>
@@ -574,6 +636,7 @@ internal static class LoanService
         await AccrueInterest(player, amount, principalShareOverride: 1.0);   // 100% to principal (interest = the surcharge)
         if (player?.Creature == null) return;
         SetTally(player, PaymentsThisCombat(player) + 1);   // 납부 실적 +1 → HUD counter updates
+        if (rec0 != null && rec0.Active) { rec0.LifetimePayments++; SyncToRelic(player); }   // milestone counter (combat cards)
         var benefit = player.Creature.GetPower<PaymentBenefitPower>();
         if (benefit != null) await benefit.OnPayment(cc, player);
         var refund = player.Creature.GetPower<RefundPower>();

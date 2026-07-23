@@ -456,15 +456,15 @@ internal static class SoloTest
             int deckBefore = player.Deck.Cards.Count(c => c is DunningLetterCard);   // 0
             await LoanService.GrantLoanDirect(player, 150);          // now hands 정기 납부 at loan time
             await Task.Delay(400);                                    // let the fire-and-forget deck grant land
-            var recM = LoanService.For(player)!;
+            var recMile = LoanService.For(player)!;
             int afterLoan = player.Deck.Cards.Count(c => c is DunningLetterCard);   // expect 1 (granted with the loan)
-            bool granted = afterLoan == 1 && recM.DunningLetterGranted;
-            if ((int)player.Gold < recM.Principal) await PlayerCmd.GainGold(recM.Principal - (int)player.Gold, player, false);
+            bool granted = afterLoan == 1 && recMile.DunningLetterGranted;
+            if ((int)player.Gold < recMile.Principal) await PlayerCmd.GainGold(recMile.Principal - (int)player.Gold, player, false);
             await LoanService.Repay(player);                          // repay → card evaporates with the debt
             await Task.Delay(200);
             int afterRepay = player.Deck.Cards.Count(c => c is DunningLetterCard);
             bool tM = dlModel && deckBefore == 0 && granted && afterRepay == 0;
-            W($"  assert dunning-letter (grant-at-loan): model={dlModel} before={deckBefore} afterLoan={afterLoan}(1) flag={recM.DunningLetterGranted} afterRepay={afterRepay}(0) -> {tM}");
+            W($"  assert dunning-letter (grant-at-loan): model={dlModel} before={deckBefore} afterLoan={afterLoan}(1) flag={recMile.DunningLetterGranted} afterRepay={afterRepay}(0) -> {tM}");
             all &= tM;
 
             // N) Frame recolor: render an NCard for the 독촉장 and screenshot so the custom slate-lavender frame
@@ -731,7 +731,27 @@ internal static class SoloTest
                 W($"  2-digit tally check: 납부실적={LoanService.PaymentsThisCombat(player)} (see 6d_twodigit)");
                 await Shot("6d_twodigit");
 
-                bool tP = tP1 && tP2 && tP3 && tP4 && tP5;
+                // tP7) COMBAT MILESTONE: the non-power cards (정산/청구서/혈납) are earned one per 10 payments at combat
+                //      win. Drive LifetimePayments and run the grant (what OnCombatWon does) to check the math.
+                bool tP7;
+                {
+                    LoanService.ResetFor(player);
+                    await LoanService.GrantLoanDirect(player, 100);
+                    var mileRec = LoanService.For(player)!;
+                    mileRec.LifetimePayments = 5; mileRec.CombatCardsGranted = 0;
+                    LoanService.TryGrantCombatCards(player);
+                    bool m5 = mileRec.CombatCardsGranted == 0;    // 5 < 10 → nothing yet
+                    mileRec.LifetimePayments = 10;
+                    LoanService.TryGrantCombatCards(player);
+                    bool m10 = mileRec.CombatCardsGranted == 1;   // 10 → 정산
+                    mileRec.LifetimePayments = 25;
+                    LoanService.TryGrantCombatCards(player);
+                    bool m25 = mileRec.CombatCardsGranted == 2;   // 25 → +청구서 (2 milestones), not 혈납 yet
+                    tP7 = m5 && m10 && m25;
+                    W($"  assert combat-milestone: @5={m5}(0) @10={m10}(1=정산) @25={m25}(2=+청구서) -> {tP7}");
+                }
+
+                bool tP = tP1 && tP2 && tP3 && tP4 && tP5 && tP7;
                 W($"  == payment-set mechanics: {(tP ? "PASS" : "FAIL")} ==");
                 all &= tP;
             }
