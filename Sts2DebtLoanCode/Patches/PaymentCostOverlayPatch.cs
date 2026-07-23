@@ -86,7 +86,7 @@ internal static class PaymentCostOverlayPatch
             VerticalAlignment = VerticalAlignment.Center,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
-        txt.AddThemeFontSizeOverride("font_size", 38);
+        txt.AddThemeFontSizeOverride("font_size", 30);   // smaller than the receipt so the number/X has margin
         txt.AddThemeColorOverride("font_color", new Color(1f, 0.97f, 0.75f));
         txt.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0));
         txt.AddThemeConstantOverride("outline_size", 6);

@@ -56,7 +56,7 @@ internal sealed partial class NPaymentTallyCounter : Control
             VerticalAlignment = VerticalAlignment.Center,
             MouseFilter = MouseFilterEnum.Ignore,
         };
-        c._label.AddThemeFontSizeOverride("font_size", 34);
+        c._label.AddThemeFontSizeOverride("font_size", 27);   // smaller than the receipt so the number has margin
         c._label.AddThemeColorOverride("font_color", new Color(1f, 0.97f, 0.75f));
         c._label.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0));
         c._label.AddThemeConstantOverride("outline_size", 8);
