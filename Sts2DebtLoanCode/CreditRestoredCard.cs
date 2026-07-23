@@ -15,13 +15,13 @@ namespace Sts2DebtLoan;
 /// 신용 회복 (Credit Restored) — the reward for CLIMBING OUT of deep debt. When you fully repay a loan that had
 /// escalated to tier 3+ (shop OR mid-combat), this 0-energy Power card is added PERMANENTLY to your deck (tier 4
 /// grants the upgraded 신용 회복+). Play it and, for the rest of combat, you gain [b]{plate}[/b] Plating (판금)
-/// each turn — a modest, on-theme defensive keepsake for having survived the collections. Base = 2 Plating,
-/// upgraded = 3; always 0 energy. Colorless; granted by <see cref="LoanService"/>, never appears in random
+/// each turn — a modest, on-theme defensive keepsake for having survived the collections. Base = 3 Plating,
+/// upgraded = 5; always 0 energy. Colorless; granted by <see cref="LoanService"/>, never appears in random
 /// rewards, and is EXEMPT from the debt-kit sweep so a later loan can't strip it out. Auto-registered.
 /// </summary>
 public sealed class CreditRestoredCard : CardModel
 {
-    private const int BasePlate = 2, UpgradedPlate = 3;
+    private const int BasePlate = 3, UpgradedPlate = 5;
 
     private static CardPoolModel? _pool;
     public override CardPoolModel Pool => _pool ??= ModelDb.CardPool<ColorlessCardPool>();

@@ -774,9 +774,10 @@ internal static class SoloTest
                 await Task.Delay(200);
                 var rewardCards = player.Deck.Cards.OfType<CreditRestoredCard>().ToList();
                 int rewardGain = rewardCards.Count - reward0;
-                bool rewardUpgraded = rewardCards.Any(c => c.IsUpgraded);
-                bool tT2 = rewardGain == 1 && rewardUpgraded;
-                W($"  assert reward (tier4 + paid>=400): owedPaid={owedT2} added={rewardGain}(=1) upgraded={rewardUpgraded} -> {tT2}");
+                var upCard = rewardCards.FirstOrDefault(c => c.IsUpgraded);
+                int rewardPlate = upCard != null && upCard.DynamicVars.TryGetValue("plate", out var pv) ? (int)pv.IntValue : -1;
+                bool tT2 = rewardGain == 1 && upCard != null && rewardPlate == 5;   // 신용 회복+ = 5 Plating
+                W($"  assert reward (tier4 + paid>=400): owedPaid={owedT2} added={rewardGain}(=1) upgraded={upCard != null} plate={rewardPlate}(=5) -> {tT2}");
                 all &= tT2;
 
                 // T2b) NEGATIVE: tier 4 but only paid 150 (< 400) must NOT grant the reward (the 400-paid gate).
