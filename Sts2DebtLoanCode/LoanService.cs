@@ -497,6 +497,7 @@ internal static class LoanService
         typeof(SettlementCard),    // at 10 payments
         typeof(InvoiceCard),       // at 20 payments
         typeof(BloodPaymentCard),  // at 30 payments
+        typeof(GarnishmentCard),   // at 40 payments (AoE attack)
     };
     private const int PaymentsPerCombatCard = 10;
 

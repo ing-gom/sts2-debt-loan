@@ -609,16 +609,18 @@ internal static class SoloTest
                 try
                 {
                     var nInv = NCard.Create(cstate!.CreateCard<InvoiceCard>(player));            // X
+                    var nGa  = NCard.Create(cstate!.CreateCard<GarnishmentCard>(player));        // X (new AoE attack)
                     var nCc  = NCard.Create(cstate!.CreateCard<CounterclaimCard>(player));       // 2
                     var nIs  = NCard.Create(cstate!.CreateCard<InterestSupportCard>(player));    // 1
-                    if (Engine.GetMainLoop() is SceneTree tb && nInv != null && nCc != null && nIs != null)
+                    if (Engine.GetMainLoop() is SceneTree tb && nInv != null && nGa != null && nCc != null && nIs != null)
                     {
-                        tb.Root.AddChild(nInv); nInv.Position = new Vector2(420, 500); nInv.Scale = new Vector2(1.4f, 1.4f);
-                        tb.Root.AddChild(nCc);  nCc.Position  = new Vector2(890, 500); nCc.Scale  = new Vector2(1.4f, 1.4f);
-                        tb.Root.AddChild(nIs);  nIs.Position  = new Vector2(1360, 500); nIs.Scale = new Vector2(1.4f, 1.4f);
+                        tb.Root.AddChild(nInv); nInv.Position = new Vector2(300, 500); nInv.Scale = new Vector2(1.3f, 1.3f);
+                        tb.Root.AddChild(nGa);  nGa.Position  = new Vector2(720, 500); nGa.Scale  = new Vector2(1.3f, 1.3f);
+                        tb.Root.AddChild(nCc);  nCc.Position  = new Vector2(1140, 500); nCc.Scale = new Vector2(1.3f, 1.3f);
+                        tb.Root.AddChild(nIs);  nIs.Position  = new Vector2(1560, 500); nIs.Scale = new Vector2(1.3f, 1.3f);
                         await Task.Delay(500);
-                        await Shot("6c_badge");   // 청구서=X / 자본타격=2 / 이자지원=1 영수증 cost badges
-                        nInv.QueueFree(); nCc.QueueFree(); nIs.QueueFree();
+                        await Shot("6c_badge");   // 청구서=X / 가압류=X(AoE) / 자본타격=2 / 이자지원=1
+                        nInv.QueueFree(); nGa.QueueFree(); nCc.QueueFree(); nIs.QueueFree();
                     }
                 }
                 catch (Exception e) { W("  badge render failed: " + e.Message); }
@@ -747,8 +749,11 @@ internal static class SoloTest
                     mileRec.LifetimePayments = 25;
                     LoanService.TryGrantCombatCards(player);
                     bool m25 = mileRec.CombatCardsGranted == 2;   // 25 → +청구서 (2 milestones), not 혈납 yet
-                    tP7 = m5 && m10 && m25;
-                    W($"  assert combat-milestone: @5={m5}(0) @10={m10}(1=정산) @25={m25}(2=+청구서) -> {tP7}");
+                    mileRec.LifetimePayments = 40;
+                    LoanService.TryGrantCombatCards(player);
+                    bool m40 = mileRec.CombatCardsGranted == 4;   // 40 → +혈납 +가압류 (all 4)
+                    tP7 = m5 && m10 && m25 && m40;
+                    W($"  assert combat-milestone: @5={m5}(0) @10={m10}(1=정산) @25={m25}(2=+청구서) @40={m40}(4=+혈납+가압류) -> {tP7}");
                 }
 
                 bool tP = tP1 && tP2 && tP3 && tP4 && tP5 && tP7;
