@@ -362,7 +362,7 @@ internal static class DebtLoanLoc
         ["INTEREST_SUPPORT_POWER.title"] = "Interest Support",
         ["INTEREST_SUPPORT_POWER.description"] = "Whenever you make a Payment, gain Gold equal to half of it.",
         ["PAYMENT_STACK_POWER.title"] = "Tally",
-        ["PAYMENT_STACK_POWER.description"] = "Gains 1 each time you make a Payment. Invoice and Settlement scale with your Tally, then consume all of it.",
+        ["PAYMENT_STACK_POWER.description"] = "Gains 1 each time you make a Payment.",
     };
 
     private static readonly Dictionary<string, string> _powersKor = new()
@@ -382,7 +382,7 @@ internal static class DebtLoanLoc
         ["INTEREST_SUPPORT_POWER.title"] = "이자 지원",
         ["INTEREST_SUPPORT_POWER.description"] = "납부할 때마다 그 절반을 골드로 돌려받습니다.",
         ["PAYMENT_STACK_POWER.title"] = "납부 실적",
-        ["PAYMENT_STACK_POWER.description"] = "납부할 때마다 1씩 쌓입니다. 청구서와 정산이 납부 실적에 비례해 발동하고, 발동 시 전부 소비합니다.",
+        ["PAYMENT_STACK_POWER.description"] = "납부할 때마다 1씩 쌓입니다.",
     };
 
     // ── 12 more languages for the payment-set cards + powers (item 2). Vanilla keyword terms
@@ -724,7 +724,7 @@ internal static class DebtLoanLoc
         ["INTEREST_SUPPORT_POWER.title"] = "利息補助",
         ["INTEREST_SUPPORT_POWER.description"] = "支払いを行うたびに、その半分のゴールドを得る。",
         ["PAYMENT_STACK_POWER.title"] = "支払い実績",
-        ["PAYMENT_STACK_POWER.description"] = "支払いを行うたびに1増える。請求書と精算は支払い実績に比例して発動し、発動時にすべて消費する。",
+        ["PAYMENT_STACK_POWER.description"] = "支払いを行うたびに1増える。",
     };
     private static readonly Dictionary<string, string> _powersZhs = new()
     {
@@ -743,7 +743,7 @@ internal static class DebtLoanLoc
         ["INTEREST_SUPPORT_POWER.title"] = "利息补贴",
         ["INTEREST_SUPPORT_POWER.description"] = "每次还款时，获得其一半的金币。",
         ["PAYMENT_STACK_POWER.title"] = "还款记录",
-        ["PAYMENT_STACK_POWER.description"] = "每次还款时增加 1。账单和结算会根据你的还款记录发挥效果，发动时消耗全部。",
+        ["PAYMENT_STACK_POWER.description"] = "每次还款时增加 1。",
     };
     private static readonly Dictionary<string, string> _powersDeu = new()
     {
@@ -762,7 +762,7 @@ internal static class DebtLoanLoc
         ["INTEREST_SUPPORT_POWER.title"] = "Zinszuschuss",
         ["INTEREST_SUPPORT_POWER.description"] = "Immer wenn du eine Zahlung leistest, erhalte Gold in Höhe der Hälfte davon.",
         ["PAYMENT_STACK_POWER.title"] = "Zahlungszähler",
-        ["PAYMENT_STACK_POWER.description"] = "Erhält 1 bei jeder Zahlung, die du leistest. Rechnung und Abrechnung skalieren mit deinem Zahlungszähler und verbrauchen ihn dann vollständig.",
+        ["PAYMENT_STACK_POWER.description"] = "Erhält 1 bei jeder Zahlung, die du leistest.",
     };
     private static readonly Dictionary<string, string> _powersFra = new()
     {
@@ -781,7 +781,7 @@ internal static class DebtLoanLoc
         ["INTEREST_SUPPORT_POWER.title"] = "Aide aux intérêts",
         ["INTEREST_SUPPORT_POWER.description"] = "Chaque fois que tu effectues un Paiement, gagne de l'or égal à la moitié de celui-ci.",
         ["PAYMENT_STACK_POWER.title"] = "Décompte",
-        ["PAYMENT_STACK_POWER.description"] = "Gagne 1 à chaque Paiement que tu effectues. Facture et Règlement se calculent selon ton Décompte, puis le consomment entièrement.",
+        ["PAYMENT_STACK_POWER.description"] = "Gagne 1 à chaque Paiement que tu effectues.",
     };
     private static readonly Dictionary<string, string> _powersSpa = new()
     {
@@ -800,7 +800,7 @@ internal static class DebtLoanLoc
         ["INTEREST_SUPPORT_POWER.title"] = "Ayuda de intereses",
         ["INTEREST_SUPPORT_POWER.description"] = "Cada vez que haces un Pago, ganas oro igual a la mitad del mismo.",
         ["PAYMENT_STACK_POWER.title"] = "Recuento de pagos",
-        ["PAYMENT_STACK_POWER.description"] = "Gana 1 cada vez que haces un Pago. Factura y Liquidación escalan según tu Recuento de pagos y luego lo consumen por completo.",
+        ["PAYMENT_STACK_POWER.description"] = "Gana 1 cada vez que haces un Pago.",
     };
     private static readonly Dictionary<string, string> _powersIta = new()
     {
@@ -819,7 +819,7 @@ internal static class DebtLoanLoc
         ["INTEREST_SUPPORT_POWER.title"] = "Sostegno agli interessi",
         ["INTEREST_SUPPORT_POWER.description"] = "Ogni volta che effettui un Pagamento, ottieni Oro pari alla metà di esso.",
         ["PAYMENT_STACK_POWER.title"] = "Conteggio pagamenti",
-        ["PAYMENT_STACK_POWER.description"] = "Ottiene 1 ogni volta che effettui un Pagamento. Fattura e Saldo scalano con il tuo Conteggio pagamenti, poi lo consumano interamente.",
+        ["PAYMENT_STACK_POWER.description"] = "Ottiene 1 ogni volta che effettui un Pagamento.",
     };
     private static readonly Dictionary<string, string> _powersPol = new()
     {
@@ -838,7 +838,7 @@ internal static class DebtLoanLoc
         ["INTEREST_SUPPORT_POWER.title"] = "Dopłata do odsetek",
         ["INTEREST_SUPPORT_POWER.description"] = "Za każdym razem, gdy dokonasz Spłaty, zyskaj złoto równe połowie tej kwoty.",
         ["PAYMENT_STACK_POWER.title"] = "Licznik spłat",
-        ["PAYMENT_STACK_POWER.description"] = "Zyskuje 1 za każdym razem, gdy dokonasz Spłaty. Faktura i Rozliczenie skalują się z twoim Licznikiem spłat, a następnie zużywają go w całości.",
+        ["PAYMENT_STACK_POWER.description"] = "Zyskuje 1 za każdym razem, gdy dokonasz Spłaty.",
     };
     private static readonly Dictionary<string, string> _powersPtb = new()
     {
@@ -857,7 +857,7 @@ internal static class DebtLoanLoc
         ["INTEREST_SUPPORT_POWER.title"] = "Auxílio de juros",
         ["INTEREST_SUPPORT_POWER.description"] = "Sempre que fizer um Pagamento, ganhe Ouro igual à metade dele.",
         ["PAYMENT_STACK_POWER.title"] = "Contagem de pagamentos",
-        ["PAYMENT_STACK_POWER.description"] = "Ganha 1 cada vez que você faz um Pagamento. Fatura e Acerto escalam com sua Contagem de pagamentos e depois consomem tudo.",
+        ["PAYMENT_STACK_POWER.description"] = "Ganha 1 cada vez que você faz um Pagamento.",
     };
     private static readonly Dictionary<string, string> _powersRus = new()
     {
@@ -876,7 +876,7 @@ internal static class DebtLoanLoc
         ["INTEREST_SUPPORT_POWER.title"] = "Субсидия процентов",
         ["INTEREST_SUPPORT_POWER.description"] = "Каждый раз, когда вы совершаете Платёж, получите золото в размере его половины.",
         ["PAYMENT_STACK_POWER.title"] = "Учёт платежей",
-        ["PAYMENT_STACK_POWER.description"] = "Получает 1 каждый раз, когда вы совершаете Платёж. Счёт и Расчёт усиливаются в зависимости от вашего Учёта платежей, а затем полностью его расходуют.",
+        ["PAYMENT_STACK_POWER.description"] = "Получает 1 каждый раз, когда вы совершаете Платёж.",
     };
     private static readonly Dictionary<string, string> _powersTha = new()
     {
@@ -895,7 +895,7 @@ internal static class DebtLoanLoc
         ["INTEREST_SUPPORT_POWER.title"] = "เงินช่วยดอกเบี้ย",
         ["INTEREST_SUPPORT_POWER.description"] = "ทุกครั้งที่คุณทำการชำระ รับทองเท่ากับครึ่งหนึ่งของยอดนั้น",
         ["PAYMENT_STACK_POWER.title"] = "ยอดการชำระ",
-        ["PAYMENT_STACK_POWER.description"] = "เพิ่มขึ้น 1 ทุกครั้งที่คุณทำการชำระ ใบแจ้งหนี้และชำระบัญชีจะแปรผันตามยอดการชำระของคุณ แล้วใช้ทั้งหมดไป",
+        ["PAYMENT_STACK_POWER.description"] = "เพิ่มขึ้น 1 ทุกครั้งที่คุณทำการชำระ",
     };
     private static readonly Dictionary<string, string> _powersTur = new()
     {
@@ -914,7 +914,7 @@ internal static class DebtLoanLoc
         ["INTEREST_SUPPORT_POWER.title"] = "Faiz Desteği",
         ["INTEREST_SUPPORT_POWER.description"] = "Bir Ödeme yaptığında, onun yarısı kadar Altın kazan.",
         ["PAYMENT_STACK_POWER.title"] = "Ödeme Sayacı",
-        ["PAYMENT_STACK_POWER.description"] = "Yaptığın her Ödeme'de 1 kazanır. Fatura ve Hesaplaşma, Ödeme Sayacın'a göre ölçeklenir, ardından hepsini tüketir.",
+        ["PAYMENT_STACK_POWER.description"] = "Yaptığın her Ödeme'de 1 kazanır.",
     };
     private static readonly Dictionary<string, Dictionary<string, string>> _cardsByLang = new()
     {
