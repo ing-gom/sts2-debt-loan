@@ -420,23 +420,23 @@ internal static class LoanService
     /// <summary>Grant the 정기 납부 once per loan, when the debtor enters a shop that isn't the one they borrowed
     /// at (TotalFloor != LoanFloor). Deck mutation is local + deterministic → the same card lands on each peer.</summary>
     // The event-card grant SEQUENCE across shop revisits — 10 cards, each once. Slot 0 (정기 납부) is handed at LOAN
-    // TIME; slots 1-9 come on shop revisits. The FIRST slots are a FIXED priority order so even a short run gets the
-    // core of the 영수증 (Receipt) loop early — 정기 납부(repay engine), 정산 + 청구서(the Receipt spenders), 이자 지원
-    // (cheap engine), 취업알선 — then the REMAINING five cards come SHUFFLED per run (variety; they're secondary).
+    // TIME; slots 1-9 come on shop revisits. The FIRST 4 slots are a FIXED priority order so even a short run gets the
+    // core of the 영수증 (Receipt) loop early — 정기 납부(repay engine), 정산 + 청구서(the Receipt spenders), 취업알선 —
+    // then the REMAINING six cards (incl. 이자 지원) come SHUFFLED per run (variety; they're secondary). 이자 지원 is
+    // pooled here rather than fixed after 취업알선 so the two gold cards aren't handed back-to-back.
     private static readonly System.Type[] FixedOrder =
     {
         typeof(DunningLetterCard),    // slot 0 — granted at loan time
         typeof(SettlementCard),       // slot 1
         typeof(InvoiceCard),          // slot 2
-        typeof(InterestSupportCard),  // slot 3 (cheapest engine)
-        typeof(JobPlacementCard),     // slot 4
+        typeof(JobPlacementCard),     // slot 3
     };
     private static readonly System.Type[] RemainderPool =
     {
-        typeof(PaymentBenefitCard), typeof(RefundCard), typeof(BloodPaymentCard),
-        typeof(CounterclaimCard), typeof(StatementCard),
+        typeof(InterestSupportCard), typeof(PaymentBenefitCard), typeof(RefundCard),
+        typeof(BloodPaymentCard), typeof(CounterclaimCard), typeof(StatementCard),
     };
-    private const int TotalEventCards = 10;   // FixedOrder(5) + RemainderPool(5)
+    private const int TotalEventCards = 10;   // FixedOrder(4) + RemainderPool(6)
 
     /// <summary>Deterministic per-run shuffle of the remainder pool (seeded from the loan floor → same order on both
     /// co-op peers with no networking).</summary>
