@@ -316,9 +316,9 @@ internal static class SoloTest
                 foreach (var pt in new[] { PileType.Draw, PileType.Hand, PileType.Discard })
                 {
                     var pile = pt.GetPile(player);
-                    if (pile != null) debtInCombat += pile.Cards.Count(c => c is DebtCurseCard);
+                    if (pile != null) debtInCombat += pile.Cards.Count(c => c is MegaCrit.Sts2.Core.Models.Cards.Debt);
                 }
-                int debtInHand = PileType.Hand.GetPile(player)?.Cards.Count(c => c is DebtCurseCard) ?? 0;
+                int debtInHand = PileType.Hand.GetPile(player)?.Cards.Count(c => c is MegaCrit.Sts2.Core.Models.Cards.Debt) ?? 0;
                 bool inCombat = MegaCrit.Sts2.Core.Combat.CombatManager.Instance?.IsInProgress ?? false;
                 tI = inCombat && debtInCombat >= 1;
                 W($"  assert combat inject: inCombat={inCombat} debtCardsInCombat={debtInCombat}(>=1) inOpeningHand={debtInHand}(random, may be 0) -> {tI}");
@@ -345,10 +345,10 @@ internal static class SoloTest
                 foreach (var pt in new[] { PileType.Draw, PileType.Hand, PileType.Discard })
                 {
                     var pile = pt.GetPile(player);
-                    if (pile != null) cumulativeCurses += pile.Cards.Count(c => c is DebtCurseCard or DelinquencyCard or SeizureCard);
+                    if (pile != null) cumulativeCurses += pile.Cards.Count(c => c is MegaCrit.Sts2.Core.Models.Cards.Debt or DelinquencyCard or SeizureCard);
                 }
                 tI2 = cumulativeCurses == 0;
-                W($"  assert tier4=신용불량 only: 납부/연체/차압 injected={cumulativeCurses}(=0) -> {tI2}");
+                W($"  assert tier4=신용불량 only: 빚/연체/차압 injected={cumulativeCurses}(=0) -> {tI2}");
             }
             all &= tI2;
 

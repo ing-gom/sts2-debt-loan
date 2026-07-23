@@ -122,10 +122,12 @@ internal static class LoanService
             }
             else
             {
-                // Tiers 1-3 are CUMULATIVE: 납부 (Payment) always; +연체 (Delinquency) at tier 2; +차압 (Seizure) at
-                // tier 3. The injected 납부 is always the base form (the 독촉장+ payoff form is power-only).
-                var dunning = combat.CreateCard<DebtCurseCard>(injectee);
-                if (dunning != null) cards.Add(dunning);
+                // Tiers 1-3 are CUMULATIVE: the base curse is the VANILLA 빚 (Debt) curse — an Unplayable curse
+                // that bleeds 10 gold at end of turn — NOT our 납부 (Payment) card. 납부 is reserved for the 정기
+                // 납부 (Standing Order) power payoff; the injected penalty is a plain, native debt curse. +연체
+                // (Delinquency) is added at tier 2, +차압 (Seizure) at tier 3.
+                var debt = combat.CreateCard<MegaCrit.Sts2.Core.Models.Cards.Debt>(injectee);
+                if (debt != null) cards.Add(debt);
                 if (tier >= 2) { var c = combat.CreateCard<DelinquencyCard>(injectee); if (c != null) cards.Add(c); }
                 if (tier >= 3) { var c = combat.CreateCard<SeizureCard>(injectee);     if (c != null) cards.Add(c); }
             }

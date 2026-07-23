@@ -253,7 +253,8 @@ internal static class DebtLoanGrants
                 var pile = pt.GetPile(player);
                 if (pile == null) continue;
                 foreach (var card in new List<CardModel>(pile.Cards))
-                    if (card is DebtCurseCard or DelinquencyCard or SeizureCard or BadCreditCard or DebtorCard or ForcedCollectionCard)
+                    if (card is DebtCurseCard or DelinquencyCard or SeizureCard or BadCreditCard or DebtorCard
+                             or ForcedCollectionCard or MegaCrit.Sts2.Core.Models.Cards.Debt)   // + the injected vanilla 빚 curse
                         await CardPileCmd.RemoveFromCombat(card);
             }
         }
