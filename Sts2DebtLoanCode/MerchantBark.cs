@@ -256,7 +256,7 @@ internal static class MerchantBark
         },
         ["kor"] = new()
         {
-            ["SETTLEMENT"]       = "다음엔 매질이 쏟아질 때 자넬 막아줄 만한 걸 챙겨두지.",
+            ["SETTLEMENT"]       = "다음엔 놈들의 매서운 공격을 막아낼 만한 걸 챙겨두지.",
             ["INVOICE"]          = "다음에 오면 자네가 낸 만큼 적에게 되청구할 한 방을 마련해두마.",
             ["INTEREST_SUPPORT"] = "낸 돈이 조금은 자네 주머니로 돌아오게 해줄 물건을 찾아두지.",
             ["JOB_PLACEMENT"]    = "다음엔 자네 손에 일감 쥐여 주머니 불릴 만한 걸 알아봐 두겠네.",
