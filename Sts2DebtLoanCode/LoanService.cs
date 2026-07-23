@@ -353,7 +353,17 @@ internal static class LoanService
         rec.RelicGranted = true;
         if (!PlayerHasLedger(player))
             await DebtLoanGrants.GrantRelic(player);
-        EnsureRoomWatch();   // start watching for the shop-revisit that grants the 독촉장 card
+        // Hand the 정기 납부 (Standing Order) card AT LOAN TIME (not the first shop revisit) so you have immediate
+        // counterplay to the injected 빚 (Debt) curse — play it and the power feeds 납부 cards to work the debt
+        // down. Consumes sequence slot 0 (EventGrantCount → 1); the remaining payoff cards still come at shop
+        // revisits. Once per loan (DunningLetterGranted guards top-ups). Local per-peer, like the revisit grant.
+        if (!rec.DunningLetterGranted)
+        {
+            rec.DunningLetterGranted = true;
+            rec.EventGrantCount = System.Math.Max(rec.EventGrantCount, 1);
+            _ = DebtLoanGrants.GrantDunningLetter(player);
+        }
+        EnsureRoomWatch();   // still watch shop revisits for the REMAINING payoff cards (slots 1-6)
         SyncToRelic(player);
     }
 

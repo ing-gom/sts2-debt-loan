@@ -127,7 +127,6 @@ internal static class SoloTest
 
             // Deterministic config for the scenario.
             DebtLoanConfig.MaxLoan = 300;
-            DebtLoanConfig.InterestPerDraw = 10;
             DebtLoanConfig.PrincipalRepayShare = 0.2;
             DebtLoanConfig.MaxLoanActIndex = 2;   // allow loans in every act for the test
 
@@ -422,27 +421,24 @@ internal static class SoloTest
             // M) 독촉장 (Dunning Letter): granted once when the debtor shops somewhere OTHER than the loan shop
             //    (RoomEntered watch), and removed from the deck when the loan is repaid. Registration + grant +
             //    vanish, all outside combat (deck mutations).
-            Step("dunning letter grant + repay-vanish");
+            Step("dunning letter grant-at-loan + repay-vanish");
             LoanService.ResetFor(player);
             await DebtLoanGrants.RemoveDunningLetter(player);
             await DebtLoanGrants.RemoveRelic(player);
             await Task.Delay(120);
             bool dlModel = ModelDb.GetByIdOrNull<CardModel>(ModelDb.GetId(typeof(DunningLetterCard))) != null;
-            await LoanService.GrantLoanDirect(player, 150);
-            await Task.Delay(120);
+            int deckBefore = player.Deck.Cards.Count(c => c is DunningLetterCard);   // 0
+            await LoanService.GrantLoanDirect(player, 150);          // now hands 정기 납부 at loan time
+            await Task.Delay(400);                                    // let the fire-and-forget deck grant land
             var recM = LoanService.For(player)!;
-            recM.LoanFloor = -50;                                     // pretend we borrowed elsewhere → this shop is a "revisit"
-            int deckBefore = player.Deck.Cards.Count(c => c is DunningLetterCard);
-            await RunManager.Instance.EnterRoomDebug(RoomType.Shop);  // fires RoomEntered → the grant watcher
-            await Task.Delay(500);
-            int afterGrant = player.Deck.Cards.Count(c => c is DunningLetterCard);
-            bool granted = afterGrant == 1 && recM.DunningLetterGranted;
+            int afterLoan = player.Deck.Cards.Count(c => c is DunningLetterCard);   // expect 1 (granted with the loan)
+            bool granted = afterLoan == 1 && recM.DunningLetterGranted;
             if ((int)player.Gold < recM.Principal) await PlayerCmd.GainGold(recM.Principal - (int)player.Gold, player, false);
             await LoanService.Repay(player);                          // repay → card evaporates with the debt
             await Task.Delay(200);
             int afterRepay = player.Deck.Cards.Count(c => c is DunningLetterCard);
             bool tM = dlModel && deckBefore == 0 && granted && afterRepay == 0;
-            W($"  assert dunning-letter: model={dlModel} before={deckBefore} afterGrant={afterGrant}(1) flag={recM.DunningLetterGranted} afterRepay={afterRepay}(0) -> {tM}");
+            W($"  assert dunning-letter (grant-at-loan): model={dlModel} before={deckBefore} afterLoan={afterLoan}(1) flag={recM.DunningLetterGranted} afterRepay={afterRepay}(0) -> {tM}");
             all &= tM;
 
             // N) Frame recolor: render an NCard for the 독촉장 and screenshot so the custom slate-lavender frame

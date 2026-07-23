@@ -24,9 +24,6 @@ internal static class DebtLoanConfig
     /// <summary>Absolute hard cap on lifetime borrowing = soft cap + over-cap allowance.</summary>
     internal static int HardCap => MaxLoan + OverCapAllowance;
 
-    /// <summary>Gold each Debt card drains when it triggers = the interest rate.
-    /// Spec default matches the vanilla Debt curse (10). Config-adjustable.</summary>
-    internal static int InterestPerDraw = 10;
 
     /// <summary>Share of every Debt-card payment that goes toward paying DOWN the principal (the rest is
     /// interest). At 0.2, a 10-gold drain retires 2 gold of the loan and 8 counts as interest — so the debt
