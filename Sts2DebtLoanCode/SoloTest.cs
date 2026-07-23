@@ -601,6 +601,25 @@ internal static class SoloTest
                 if (handClear != null && handClear.Count > 0) await CardPileCmd.RemoveFromCombat(handClear, skipVisuals: true);
                 await Task.Delay(120);
 
+                // Render 청구서 + 정산 as standalone NCards (like §N) so the screenshot captures the custom X 납부 실적
+                // cost badge (책 심볼 + X) our overlay patch draws on tally-spending cards.
+                try
+                {
+                    var invModel = cstate!.CreateCard<InvoiceCard>(player);
+                    var setModel = cstate!.CreateCard<SettlementCard>(player);
+                    var nInv = NCard.Create(invModel);
+                    var nSet = NCard.Create(setModel);
+                    if (Engine.GetMainLoop() is SceneTree tb && nInv != null && nSet != null)
+                    {
+                        tb.Root.AddChild(nInv); nInv.Position = new Vector2(560, 470); nInv.Scale = new Vector2(1.5f, 1.5f);
+                        tb.Root.AddChild(nSet); nSet.Position = new Vector2(1120, 470); nSet.Scale = new Vector2(1.5f, 1.5f);
+                        await Task.Delay(500);
+                        await Shot("6c_badge");   // 청구서/정산 should show the X 납부 실적 cost badge
+                        nInv.QueueFree(); nSet.QueueFree();
+                    }
+                }
+                catch (Exception e) { W("  badge render failed: " + e.Message); }
+
                 // 정산 (Settlement): block = 납부 실적 × 4, THEN it CONSUMES the whole tally (stack → 0).
                 int blk0 = player.Creature.Block;
                 var settle = cstate!.CreateCard<SettlementCard>(player);

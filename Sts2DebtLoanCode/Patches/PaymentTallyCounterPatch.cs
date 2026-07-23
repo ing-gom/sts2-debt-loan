@@ -25,11 +25,12 @@ internal sealed partial class NPaymentTallyCounter : Control
 
     internal static NPaymentTallyCounter Create(Player player)
     {
+        const float S = 64f;   // square book symbol size (a bit smaller than the ~100px energy orb)
         var c = new NPaymentTallyCounter { _player = player, Name = "DebtLoanTallyCounter" };
         c.MouseFilter = MouseFilterEnum.Ignore;
-        c.CustomMinimumSize = new Vector2(96, 96);
+        c.CustomMinimumSize = new Vector2(S, S);
 
-        // ledger icon
+        // square ledger-book symbol
         if (_iconTex == null)
         {
             try { _iconTex = ResourceLoader.Load<Texture2D>(IconPath, null, ResourceLoader.CacheMode.Reuse); }
@@ -40,23 +41,23 @@ internal sealed partial class NPaymentTallyCounter : Control
             Texture = _iconTex,
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
             StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-            Size = new Vector2(72, 72),
+            Size = new Vector2(S, S),
             Position = new Vector2(0, 0),
             MouseFilter = MouseFilterEnum.Ignore,
         };
         c.AddChild(icon);
 
-        // count label (bottom-right of the icon, like an energy/star count)
+        // count text centered ON the book symbol
         c._label = new Label
         {
-            Position = new Vector2(40, 40),
-            Size = new Vector2(56, 48),
+            Position = new Vector2(0, 0),
+            Size = new Vector2(S, S),
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
             MouseFilter = MouseFilterEnum.Ignore,
         };
-        c._label.AddThemeFontSizeOverride("font_size", 40);
-        c._label.AddThemeColorOverride("font_color", new Color(1f, 0.95f, 0.6f));
+        c._label.AddThemeFontSizeOverride("font_size", 34);
+        c._label.AddThemeColorOverride("font_color", new Color(1f, 0.97f, 0.75f));
         c._label.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0));
         c._label.AddThemeConstantOverride("outline_size", 8);
         c.AddChild(c._label);
@@ -99,9 +100,9 @@ internal static class PaymentTallyCounterInjectPatch
             if (me == null) return;
             var counter = NPaymentTallyCounter.Create(me);
             container.AddChild(counter);
-            // sit ABOVE the energy/star cluster so it never overlaps the native Star counter (which reparents onto
-            // the energy counter). Tuned against the 1780×1080 combat HUD; offset is relative to the energy container.
-            counter.Position = new Vector2(-8f, -150f);
+            // sit just to the LEFT of the energy orb, a bit smaller, so it never overlaps the native Star counter
+            // (which reparents onto the energy counter, sitting at/below it). Offset is relative to the energy container.
+            counter.Position = new Vector2(-96f, 18f);
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] tally counter inject failed: {e.Message}"); }
     }

@@ -19,10 +19,12 @@ namespace Sts2DebtLoan;
 /// is evaluated at render, so the block number tracks payments with no preview patch. Upgraded it drops to 0
 /// energy. Exhausts. Colorless/Event; auto-registered. (Defensive twin of 청구서, which multi-hits damage.)
 /// </summary>
-public sealed class SettlementCard : CardModel
+public sealed class SettlementCard : CardModel, IUsesPaymentTally
 {
     private static CardPoolModel? _pool;
     public override CardPoolModel Pool => _pool ??= ModelDb.CardPool<ColorlessCardPool>();
+
+    public int TallyCost => -1;   // X: spends the WHOLE 납부 실적, block scales with it
 
     public override int MaxUpgradeLevel => 1;   // upgrade = 0 energy
 

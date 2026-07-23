@@ -19,10 +19,12 @@ namespace Sts2DebtLoan;
 /// so the card face shows "{Damage} damage × {CalculatedHits}" and updates as you pay. Upgraded it drops to 0
 /// energy. Exhausts. Colorless/Event; auto-registered. (Offensive twin of 정산, which scales block.)
 /// </summary>
-public sealed class InvoiceCard : CardModel
+public sealed class InvoiceCard : CardModel, IUsesPaymentTally
 {
     private static CardPoolModel? _pool;
     public override CardPoolModel Pool => _pool ??= ModelDb.CardPool<ColorlessCardPool>();
+
+    public int TallyCost => -1;   // X: spends the WHOLE 납부 실적, damage scales with it
 
     public override int MaxUpgradeLevel => 1;   // upgrade = 0 energy
 
