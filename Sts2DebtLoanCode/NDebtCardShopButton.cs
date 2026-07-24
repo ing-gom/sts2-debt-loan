@@ -130,7 +130,14 @@ internal sealed partial class NDebtCardShopButton : Control
 
     private static Texture2D? LoadIcon()
     {
-        // A card-stack / storefront icon: loose PNG next to the DLL if present, else the vanilla card-reward icon.
+        // Dedicated fanned card-stack icon from the pck (res://Sts2DebtLoan/icons/debt_shop_icon.png).
+        try
+        {
+            var tex = ResourceLoader.Load<Texture2D>("res://Sts2DebtLoan/icons/debt_shop_icon.png", null, ResourceLoader.CacheMode.Reuse);
+            if (tex != null) return tex;
+        }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] debt-shop icon pck load failed: {e.Message}"); }
+        // Dev override: a loose PNG next to the DLL.
         try
         {
             string? dir = System.IO.Path.GetDirectoryName(typeof(NDebtCardShopButton).Assembly.Location);
@@ -141,7 +148,8 @@ internal sealed partial class NDebtCardShopButton : Control
                 if (img != null) return ImageTexture.CreateFromImage(img);
             }
         }
-        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] debt-shop icon loose load failed: {e.Message}"); }
+        catch { /* fall through */ }
+        // Fallbacks: the mod's ledger, then a vanilla icon.
         try
         {
             var tex = ResourceLoader.Load<Texture2D>("res://Sts2DebtLoan/icons/debt_loan_relic.png", null, ResourceLoader.CacheMode.Reuse);
