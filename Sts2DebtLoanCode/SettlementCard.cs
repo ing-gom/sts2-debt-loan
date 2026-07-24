@@ -50,9 +50,6 @@ public sealed class SettlementCard : CardModel, IUsesPaymentTally
     };
 
     // Hover: explain the 납부 (Payment) count this scales off.
-    protected override IEnumerable<MegaCrit.Sts2.Core.HoverTips.IHoverTip> ExtraHoverTips =>
-        new[] { DebtLoanHoverTips.Receipt(), DebtLoanHoverTips.Payment() };
-
     public SettlementCard() : base(canonicalEnergyCost: 1, CardType.Skill, CardRarity.Event, TargetType.None) { }
 
     protected override async Task OnPlay(PlayerChoiceContext choiceContext, CardPlay cardPlay)

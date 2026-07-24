@@ -39,9 +39,6 @@ public sealed class GarnishmentCard : CardModel, IUsesPaymentTally
         new DamageVar(Damage, ValueProp.Move),
     };
 
-    protected override IEnumerable<MegaCrit.Sts2.Core.HoverTips.IHoverTip> ExtraHoverTips =>
-        new[] { DebtLoanHoverTips.Receipt(), DebtLoanHoverTips.Payment() };
-
     public GarnishmentCard() : base(canonicalEnergyCost: 1, CardType.Attack, CardRarity.Event, TargetType.AllEnemies) { }
 
     protected override async Task OnPlay(PlayerChoiceContext choiceContext, CardPlay cardPlay)

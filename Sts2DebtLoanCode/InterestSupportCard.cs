@@ -29,8 +29,6 @@ public sealed class InterestSupportCard : CardModel, IUsesPaymentTally
                    : "res://Sts2DebtLoan/card_art/interest_support.png";
     public override string BetaPortraitPath => PortraitPath;
 
-    protected override IEnumerable<IHoverTip> ExtraHoverTips => new[] { DebtLoanHoverTips.Receipt(), DebtLoanHoverTips.Payment() };
-
     public InterestSupportCard() : base(canonicalEnergyCost: 1, CardType.Power, CardRarity.Event, TargetType.None) { }
 
     protected override async Task OnPlay(PlayerChoiceContext choiceContext, CardPlay cardPlay)
