@@ -26,15 +26,18 @@ namespace Sts2DebtLoan;
 /// </summary>
 internal sealed partial class NDebtCardShopPanel : Control
 {
-    private const float BoardW = 1180f, BoardH = 620f;
-    private const float OfferPitch = 200f, CardScale = 0.62f, RowTopPad = 90f, RowH = 380f;
+    // Shop-sized board; cards laid out in a grid like the merchant's own card rows (3 per row).
+    private const float BoardW = 1400f, BoardH = 820f;
+    private const float CardScale = 0.8f;
+    private const int PerRow = 3;
+    private const float ColPitch = 440f, RowPitch = 380f, GridMarginX = 40f, GridTopY = 110f;
 
     private static NDebtCardShopPanel? _open;
 
     private NMerchantInventory _shop = null!;
     private Player _player = null!;
     private MegaLabel? _labelTemplate;
-    private Control _inner = null!;
+    private Control _grid = null!;
     private readonly List<Action> _refreshers = new();
     private CanvasLayer _layer = null!;
 
@@ -93,29 +96,21 @@ internal sealed partial class NDebtCardShopPanel : Control
 
         var ui = DebtLoanLoc.DebtShopUiFor(MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng");
 
-        var title = MakeLabel(ui.Title, 36, StsColors.cream);
-        if (title != null) { title.Position = new Vector2(40f, 26f); board.AddChild(title); }
+        var title = MakeLabel(ui.Title, 40, StsColors.cream);
+        if (title != null) { title.Position = new Vector2(44f, 30f); board.AddChild(title); }
 
-        // Scroll region holding the offer row.
-        var scroll = new ScrollContainer
-        {
-            Position = new Vector2(24f, RowTopPad),
-            Size = new Vector2(BoardW - 48f, RowH + 40f),
-            HorizontalScrollMode = ScrollContainer.ScrollMode.Auto,
-            VerticalScrollMode = ScrollContainer.ScrollMode.Disabled,
-        };
-        board.AddChild(scroll);
-
-        _inner = new Control();
-        scroll.AddChild(_inner);
+        // Offers sit directly on the rug in a shop-style grid (no scroll — the grid holds the whole pool).
+        _grid = new Control();
+        _grid.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        board.AddChild(_grid);
 
         BuildOffers();
 
         // Close button.
         var close = new Button { Text = ui.Close, Flat = false };
         if (_labelTemplate?.GetThemeDefaultFont() is Font f) close.AddThemeFontOverride("font", f);
-        close.Position = new Vector2(BoardW - 180f, BoardH - 70f);
-        close.Size = new Vector2(150f, 44f);
+        close.Position = new Vector2(BoardW - 190f, BoardH - 72f);
+        close.Size = new Vector2(158f, 46f);
         close.Pressed += Close;
         board.AddChild(close);
     }
@@ -125,31 +120,26 @@ internal sealed partial class NDebtCardShopPanel : Control
         var rec = LoanService.For(_player);
         if (rec == null) return;
         var offers = LoanService.RevealedPurchasable(rec);
-        float x = 20f;
-        foreach (var type in offers)
-        {
-            BuildOffer(type, x);
-            x += OfferPitch;
-        }
-        _inner.CustomMinimumSize = new Vector2(Math.Max(x, BoardW - 48f), RowH);
+        for (int i = 0; i < offers.Length; i++) BuildOffer(offers[i], i);
     }
 
-    private void BuildOffer(System.Type type, float x)
+    private void BuildOffer(System.Type type, int index)
     {
         var model = ModelDb.GetByIdOrNull<CardModel>(ModelDb.GetId(type));
         if (model == null) return;
 
-        float cx = x + OfferPitch / 2f;
-        const float cardCy = 150f;   // card CENTER y inside the scroll content (whole card fits the viewport)
+        int col = index % PerRow, row = index / PerRow;
+        float cx = GridMarginX + col * ColPitch + ColPitch / 2f;
+        float cardCy = GridTopY + row * RowPitch + 150f;   // card CENTER y in this row cell
 
-        // The card render (Node2D — positioned in inner-Control local coords).
+        // The card render (Node2D — positioned in grid-local coords), shop-card sized.
         NCard? card = null;
         try
         {
             card = NCard.Create(model);
             if (card != null)
             {
-                _inner.AddChild(card);
+                _grid.AddChild(card);
                 card.Position = new Vector2(cx, cardCy);
                 card.Scale = new Vector2(CardScale, CardScale);
                 card.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
@@ -157,22 +147,23 @@ internal sealed partial class NDebtCardShopPanel : Control
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] offer card render failed ({type.Name}): {e.Message}"); }
 
-        // Debt price tag under the card.
+        // Native-style debt cost tag (gold coin + number, like the shop's price) under the card.
         int price = LoanService.CardDebtPrice(type);
-        var ui = DebtLoanLoc.DebtShopUiFor(MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng");
-        var priceLabel = MakeLabel(string.Format(ui.Price, price), 26, new Color(1f, 0.82f, 0.28f));
-        if (priceLabel != null) { priceLabel.Position = new Vector2(cx - 34f, cardCy + 150f); _inner.AddChild(priceLabel); }
+        var costTag = MakeCostTag(price);
+        costTag.Position = new Vector2(cx - 42f, cardCy + 172f);
+        _grid.AddChild(costTag);
 
         // "품절" overlay label (hidden until bought), centered over the card.
-        var soldLabel = MakeLabel(ui.Sold, 30, StsColors.red);
-        if (soldLabel != null) { soldLabel.Position = new Vector2(cx - 34f, cardCy - 16f); soldLabel.Visible = false; _inner.AddChild(soldLabel); }
+        var ui = DebtLoanLoc.DebtShopUiFor(MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng");
+        var soldLabel = MakeLabel(ui.Sold, 34, StsColors.red);
+        if (soldLabel != null) { soldLabel.Position = new Vector2(cx - 40f, cardCy - 20f); soldLabel.Visible = false; _grid.AddChild(soldLabel); }
 
         // Click hitbox over the card.
         var buy = new Button { Flat = true, Text = "" };
-        buy.Position = new Vector2(x + 12f, cardCy - 130f);
-        buy.Size = new Vector2(OfferPitch - 24f, 280f);
+        buy.Position = new Vector2(cx - 120f, cardCy - 170f);
+        buy.Size = new Vector2(240f, 340f);
         buy.Pressed += () => OnBuy(type);
-        _inner.AddChild(buy);
+        _grid.AddChild(buy);
 
         // Local refresher: grey out + show 품절 + disable once bought.
         void Refresh()
@@ -182,7 +173,7 @@ internal sealed partial class NDebtCardShopPanel : Control
             bool active = r != null && r.Active;
             buy.Disabled = sold || !active;
             if (card != null) card.Modulate = sold ? new Color(0.45f, 0.45f, 0.45f) : Colors.White;
-            if (priceLabel != null) priceLabel.Visible = !sold;
+            costTag.Visible = !sold;
             if (soldLabel != null) soldLabel.Visible = sold;
         }
         _refreshers.Add(Refresh);
@@ -246,6 +237,35 @@ internal sealed partial class NDebtCardShopPanel : Control
             return ml;
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] label clone failed: {e.Message}"); return null; }
+    }
+
+    /// <summary>A shop-style cost tag: the merchant's gold-coin icon + the debt number, so the price reads like a
+    /// native shop price (the 외상 구매 title + debt framing make clear it's charged to your loan, not gold).</summary>
+    private Control MakeCostTag(int price)
+    {
+        var root = new Control { Size = new Vector2(96f, 40f) };
+        var coin = LoadCoin();
+        if (coin != null)
+        {
+            var icon = new TextureRect
+            {
+                Texture = coin,
+                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+                StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+                Size = new Vector2(34f, 34f),
+                Position = new Vector2(0f, 2f),
+            };
+            root.AddChild(icon);
+        }
+        var num = MakeLabel(price.ToString(), 30, StsColors.cream);
+        if (num != null) { num.Position = new Vector2(42f, 0f); root.AddChild(num); }
+        return root;
+    }
+
+    private static Texture2D? LoadCoin()
+    {
+        try { return ResourceLoader.Load<Texture2D>("res://images/atlases/ui_atlas.sprites/top_bar/top_bar_gold.tres", null, ResourceLoader.CacheMode.Reuse); }
+        catch { return null; }
     }
 
     /// <summary>The merchant's own rug texture, so the debt shop sits on the exact same 돗자리 as the store.</summary>
