@@ -365,7 +365,7 @@ internal sealed partial class NDebtCardShopPanel : Control
         // ON SALE: the pre-sale price to its right, dimmed + struck through (like the merchant's discounted price).
         if (original > price)
         {
-            float ox = coinSize + 8f + 56f;
+            float ox = coinSize + 8f + 42f;   // sit closer to the sale price (tighter gap)
             var orig = MakeLabel(original.ToString(), 24, new Color(0.72f, 0.72f, 0.72f));
             if (orig != null)
             {
