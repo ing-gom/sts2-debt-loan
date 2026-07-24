@@ -71,7 +71,7 @@ internal sealed partial class NDebtCardShopButton : Control
             ml.CustomMinimumSize = Vector2.Zero; ml.Size = Vector2.Zero; ml.Scale = Vector2.One;
             ml.HorizontalAlignment = HorizontalAlignment.Center;
             ml.ClipText = false; ml.AutowrapMode = TextServer.AutowrapMode.Off;
-            ml.Text = DebtLoanLoc.DebtShopUiFor(lang).Title;
+            ml.Text = DebtLoanLoc.DebtShopUiFor(lang).Title + " ▶";   // ▶ hints the "scroll right to the loan shop"
             ml.AddThemeFontSizeOverride("font_size", 24);
             ml.Modulate = StsColors.cream;
             ml.Position = new Vector2(IconSize / 2f - 60f, IconSize + 6f);

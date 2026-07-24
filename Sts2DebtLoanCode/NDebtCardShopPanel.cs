@@ -42,6 +42,8 @@ internal sealed partial class NDebtCardShopPanel : Control
     private Control _grid = null!;
     private readonly List<Action> _refreshers = new();
     private CanvasLayer _layer = null!;
+    private Vector2 _screen;
+    private bool _closing;
 
     public static void Show(NMerchantInventory shop, Player player)
     {
@@ -71,7 +73,13 @@ internal sealed partial class NDebtCardShopPanel : Control
 
     public override void _Ready()
     {
-        SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        // Screen-sized panel that starts OFF to the right and slides in — a "scroll right to the loan shop"
+        // transition. Sliding this whole Control moves the dim + rug together, so during the slide the real shop
+        // is still visible on the left (the canvas scrolls across).
+        _screen = GetViewportRect().Size;
+        SetAnchorsAndOffsetsPreset(LayoutPreset.TopLeft);
+        Size = _screen;
+        Position = new Vector2(_screen.X, 0f);
         MouseFilter = MouseFilterEnum.Stop;
 
         Node? searchRoot = (Node?)_shop ?? (Engine.GetMainLoop() as SceneTree)?.Root;
@@ -92,10 +100,9 @@ internal sealed partial class NDebtCardShopPanel : Control
             ClipContents = false,
         };
         // Fill (almost) the whole screen, like the real merchant rug — a small margin so the dim shows at the edges.
-        Vector2 screen = GetViewportRect().Size;
         const float margin = 36f;
-        _bw = screen.X - margin * 2f;
-        _bh = screen.Y - margin * 2f;
+        _bw = _screen.X - margin * 2f;
+        _bh = _screen.Y - margin * 2f;
         board.SetAnchorsAndOffsetsPreset(LayoutPreset.Center);
         board.Size = new Vector2(_bw, _bh);
         board.Position = new Vector2(-_bw / 2f, -_bh / 2f);
@@ -120,13 +127,31 @@ internal sealed partial class NDebtCardShopPanel : Control
 
         BuildOffers();
 
-        // Close button.
-        var close = new Button { Text = ui.Close, Flat = false };
-        if (_labelTemplate?.GetThemeDefaultFont() is Font f) close.AddThemeFontOverride("font", f);
-        close.Position = new Vector2(_bw - 200f, _bh - 78f);
-        close.Size = new Vector2(168f, 48f);
-        close.Pressed += Close;
-        board.AddChild(close);
+        // Back arrow at the FAR LEFT — slides the loan canvas back out to the right, revealing the shop again.
+        var back = new Button { Text = "◀", Flat = false };
+        if (_labelTemplate?.GetThemeDefaultFont() is Font f) back.AddThemeFontOverride("font", f);
+        back.AddThemeFontSizeOverride("font_size", 40);
+        back.Position = new Vector2(20f, _bh / 2f - 40f);
+        back.Size = new Vector2(80f, 80f);
+        back.Pressed += SlideOutAndClose;
+        board.AddChild(back);
+        var backCap = MakeLabel(ui.Close, 22, StsColors.cream);   // "돌아가기" hint under the arrow
+        if (backCap != null) { backCap.Position = new Vector2(12f, _bh / 2f + 46f); board.AddChild(backCap); }
+
+        // Slide IN from the right (even-paced so the "scroll across" reads clearly).
+        var tw = CreateTween();
+        tw.TweenProperty(this, "position:x", 0f, 0.55).SetEase(Tween.EaseType.InOut).SetTrans(Tween.TransitionType.Sine);
+    }
+
+    /// <summary>Slide the loan canvas back out to the right, then free it — the "scroll back to the shop" motion.</summary>
+    private void SlideOutAndClose()
+    {
+        if (_closing) return;
+        _closing = true;
+        if (_open == this) _open = null;   // stop _Process refreshers from re-touching freed nodes late
+        var tw = CreateTween();
+        tw.TweenProperty(this, "position:x", _screen.X, 0.32).SetEase(Tween.EaseType.In).SetTrans(Tween.TransitionType.Cubic);
+        tw.TweenCallback(Callable.From(() => _layer?.QueueFree()));
     }
 
     private void BuildOffers()
@@ -196,6 +221,7 @@ internal sealed partial class NDebtCardShopPanel : Control
 
     public override void _Process(double delta)
     {
+        if (_closing) return;
         // Keep the offers in sync with the loan state (grey-out after a buy, disable when the loan settles).
         foreach (var r in _refreshers) { try { r(); } catch { } }
     }
@@ -227,7 +253,7 @@ internal sealed partial class NDebtCardShopPanel : Control
 
     public override void _UnhandledKeyInput(InputEvent ev)
     {
-        if (ev is InputEventKey { Pressed: true, Keycode: Key.Escape }) Close();
+        if (ev is InputEventKey { Pressed: true, Keycode: Key.Escape }) SlideOutAndClose();
     }
 
     /// <summary>Clone the game's MegaLabel (a Label → Korean-capable game font) and set its text. The clone inherits

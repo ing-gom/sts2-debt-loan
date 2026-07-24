@@ -309,8 +309,9 @@ internal static class SoloTest
                 if (shopNode != null)
                 {
                     NDebtCardShopPanel.Show(shopNode, player);
-                    await Task.Delay(1100);
-                    await Shot("3c_shop_panel");                     // the debt-card screen opened FROM the real shop
+                    await Shot("3c0_slidein");                       // MID-slide: loan canvas scrolling in from the right (Shot's own ~120ms lands mid-tween)
+                    await Task.Delay(1000);
+                    await Shot("3c_shop_panel");                     // the debt-card screen fully opened FROM the real shop
                     NDebtCardShopPanel.CloseOpen();                  // don't let it linger into the next room
                     await Task.Delay(200);
                 }
