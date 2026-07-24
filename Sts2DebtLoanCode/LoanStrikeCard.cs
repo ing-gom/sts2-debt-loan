@@ -14,8 +14,9 @@ namespace Sts2DebtLoan;
 /// 대출 강타 (Loan Strike) — an Attack (event pool, EARNED via the combat payment-milestone). A new cost axis for
 /// the set: instead of spending 영수증 (Receipts), it BORROWS — playing it adds [b]{debt}[/b] onto what you OWE
 /// (like 취업알선's fee, via <see cref="LoanService.AddCombatDebt"/>) in exchange for a big single-target hit of
-/// [b]{Damage}[/b]. No receipt cost, no gate — the cost is future debt (higher repay + shop prices + interest base;
-/// it does NOT add curse tiers). Exhausts so the borrowing is a deliberate one-shot. Upgraded it drops to 0 energy.
+/// [b]{Damage}[/b]. No receipt cost, no gate — the cost is future debt (higher repay cost when you settle; it does
+/// NOT add curse tiers, shop inflation, or compounding interest, so it's a SOFT cost). Exhausts so the base card is a
+/// deliberate one-shot; upgraded it DROPS Exhaust (repeatable — keep borrowing to keep hitting, and the debt piles up).
 /// Colorless/Event. Requires an active loan for the debt to land (always true for a milestone-earned card).
 /// </summary>
 public sealed class LoanStrikeCard : CardModel
@@ -32,7 +33,7 @@ public sealed class LoanStrikeCard : CardModel
 
     public override IEnumerable<CardKeyword> CanonicalKeywords => new[] { CardKeyword.Exhaust };
 
-    private const int Damage = 18;         // big single-target hit (justified by the debt cost + exhaust)
+    private const int Damage = 14;         // solid single-target hit for a 1-cost exhaust (debt is a soft cost)
     private const int DebtIncurred = 30;   // added onto what you OWE when played (borrowed, not gained as gold)
 
     protected override IEnumerable<DynamicVar> CanonicalVars => new DynamicVar[]
@@ -55,6 +56,6 @@ public sealed class LoanStrikeCard : CardModel
     protected override void OnUpgrade()
     {
         base.OnUpgrade();
-        EnergyCost.UpgradeBy(-1);   // 1 → 0
+        RemoveKeyword(CardKeyword.Exhaust);   // upgrade = repeatable (no longer a one-shot); energy stays 1
     }
 }

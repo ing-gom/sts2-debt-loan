@@ -14,9 +14,9 @@ namespace Sts2DebtLoan;
 /// 저당 (Mortgage) — a Skill (event pool, EARNED via the combat payment-milestone). The defensive twin of
 /// 대출 강타: same BORROW axis — playing it adds [b]{debt}[/b] onto what you OWE (via
 /// <see cref="LoanService.AddCombatDebt"/>) in exchange for [b]{block}[/b] Block. No receipt cost, no gate; the
-/// cost is future debt (higher repay + shop prices + interest base — it does NOT add curse tiers). Exhausts, so
-/// the borrow is a one-shot. Upgraded it drops to 0 energy. Colorless/Event. Requires an active loan for the debt
-/// to land (always true for a milestone-earned card).
+/// cost is future debt (higher repay cost when you settle — it does NOT add curse tiers, shop inflation, or
+/// compounding interest, so it's a SOFT cost). Exhausts so the base card is a one-shot; upgraded it DROPS Exhaust
+/// (repeatable). Colorless/Event. Requires an active loan for the debt to land (always true for a milestone card).
 /// </summary>
 public sealed class MortgageCard : CardModel
 {
@@ -32,7 +32,7 @@ public sealed class MortgageCard : CardModel
 
     public override IEnumerable<CardKeyword> CanonicalKeywords => new[] { CardKeyword.Exhaust };
 
-    private const int Block = 15;          // Block gained (justified by the debt cost + exhaust)
+    private const int Block = 12;          // solid Block for a 1-cost exhaust (debt is a soft cost)
     private const int DebtIncurred = 30;   // added onto what you OWE when played (borrowed, not gained as gold)
 
     protected override IEnumerable<DynamicVar> CanonicalVars => new DynamicVar[]
@@ -53,6 +53,6 @@ public sealed class MortgageCard : CardModel
     protected override void OnUpgrade()
     {
         base.OnUpgrade();
-        EnergyCost.UpgradeBy(-1);   // 1 → 0
+        RemoveKeyword(CardKeyword.Exhaust);   // upgrade = repeatable (no longer a one-shot); energy stays 1
     }
 }

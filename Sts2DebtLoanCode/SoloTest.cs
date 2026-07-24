@@ -763,7 +763,22 @@ internal static class SoloTest
                     W($"  assert combat-milestone: @5={m5}(0) @10={m10}(1) head정산={headIsSettlement} @25={m25}(2) @40={m40}(4) @60={m60}(6) -> {tP7}");
                 }
 
-                bool tP = tP1 && tP2 && tP3 && tP4 && tP5 && tP7;
+                // tP8) BORROW cards (대출 강타 / 저당): upgrade DROPS Exhaust (repeatable), base keeps it.
+                bool tP8;
+                {
+                    var lsBase = cstate!.CreateCard<LoanStrikeCard>(player);
+                    bool baseHas = lsBase.Keywords.Contains(CardKeyword.Exhaust);
+                    var lsUp = cstate!.CreateCard<LoanStrikeCard>(player);
+                    lsUp.UpgradeInternal(); lsUp.FinalizeUpgradeInternal();
+                    bool lsUpHas = lsUp.Keywords.Contains(CardKeyword.Exhaust);
+                    var mgUp = cstate!.CreateCard<MortgageCard>(player);
+                    mgUp.UpgradeInternal(); mgUp.FinalizeUpgradeInternal();
+                    bool mgUpHas = mgUp.Keywords.Contains(CardKeyword.Exhaust);
+                    tP8 = baseHas && !lsUpHas && !mgUpHas;
+                    W($"  assert borrow-upgrade: base Exhaust={baseHas} 대출강타+Exhaust={lsUpHas} 저당+Exhaust={mgUpHas} -> {tP8}");
+                }
+
+                bool tP = tP1 && tP2 && tP3 && tP4 && tP5 && tP7 && tP8;
                 W($"  == payment-set mechanics: {(tP ? "PASS" : "FAIL")} ==");
                 all &= tP;
             }
