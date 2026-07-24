@@ -26,11 +26,11 @@ namespace Sts2DebtLoan;
 /// </summary>
 internal sealed partial class NDebtCardShopPanel : Control
 {
-    // Shop-sized board; cards laid out in a grid like the merchant's own card rows (3 per row).
-    private const float BoardW = 1400f, BoardH = 820f;
-    private const float CardScale = 0.8f;
+    // Shop-sized board; cards laid out in a grid like the merchant's own card rows (3 per row), at shop card size.
+    private const float BoardW = 1240f, BoardH = 760f;
+    private const float CardScale = 0.55f;
     private const int PerRow = 3;
-    private const float ColPitch = 440f, RowPitch = 380f, GridMarginX = 40f, GridTopY = 110f;
+    private const float ColPitch = 380f, RowPitch = 330f, GridMarginX = 50f, GridTopY = 96f;
 
     private static NDebtCardShopPanel? _open;
 
@@ -130,7 +130,7 @@ internal sealed partial class NDebtCardShopPanel : Control
 
         int col = index % PerRow, row = index / PerRow;
         float cx = GridMarginX + col * ColPitch + ColPitch / 2f;
-        float cardCy = GridTopY + row * RowPitch + 150f;   // card CENTER y in this row cell
+        float cardCy = GridTopY + row * RowPitch + 112f;   // card CENTER y in this row cell
 
         // The card render (Node2D — positioned in grid-local coords), shop-card sized.
         NCard? card = null;
@@ -150,18 +150,18 @@ internal sealed partial class NDebtCardShopPanel : Control
         // Native-style debt cost tag (gold coin + number, like the shop's price) under the card.
         int price = LoanService.CardDebtPrice(type);
         var costTag = MakeCostTag(price);
-        costTag.Position = new Vector2(cx - 42f, cardCy + 172f);
+        costTag.Position = new Vector2(cx - 42f, cardCy + 124f);
         _grid.AddChild(costTag);
 
         // "품절" overlay label (hidden until bought), centered over the card.
         var ui = DebtLoanLoc.DebtShopUiFor(MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng");
-        var soldLabel = MakeLabel(ui.Sold, 34, StsColors.red);
-        if (soldLabel != null) { soldLabel.Position = new Vector2(cx - 40f, cardCy - 20f); soldLabel.Visible = false; _grid.AddChild(soldLabel); }
+        var soldLabel = MakeLabel(ui.Sold, 30, StsColors.red);
+        if (soldLabel != null) { soldLabel.Position = new Vector2(cx - 36f, cardCy - 16f); soldLabel.Visible = false; _grid.AddChild(soldLabel); }
 
         // Click hitbox over the card.
         var buy = new Button { Flat = true, Text = "" };
-        buy.Position = new Vector2(cx - 120f, cardCy - 170f);
-        buy.Size = new Vector2(240f, 340f);
+        buy.Position = new Vector2(cx - 88f, cardCy - 120f);
+        buy.Size = new Vector2(176f, 250f);
         buy.Pressed += () => OnBuy(type);
         _grid.AddChild(buy);
 
