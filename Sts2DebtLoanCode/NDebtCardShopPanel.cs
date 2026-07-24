@@ -216,7 +216,9 @@ internal sealed partial class NDebtCardShopPanel : Control
         bool isSale = rec != null && LoanService.SaleCardFor(rec) == type;
         int original = isSale && rec != null ? LoanService.ShopBasePrice(rec, type) : 0;   // pre-sale, struck through
         var costTag = MakeCostTag(price, original);
-        costTag.Position = new Vector2(cx - (isSale ? 58f : 42f), cardCy + 124f);
+        // Coin + price sit at the SAME spot on EVERY card (like the shop) so the row of prices lines up; on a sale
+        // card the struck-through original just extends to the RIGHT — it never shifts the coin.
+        costTag.Position = new Vector2(cx - 42f, cardCy + 124f);
         _grid.AddChild(costTag);
         if (isSale)
         {
