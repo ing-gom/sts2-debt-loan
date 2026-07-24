@@ -53,12 +53,22 @@ internal sealed class LoanRecord
     /// order — 1st = 정기 납부, the rest a per-run shuffle of the power cards. Persisted.</summary>
     internal int EventGrantCount;
 
-    /// <summary>Total 납부 (Payment) made while this loan was active — the run-wide milestone counter that earns the
-    /// non-power combat cards (정산/청구서/혈납), one per <c>PaymentsPerCombatCard</c>. Persisted.</summary>
+    /// <summary>Total 납부 (Payment) made while this loan was active (a run-wide stat; kept for reference/telemetry).
+    /// Persisted.</summary>
     internal int LifetimePayments;
 
-    /// <summary>How many combat payoff cards have been earned so far (0..CombatPool.Length). Persisted.</summary>
-    internal int CombatCardsGranted;
+    /// <summary>How many DISTINCT shops (other than the loan shop) the debtor has visited this loan — drives how
+    /// many non-power cards the debt-card shop reveals for purchase (visit 1 → 3, visit 2 → 5, visit 3+ → all).
+    /// Persisted.</summary>
+    internal int DebtShopVisits;
+
+    /// <summary>The last TotalFloor at which <see cref="DebtShopVisits"/> was incremented — guards against
+    /// double-counting the same shop on re-entry/reload. Persisted.</summary>
+    internal int LastShopVisitFloor = -1;
+
+    /// <summary>Type-names of the non-power cards BOUGHT on debt at the shop this loan (so the shop shows them as
+    /// sold-out and won't re-sell). Persisted as a CSV on the relic. Cleared on repay/reset.</summary>
+    internal readonly HashSet<string> PurchasedCards = new();
 
     /// <summary>PER-COMBAT transient: the 신용 불량 (Bad Credit) collection level 0..3. Reset to 0 at each
     /// combat start (by the injector) and ratcheted up by BadCreditCard every turn it sits in hand. Not
@@ -192,7 +202,9 @@ internal static class LoanService
             relic.DunningLetterGranted = rec.DunningLetterGranted;
             relic.EventGrantCount = rec.EventGrantCount;
             relic.LifetimePayments = rec.LifetimePayments;
-            relic.CombatCardsGranted = rec.CombatCardsGranted;
+            relic.DebtShopVisits = rec.DebtShopVisits;
+            relic.LastShopVisitFloor = rec.LastShopVisitFloor;
+            relic.PurchasedCardsCsv = string.Join(",", rec.PurchasedCards);
             relic.RefreshVars(DebtCardCountFor(player));   // borrowed/paid/cards into the relic's own DynamicVars (per-relic hover)
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] relic sync failed: {e.Message}"); }
@@ -219,10 +231,12 @@ internal static class LoanService
         rec.DunningLetterGranted = relic.DunningLetterGranted;
         rec.EventGrantCount = relic.EventGrantCount;
         rec.LifetimePayments = relic.LifetimePayments;
-        rec.CombatCardsGranted = relic.CombatCardsGranted;
+        rec.DebtShopVisits = relic.DebtShopVisits;
+        rec.LastShopVisitFloor = relic.LastShopVisitFloor;
+        rec.PurchasedCards.Clear();
+        foreach (var s in (relic.PurchasedCardsCsv ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)) rec.PurchasedCards.Add(s);
         rec.RelicGranted = true;
-        EnsureRoomWatch();   // resubscribe the shop-revisit grant watcher after a load
-        EnsureCombatWatch(); // and the combat payment-milestone grant watcher
+        EnsureRoomWatch();   // resubscribe the shop-revisit grant watcher after a load (grants power cards + counts shop visits)
         relic.RefreshVars(DebtCardCountFor(player));
         MainFile.Logger.Info($"[{MainFile.ModId}] restored loan: borrowed {rec.Borrowed}, owed {rec.Principal}, paid {rec.TotalPaid}, loanFloor {rec.LoanFloor}, active {rec.Active}.");
     }
@@ -378,8 +392,7 @@ internal static class LoanService
             _ = DebtLoanGrants.GrantDunningLetter(player);
             MerchantBark.SayGrant(NextEventCardHintKey(rec));   // hand the 정기 납부 + hint the SPECIFIC next card
         }
-        EnsureRoomWatch();   // still watch shop revisits for the REMAINING power cards (slots 1-6)
-        EnsureCombatWatch(); // watch combat wins for the payment-milestone payoff cards (정산/청구서/혈납)
+        EnsureRoomWatch();   // watch shop revisits: grant the REMAINING power cards (slots 1-6) + count debt-shop visits
         SyncToRelic(player);
     }
 
@@ -399,49 +412,49 @@ internal static class LoanService
         _roomWatchSubscribed = true;
     }
 
-    private static bool _combatWatchSubscribed;
+    // ── 외상 카드 구매 (buy the non-power cards on debt at the shop) ──────────────────────────────
+    // The non-power cards are no longer earned in combat — the debtor BUYS them at a shop, taking on debt.
+    // The offer list grows per shop visit (see RevealedPurchasable); price scales with card strength.
 
-    /// <summary>Subscribe (once) to combat WINS so the payment MILESTONES hand out the non-power payoff cards
-    /// (정산/청구서/혈납) at the end of the fight where each 10-payment threshold is crossed. CombatManager.Instance
-    /// is a persistent singleton, so one subscription covers every combat. Per-peer local grant off synced loan
-    /// state → co-op converges. ⚠️ verify with coop-verify before release.</summary>
-    internal static void EnsureCombatWatch()
+    /// <summary>Debt price of a purchasable card, by strength tier. owed is a SOFT cost (it only raises the repay
+    /// total — not shop inflation, node interest, or curse tiers), so the real limiter is the per-visit reveal
+    /// count × how many shops a run has; the price is the relative signal + a repay-build tax.</summary>
+    internal static int CardDebtPrice(System.Type t)
     {
-        if (_combatWatchSubscribed) return;
-        var cm = MegaCrit.Sts2.Core.Combat.CombatManager.Instance;
-        if (cm == null) return;
-        cm.CombatWon += OnCombatWon;
-        _combatWatchSubscribed = true;
+        if (t == typeof(InvoiceCard) || t == typeof(GarnishmentCard)) return 60;                                // 고급: scaling attack / AoE
+        if (t == typeof(SettlementCard) || t == typeof(LoanStrikeCard) || t == typeof(MortgageCard)) return 45; // 중급
+        if (t == typeof(BloodPaymentCard)) return 35;                                                           // 기본: HP-payment utility
+        return 45;
     }
 
-    private static void OnCombatWon(CombatRoom room)
+    /// <summary>The non-power cards on offer at the shop right now: the deterministic per-loan order (정산 first, then
+    /// a LoanFloor-seeded shuffle) truncated to how many the debtor has unlocked — 3 on the first shop visit after
+    /// borrowing, 5 on the second, all on the third+. Same LoanFloor → both co-op peers see the same offers.</summary>
+    internal static System.Type[] RevealedPurchasable(LoanRecord rec)
     {
-        try
-        {
-            var run = RunManager.Instance?.State;
-            if (run?.Players == null) return;
-            foreach (var p in run.Players) TryGrantCombatCards(p);
-        }
-        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] combat-milestone grant failed: {e.Message}"); }
+        var order = CombatSequence(rec.LoanFloor);
+        int v = rec.DebtShopVisits;
+        int count = v <= 1 ? 3 : (v == 2 ? 5 : order.Length);
+        return order.Take(Math.Min(count, order.Length)).ToArray();
     }
 
-    /// <summary>Grant any not-yet-earned combat payoff cards whose payment milestone the player has crossed this run.
-    /// 정산 lands first (at 10); the remaining cards arrive in the per-run shuffled order (see <see cref="CombatSequence"/>),
-    /// one per <see cref="PaymentsPerCombatCard"/> payments. Removed on repay like every other debt card
-    /// (RemoveAllDebtLoanCards). internal so the self-test can invoke it directly (what a combat win does).</summary>
-    internal static void TryGrantCombatCards(Player player)
+    /// <summary>An offered card is buyable if the loan is active, it's been revealed, and it hasn't been bought yet.</summary>
+    internal static bool IsPurchasable(LoanRecord rec, System.Type t)
+        => rec.Active && !rec.PurchasedCards.Contains(t.Name) && System.Array.IndexOf(RevealedPurchasable(rec), t) >= 0;
+
+    /// <summary>Buy a revealed non-power card on debt: adds its price onto what you owe and drops the card into the
+    /// deck (like every other debt card — removed on full repay). Marks it sold so the shop won't re-sell it.
+    /// internal so the self-test can invoke it directly (what clicking a shop offer does).</summary>
+    internal static async Task<bool> BuyCardOnDebt(Player player, System.Type type)
     {
         var rec = For(player);
-        if (rec == null || !rec.Active) return;
-        var seq = CombatSequence(rec.LoanFloor);
-        int earned = rec.LifetimePayments / PaymentsPerCombatCard;   // milestones reached
-        while (rec.CombatCardsGranted < seq.Length && rec.CombatCardsGranted < earned)
-        {
-            var type = seq[rec.CombatCardsGranted];
-            rec.CombatCardsGranted++;
-            _ = DebtLoanGrants.GrantCard(player, type);
-        }
+        if (rec == null || !IsPurchasable(rec, type)) return false;
+        AddCombatDebt(player, CardDebtPrice(type));   // take on the debt (owed goes up; no gold gained)
+        rec.PurchasedCards.Add(type.Name);
+        await DebtLoanGrants.GrantCard(player, type);
         SyncToRelic(player);
+        MainFile.Logger.Info($"[{MainFile.ModId}] bought {type.Name} on debt for {CardDebtPrice(type)}.");
+        return true;
     }
 
     /// <summary>Accrue per-room interest into the owed Principal: +NodeInterestPct% of Borrowed for each new room
@@ -470,9 +483,22 @@ internal static class LoanService
             // walk the map — TotalFloor changed, so the live DisplayAmount must be re-pushed to the widget.
             foreach (var p in run.Players) { AccrueNodeInterest(p); RefreshRelicDisplay(p); }
             if (run.CurrentRoom?.RoomType != RoomType.Shop) return;
-            foreach (var p in run.Players) TryGrantDunningLetter(p);
+            foreach (var p in run.Players) { CountShopVisit(p); TryGrantDunningLetter(p); }
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] room-watch grant failed: {e.Message}"); }
+    }
+
+    /// <summary>Count a DISTINCT shop visit (other than the loan shop) — drives how many cards the debt-card shop
+    /// reveals (visit 1 → 3, 2 → 5, 3+ → all). Guarded by LastShopVisitFloor so re-entry/reload doesn't double-count.</summary>
+    private static void CountShopVisit(Player player)
+    {
+        var rec = For(player);
+        if (rec == null || !rec.Active || player.RunState == null) return;
+        int floor = player.RunState.TotalFloor;
+        if (floor == rec.LoanFloor || floor == rec.LastShopVisitFloor) return;
+        rec.LastShopVisitFloor = floor;
+        rec.DebtShopVisits++;
+        SyncToRelic(player);
     }
 
     /// <summary>Grant the 정기 납부 once per loan, when the debtor enters a shop that isn't the one they borrowed
@@ -492,14 +518,13 @@ internal static class LoanService
     };
     private const int TotalEventCards = 7;   // FixedOrder(1) + RemainderPool(6) — POWER cards
 
-    // COMBAT channel = the non-power payoff cards, earned one per <see cref="PaymentsPerCombatCard"/> payments
-    // (run-wide, tracked on the loan), granted at that combat's WIN. Removed on repay like every other debt card.
-    // 정산 (the defensive 영수증-spender) is FIXED first (milestone 10) so every loan gets a spender early; the
-    // rest are SHUFFLED per-run (seeded from LoanFloor → both co-op peers + save/load agree) so which extras you
-    // actually see varies run to run — instead of a fixed tail whose deep entries (40/50/60 payments) never show.
+    // PURCHASABLE pool = the non-power cards the debtor BUYS on debt at the shop (see BuyCardOnDebt). Removed on
+    // repay like every other debt card. 정산 (the defensive 영수증-spender) is the FIXED head of the reveal order so
+    // it's the first thing offered every loan; the rest are SHUFFLED per-run (seeded from LoanFloor → both co-op
+    // peers + save/load agree) so which cards a given shop reveals varies run to run.
     private static readonly System.Type[] CombatFixed =
     {
-        typeof(SettlementCard),    // always at 10 payments (guaranteed early receipt-spender)
+        typeof(SettlementCard),    // reveal slot 0 — always the first card offered
     };
     private static readonly System.Type[] CombatShufflePool =
     {
@@ -509,11 +534,10 @@ internal static class LoanService
         typeof(LoanStrikeCard),    // 대출 강타 — BORROW axis: +debt, big single-target hit
         typeof(MortgageCard),      // 저당 — BORROW axis: +debt, Block
     };
-    private const int PaymentsPerCombatCard = 10;
 
-    /// <summary>The full per-run combat-card sequence: the fixed head (정산) followed by a deterministic shuffle of
-    /// the rest (seeded from the loan floor, distinct stream from <see cref="ShuffledRemainder"/>). Same LoanFloor →
-    /// identical order on both co-op peers and across save/load.</summary>
+    /// <summary>The full per-loan reveal order: the fixed head (정산) followed by a deterministic shuffle of the rest
+    /// (seeded from the loan floor, distinct stream from <see cref="ShuffledRemainder"/>). Same LoanFloor → identical
+    /// order on both co-op peers and across save/load. <see cref="RevealedPurchasable"/> truncates it per shop visit.</summary>
     private static System.Type[] CombatSequence(int seed)
     {
         var pool = (System.Type[])CombatShufflePool.Clone();

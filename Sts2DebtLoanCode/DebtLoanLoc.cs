@@ -280,6 +280,35 @@ internal static class DebtLoanLoc
         ["tur"] = new("Krediyi Öde", "Tüccarın Defteri'ni iade etmek ve tüm Borç kartlarını kaldırmak için {0} altın öde.", "Yeterli altın yok — {0} borcun var.", "Ödenecek kredi yok."),
     };
 
+    // ── Debt-card shop panel UI (Buy on credit). {0} = the card's debt price. ──────────────────────────
+    internal readonly struct DebtShopUiRow
+    {
+        public readonly string Title, Hint, Price, Sold, Close;
+        public DebtShopUiRow(string title, string hint, string price, string sold, string close)
+        { Title = title; Hint = hint; Price = price; Sold = sold; Close = close; }
+    }
+
+    internal static DebtShopUiRow DebtShopUiFor(string? lang)
+        => lang != null && DebtShopUiByLang.TryGetValue(lang, out var r) ? r : DebtShopUiByLang["eng"];
+
+    private static readonly Dictionary<string, DebtShopUiRow> DebtShopUiByLang = new()
+    {
+        ["eng"] = new("Buy on Credit", "Buy a card on debt — its price is added to what you owe.", "Debt {0}", "SOLD", "Close"),
+        ["kor"] = new("외상 구매", "빚을 지고 카드를 삽니다 — 가격만큼 빚이 늘어납니다.", "빚 {0}", "품절", "닫기"),
+        ["jpn"] = new("ツケで購入", "借金でカードを買う — その値段が借金に加わる。", "借金 {0}", "売切れ", "閉じる"),
+        ["zhs"] = new("赊购", "赊账购买卡牌——其价格计入你的债务。", "债务 {0}", "售罄", "关闭"),
+        ["deu"] = new("Auf Kredit kaufen", "Kaufe eine Karte auf Schuld — ihr Preis wird zu deiner Schuld addiert.", "Schuld {0}", "VERKAUFT", "Schließen"),
+        ["fra"] = new("Acheter à crédit", "Achète une carte à crédit — son prix s'ajoute à ta dette.", "Dette {0}", "VENDU", "Fermer"),
+        ["spa"] = new("Comprar a crédito", "Compra una carta a crédito: su precio se suma a tu deuda.", "Deuda {0}", "VENDIDO", "Cerrar"),
+        ["esp"] = new("Comprar a crédito", "Compra una carta a crédito: su precio se suma a tu deuda.", "Deuda {0}", "VENDIDO", "Cerrar"),
+        ["ita"] = new("Compra a credito", "Compra una carta a debito — il suo prezzo si aggiunge a ciò che devi.", "Debito {0}", "VENDUTO", "Chiudi"),
+        ["pol"] = new("Kup na kredyt", "Kup kartę na dług — jej cena dolicza się do twojego długu.", "Dług {0}", "SPRZEDANE", "Zamknij"),
+        ["ptb"] = new("Comprar fiado", "Compre uma carta fiado — o preço é somado à sua dívida.", "Dívida {0}", "VENDIDO", "Fechar"),
+        ["rus"] = new("Купить в долг", "Купите карту в долг — её цена добавляется к вашему долгу.", "Долг {0}", "ПРОДАНО", "Закрыть"),
+        ["tha"] = new("ซื้อเงินเชื่อ", "ซื้อการ์ดด้วยการเป็นหนี้ — ราคาจะถูกบวกเข้ากับหนี้ของคุณ", "หนี้ {0}", "ขายแล้ว", "ปิด"),
+        ["tur"] = new("Borçla Satın Al", "Bir kartı borçla satın al — fiyatı borcuna eklenir.", "Borç {0}", "SATILDI", "Kapat"),
+    };
+
     // ── New payment-set cards + powers (loc keys = ClassName → SCREAMING_SNAKE). EN + KO; English fallback for
     //    the other 12 languages (TODO). Cards → "cards" table, powers → "powers" table (LocInjectionPatch).
     internal static Dictionary<string, string> ExtraCardLoc(string? lang) => lang != null && _cardsByLang.TryGetValue(lang, out var d) ? d : _cardsEng;

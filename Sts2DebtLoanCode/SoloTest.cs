@@ -733,34 +733,31 @@ internal static class SoloTest
                 W($"  2-digit tally check: 납부실적={LoanService.PaymentsThisCombat(player)} (see 6d_twodigit)");
                 await Shot("6d_twodigit");
 
-                // tP7) COMBAT MILESTONE: the 6 non-power cards are earned one per 10 payments at combat win — 정산
-                //      always first (fixed head), then the other 5 in per-run SHUFFLED order (CombatSequence). Assert
-                //      the COUNT crossed at each milestone (order is now seed-dependent, so we don't name types past 정산).
+                // tP7) DEBT-SHOP PURCHASE: the 6 non-power cards are BOUGHT on debt at the shop. The reveal grows per
+                //      distinct shop visit (1→3, 2→5, 3+→all), 정산 is always the head; buying adds the price to owed +
+                //      drops the card in the deck, and a bought card can't be rebought.
                 bool tP7;
                 {
                     LoanService.ResetFor(player);
                     await LoanService.GrantLoanDirect(player, 100);
-                    var mileRec = LoanService.For(player)!;
-                    mileRec.LifetimePayments = 5; mileRec.CombatCardsGranted = 0;
-                    LoanService.TryGrantCombatCards(player);
-                    bool m5 = mileRec.CombatCardsGranted == 0;    // 5 < 10 → nothing yet
-                    mileRec.LifetimePayments = 10;
-                    LoanService.TryGrantCombatCards(player);
-                    bool m10 = mileRec.CombatCardsGranted == 1;   // 10 → 정산 (fixed head)
-                    // first granted card must be 정산 (the guaranteed early spender), regardless of the shuffle —
-                    // GrantCard adds to the master Deck pile, so that's where the granted 정산 lands.
-                    bool headIsSettlement = PileType.Deck.GetPile(player)?.Cards?.Any(c => c is SettlementCard) ?? false;
-                    mileRec.LifetimePayments = 25;
-                    LoanService.TryGrantCombatCards(player);
-                    bool m25 = mileRec.CombatCardsGranted == 2;   // 25 → 2 milestones crossed
-                    mileRec.LifetimePayments = 40;
-                    LoanService.TryGrantCombatCards(player);
-                    bool m40 = mileRec.CombatCardsGranted == 4;   // 40 → 4 crossed
-                    mileRec.LifetimePayments = 60;
-                    LoanService.TryGrantCombatCards(player);
-                    bool m60 = mileRec.CombatCardsGranted == 6;   // 60 → all 6 (pool exhausted, no more)
-                    tP7 = m5 && m10 && m25 && m40 && m60 && headIsSettlement;
-                    W($"  assert combat-milestone: @5={m5}(0) @10={m10}(1) head정산={headIsSettlement} @25={m25}(2) @40={m40}(4) @60={m60}(6) -> {tP7}");
+                    var shopRec = LoanService.For(player)!;
+                    shopRec.DebtShopVisits = 1;
+                    int reveal1 = LoanService.RevealedPurchasable(shopRec).Length;   // visit 1 → 3
+                    shopRec.DebtShopVisits = 2;
+                    int reveal2 = LoanService.RevealedPurchasable(shopRec).Length;   // visit 2 → 5
+                    shopRec.DebtShopVisits = 3;
+                    var revealed = LoanService.RevealedPurchasable(shopRec);
+                    int reveal3 = revealed.Length;                                    // visit 3 → all 6
+                    bool headSettle = revealed.Length > 0 && revealed[0] == typeof(SettlementCard);
+                    var buyType = revealed[0];
+                    int price = LoanService.CardDebtPrice(buyType);
+                    int owedBefore = shopRec.Principal;
+                    bool bought = await LoanService.BuyCardOnDebt(player, buyType);
+                    bool owedUp = LoanService.For(player)!.Principal == owedBefore + price;
+                    bool inDeck = PileType.Deck.GetPile(player)?.Cards?.Any(c => c.GetType() == buyType) ?? false;
+                    bool noRebuy = !(await LoanService.BuyCardOnDebt(player, buyType));   // already bought → refused
+                    tP7 = reveal1 == 3 && reveal2 == 5 && reveal3 == 6 && headSettle && bought && owedUp && inDeck && noRebuy;
+                    W($"  assert debt-shop: reveal 1/2/3={reveal1}/{reveal2}/{reveal3}(3/5/6) head정산={headSettle} bought={bought} owed+{price}={owedUp} inDeck={inDeck} noRebuy={noRebuy} -> {tP7}");
                 }
 
                 // tP8) BORROW cards (대출 강타 / 저당): upgrade DROPS Exhaust (repeatable), base keeps it.
@@ -781,6 +778,22 @@ internal static class SoloTest
                 bool tP = tP1 && tP2 && tP3 && tP4 && tP5 && tP7 && tP8;
                 W($"  == payment-set mechanics: {(tP ? "PASS" : "FAIL")} ==");
                 all &= tP;
+
+                // tP-visual) DEBT-SHOP PANEL: open the buy-on-credit panel (all 6 revealed) and screenshot it, then
+                //            buy one and re-shot so we can eyeball the card renders, prices, and the 품절 grey-out.
+                try
+                {
+                    LoanService.ResetFor(player);
+                    await LoanService.GrantLoanDirect(player, 100);
+                    LoanService.For(player)!.DebtShopVisits = 3;   // reveal all 6
+                    NDebtCardShopPanel.ShowForTest(player);
+                    await Task.Delay(800);
+                    await Shot("6e_debtshop");
+                    var firstOffer = LoanService.RevealedPurchasable(LoanService.For(player)!).FirstOrDefault();
+                    if (firstOffer != null) { await LoanService.BuyCardOnDebt(player, firstOffer); await Task.Delay(500); await Shot("6f_debtshop_bought"); }
+                    W("  debt-shop panel rendered (see 6e_debtshop / 6f_debtshop_bought)");
+                }
+                catch (Exception e) { W("  debt-shop panel render failed: " + e.Message); }
             }
             catch (Exception e) { W("  payment-set section failed: " + e); all = false; }
 

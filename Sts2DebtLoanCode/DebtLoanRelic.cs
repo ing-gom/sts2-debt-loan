@@ -69,10 +69,22 @@ public sealed class DebtLoanRelic : RelicModel
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public int LifetimePayments { get => _lifetimePayments; set { AssertMutable(); _lifetimePayments = value; } }
 
-    private int _combatCardsGranted;
-    /// <summary>How many combat payoff cards have been earned so far (0..3). Persisted.</summary>
+    private int _debtShopVisits;
+    /// <summary>How many DISTINCT shops (other than the loan shop) the debtor has visited this loan — drives how many
+    /// non-power cards the debt-card shop reveals (visit 1 → 3, 2 → 5, 3+ → all). Persisted.</summary>
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
-    public int CombatCardsGranted { get => _combatCardsGranted; set { AssertMutable(); _combatCardsGranted = value; } }
+    public int DebtShopVisits { get => _debtShopVisits; set { AssertMutable(); _debtShopVisits = value; } }
+
+    private int _lastShopVisitFloor = -1;
+    /// <summary>Last TotalFloor at which <see cref="DebtShopVisits"/> was incremented (double-count guard). Persisted.</summary>
+    [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
+    public int LastShopVisitFloor { get => _lastShopVisitFloor; set { AssertMutable(); _lastShopVisitFloor = value; } }
+
+    private string _purchasedCardsCsv = "";
+    /// <summary>CSV of non-power card type-names BOUGHT on debt at the shop this loan (so it shows them sold-out and
+    /// won't re-sell). Persisted; cleared on repay.</summary>
+    [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
+    public string PurchasedCardsCsv { get => _purchasedCardsCsv; set { AssertMutable(); _purchasedCardsCsv = value ?? ""; } }
 
     /// <summary>Live badge: rooms remaining until the NEXT escalation ("N rooms until it gets worse"),
     /// computed live from the current floor so it ticks down as you walk the map. 0 once at the top tier
