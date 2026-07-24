@@ -27,10 +27,12 @@ namespace Sts2DebtLoan;
 internal sealed partial class NDebtCardShopPanel : Control
 {
     // Shop-sized board; cards laid out in a grid like the merchant's own card rows (3 per row), at shop card size.
-    private const float BoardW = 1240f, BoardH = 760f;
     private const float CardScale = 0.55f;
     private const int PerRow = 3;
-    private const float ColPitch = 380f, RowPitch = 330f, GridMarginX = 50f, GridTopY = 96f;
+
+    // Board + grid metrics, computed from the actual screen size in _Ready so the rug fills the screen like the
+    // real shop (was a small fixed box that left the merchant's own rug showing around it).
+    private float _bw, _bh, _colPitch, _rowPitch, _gridX, _gridTop;
 
     private static NDebtCardShopPanel? _open;
 
@@ -89,15 +91,27 @@ internal sealed partial class NDebtCardShopPanel : Control
             StretchMode = TextureRect.StretchModeEnum.KeepAspectCovered,
             ClipContents = false,
         };
+        // Fill (almost) the whole screen, like the real merchant rug — a small margin so the dim shows at the edges.
+        Vector2 screen = GetViewportRect().Size;
+        const float margin = 36f;
+        _bw = screen.X - margin * 2f;
+        _bh = screen.Y - margin * 2f;
         board.SetAnchorsAndOffsetsPreset(LayoutPreset.Center);
-        board.Size = new Vector2(BoardW, BoardH);
-        board.Position = new Vector2(-BoardW / 2f, -BoardH / 2f);
+        board.Size = new Vector2(_bw, _bh);
+        board.Position = new Vector2(-_bw / 2f, -_bh / 2f);
         AddChild(board);
+
+        // Grid metrics: 3 columns spread across the width, 2 rows in the space between the title and the close row.
+        const float sideMargin = 90f, topArea = 130f, bottomArea = 96f;
+        _colPitch = (_bw - sideMargin * 2f) / PerRow;
+        _gridX = sideMargin;
+        _gridTop = topArea;
+        _rowPitch = (_bh - topArea - bottomArea) / 2f;   // 6 cards → 2 rows
 
         var ui = DebtLoanLoc.DebtShopUiFor(MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng");
 
-        var title = MakeLabel(ui.Title, 40, StsColors.cream);
-        if (title != null) { title.Position = new Vector2(44f, 30f); board.AddChild(title); }
+        var title = MakeLabel(ui.Title, 44, StsColors.cream);
+        if (title != null) { title.Position = new Vector2(50f, 34f); board.AddChild(title); }
 
         // Offers sit directly on the rug in a shop-style grid (no scroll — the grid holds the whole pool).
         _grid = new Control();
@@ -109,8 +123,8 @@ internal sealed partial class NDebtCardShopPanel : Control
         // Close button.
         var close = new Button { Text = ui.Close, Flat = false };
         if (_labelTemplate?.GetThemeDefaultFont() is Font f) close.AddThemeFontOverride("font", f);
-        close.Position = new Vector2(BoardW - 190f, BoardH - 72f);
-        close.Size = new Vector2(158f, 46f);
+        close.Position = new Vector2(_bw - 200f, _bh - 78f);
+        close.Size = new Vector2(168f, 48f);
         close.Pressed += Close;
         board.AddChild(close);
     }
@@ -129,8 +143,8 @@ internal sealed partial class NDebtCardShopPanel : Control
         if (model == null) return;
 
         int col = index % PerRow, row = index / PerRow;
-        float cx = GridMarginX + col * ColPitch + ColPitch / 2f;
-        float cardCy = GridTopY + row * RowPitch + 112f;   // card CENTER y in this row cell
+        float cx = _gridX + col * _colPitch + _colPitch / 2f;
+        float cardCy = _gridTop + row * _rowPitch + _rowPitch * 0.42f;   // card CENTER y in this row cell
 
         // The card render (Node2D — positioned in grid-local coords), shop-card sized.
         NCard? card = null;
