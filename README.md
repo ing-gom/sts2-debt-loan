@@ -9,11 +9,19 @@ A [Slay the Spire 2](https://store.steampowered.com/app/2868840/) mod that lets 
 1. **Borrow.** At a shop, an item you can't fully afford can still be bought — the shortfall is lent to you, up to a cap. You receive the **Merchant's Ledger** relic, which tracks what you owe.
 2. **Interest grows.** You owe more than you borrowed: an origination fee up front, plus interest that accrues each room you carry the debt. The longer you drag it out, the more it costs.
 3. **Fall behind → curses.** Carry the debt too long and escalating **Debt** curse cards seep into your combats — **Delinquency**, then **Seizure**, then **Bad Credit** and its relentless **Forced Collection**.
-4. **Pay it down.** The **Standing Order** power feeds you **Payment** cards each turn; play them (and the payment-engine cards) to whittle down the principal, earning **Plating** as you go. **Repay the principal at any shop** to clear the Ledger and restore your credit — then you can borrow again.
+4. **Pay it down.** The **Standing Order** power feeds you **Payment** cards each turn — playing one spends gold to knock down the principal. **Repay the principal at any shop** to clear the Ledger and restore your credit — then you can borrow again.
 
 ## The debt shop
 
-Once you owe, a dedicated **debt shop** lets you buy payment-engine cards **on credit** — settlement, invoice, garnishment and more — adding their price onto what you owe. The stock rotates each visit, with one card on sale every time.
+Once you owe, a dedicated **debt shop** lets you buy payoff cards **on credit** — adding their price onto what you owe. The stock rotates each visit, with one card on sale every time.
+
+## The payment engine
+
+Every payment you make banks a **Receipt**, a combat resource with its own counter. The payoff cards you collect then cash Receipts in:
+
+- **Payoff powers** — *Payment Benefit*, *Refund*, *Interest Support* and more react to each payment, handing back block, cards, or gold.
+- **Receipt-spenders** scale with the Receipts you've banked: *Settlement* converts them to block, *Invoice* to a multi-hit attack.
+- **Collections** turns the loop offensive — each turn it slips you a *Shakedown* token that spends a Receipt for **Vigor**, boosting your next attack.
 
 ## Co-op (multiplayer)
 
