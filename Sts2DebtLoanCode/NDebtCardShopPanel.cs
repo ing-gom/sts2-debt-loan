@@ -122,16 +122,35 @@ internal sealed partial class NDebtCardShopPanel : Control
 
         BuildOffers();
 
-        // Back arrow at the FAR LEFT — slides the loan canvas back out to the right, revealing the shop again.
-        var back = new Button { Text = "◀", Flat = false };
-        if (_labelTemplate?.GetThemeDefaultFont() is Font f) back.AddThemeFontOverride("font", f);
-        back.AddThemeFontSizeOverride("font_size", 40);
-        back.Position = new Vector2(20f, _bh / 2f - 40f);
-        back.Size = new Vector2(80f, 80f);
-        back.Pressed += SlideOutAndClose;
+        // MERCHANT icon at the FAR LEFT — click it to scroll back to the shop (instead of a plain arrow: it reads
+        // as "return to the merchant"). Falls back to a ◀ text button if the merchant texture can't be loaded.
+        var merchantTex = LoadMerchantIcon();
+        Control back;
+        if (merchantTex != null)
+        {
+            back = new TextureButton
+            {
+                TextureNormal = merchantTex,
+                IgnoreTextureSize = true,
+                StretchMode = TextureButton.StretchModeEnum.KeepAspectCentered,
+                CustomMinimumSize = new Vector2(108f, 108f),
+                Size = new Vector2(108f, 108f),
+            };
+            ((TextureButton)back).Pressed += SlideOutAndClose;
+        }
+        else
+        {
+            var b = new Button { Text = "◀", Flat = false };
+            if (_labelTemplate?.GetThemeDefaultFont() is Font f) b.AddThemeFontOverride("font", f);
+            b.AddThemeFontSizeOverride("font_size", 40);
+            b.Size = new Vector2(80f, 80f);
+            b.Pressed += SlideOutAndClose;
+            back = b;
+        }
+        back.Position = new Vector2(110f, _bh / 2f - 54f);   // in from the rug's ragged left edge, on the solid rug
         board.AddChild(back);
-        var backCap = MakeLabel(ui.Close, 22, StsColors.cream);   // "돌아가기" hint under the arrow
-        if (backCap != null) { backCap.Position = new Vector2(12f, _bh / 2f + 46f); board.AddChild(backCap); }
+        var backCap = MakeLabel(ui.Close, 22, StsColors.cream);   // "돌아가기" hint under the merchant icon
+        if (backCap != null) { backCap.Position = new Vector2(120f, _bh / 2f + 58f); board.AddChild(backCap); }
 
         // Scroll ACROSS: this loan canvas slides in from the right while the merchant's own rug pans left, so the
         // two read as one continuous canvas being scrolled sideways.
@@ -306,6 +325,18 @@ internal sealed partial class NDebtCardShopPanel : Control
         var num = MakeLabel(price.ToString(), 30, StsColors.cream);
         if (num != null) { num.Position = new Vector2(42f, 0f); root.AddChild(num); }
         return root;
+    }
+
+    /// <summary>A merchant icon for the "back to the shop" button (the game's run-summary merchant portrait, else
+    /// the shop history icon).</summary>
+    private static Texture2D? LoadMerchantIcon()
+    {
+        foreach (var p in new[] { "res://images/ui/game_over_screen/run_summary_merchant.png", "res://images/ui/run_history/shop.png" })
+        {
+            try { var t = ResourceLoader.Load<Texture2D>(p, null, ResourceLoader.CacheMode.Reuse); if (t != null) return t; }
+            catch { /* try next */ }
+        }
+        return null;
     }
 
     private static Texture2D? LoadCoin()
