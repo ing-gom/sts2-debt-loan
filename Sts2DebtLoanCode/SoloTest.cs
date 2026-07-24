@@ -772,31 +772,29 @@ internal static class SoloTest
                 }
                 catch (Exception e) { W("  receipt tip render failed: " + e.Message); }
 
-                // tP7) DEBT-SHOP PURCHASE: the 6 non-power cards are BOUGHT on debt at the shop. The reveal grows per
-                //      distinct shop visit (1→3, 2→5, 3+→all), 정산 is always the head; buying adds the price to owed +
-                //      drops the card in the deck, and a bought card can't be rebought.
+                // tP7) DEBT-SHOP PURCHASE: 10-card pool, the shop shows a ROTATING 5 per visit. Buying adds the price
+                //      to owed + drops the card in the deck; can't rebuy; and the bought card drops out next visit.
                 bool tP7;
                 {
                     LoanService.ResetFor(player);
                     await LoanService.GrantLoanDirect(player, 100);
                     var shopRec = LoanService.For(player)!;
                     shopRec.DebtShopVisits = 1;
-                    int reveal1 = LoanService.RevealedPurchasable(shopRec).Length;   // visit 1 → 3
-                    shopRec.DebtShopVisits = 2;
-                    int reveal2 = LoanService.RevealedPurchasable(shopRec).Length;   // visit 2 → 5
-                    shopRec.DebtShopVisits = 3;
-                    var revealed = LoanService.RevealedPurchasable(shopRec);
-                    int reveal3 = revealed.Length;                                    // visit 3 → all 6
-                    bool headSettle = revealed.Length > 0 && revealed[0] == typeof(SettlementCard);
-                    var buyType = revealed[0];
+                    var offers1 = LoanService.RevealedPurchasable(shopRec);
+                    bool count5 = offers1.Length == 5;                                // 10-card pool → 5 shown
+                    var buyType = offers1[0];
                     int price = LoanService.CardDebtPrice(buyType);
                     int owedBefore = shopRec.Principal;
                     bool bought = await LoanService.BuyCardOnDebt(player, buyType);
                     bool owedUp = LoanService.For(player)!.Principal == owedBefore + price;
                     bool inDeck = PileType.Deck.GetPile(player)?.Cards?.Any(c => c.GetType() == buyType) ?? false;
                     bool noRebuy = !(await LoanService.BuyCardOnDebt(player, buyType));   // already bought → refused
-                    tP7 = reveal1 == 3 && reveal2 == 5 && reveal3 == 6 && headSettle && bought && owedUp && inDeck && noRebuy;
-                    W($"  assert debt-shop: reveal 1/2/3={reveal1}/{reveal2}/{reveal3}(3/5/6) head정산={headSettle} bought={bought} owed+{price}={owedUp} inDeck={inDeck} noRebuy={noRebuy} -> {tP7}");
+                    shopRec.DebtShopVisits = 2;                                       // new visit → fresh selection
+                    var offers2 = LoanService.RevealedPurchasable(shopRec);
+                    bool count5b = offers2.Length == 5;
+                    bool droppedBought = System.Array.IndexOf(offers2, buyType) < 0;  // bought card not re-offered
+                    tP7 = count5 && count5b && bought && owedUp && inDeck && noRebuy && droppedBought;
+                    W($"  assert debt-shop: offers v1/v2={offers1.Length}/{offers2.Length}(5/5) bought={bought} owed+{price}={owedUp} inDeck={inDeck} noRebuy={noRebuy} droppedBought={droppedBought} -> {tP7}");
                 }
 
                 // tP8) BORROW cards (대출 강타 / 저당): upgrade DROPS Exhaust (repeatable), base keeps it.

@@ -57,18 +57,23 @@ internal sealed class LoanRecord
     /// Persisted.</summary>
     internal int LifetimePayments;
 
-    /// <summary>How many DISTINCT shops (other than the loan shop) the debtor has visited this loan — drives how
-    /// many non-power cards the debt-card shop reveals for purchase (visit 1 → 3, visit 2 → 5, visit 3+ → all).
-    /// Persisted.</summary>
+    /// <summary>How many DISTINCT shops (other than the loan shop) the debtor has visited this loan — the debt shop
+    /// re-rolls its rotating offer selection on each new visit (see RevealedPurchasable). Persisted.</summary>
     internal int DebtShopVisits;
 
     /// <summary>The last TotalFloor at which <see cref="DebtShopVisits"/> was incremented — guards against
     /// double-counting the same shop on re-entry/reload. Persisted.</summary>
     internal int LastShopVisitFloor = -1;
 
-    /// <summary>Type-names of the non-power cards BOUGHT on debt at the shop this loan (so the shop shows them as
-    /// sold-out and won't re-sell). Persisted as a CSV on the relic. Cleared on repay/reset.</summary>
+    /// <summary>Type-names of the cards BOUGHT on debt at the shop this loan (so they drop out of the offer pool and
+    /// show sold if still displayed). Persisted as a CSV on the relic. Cleared on repay/reset.</summary>
     internal readonly HashSet<string> PurchasedCards = new();
+
+    /// <summary>Transient (not persisted) cache of the debt shop's current rotating offer selection + which
+    /// DebtShopVisits it was rolled for, so the shown cards stay STABLE while you shop and re-roll only on a new
+    /// visit. Rebuilt deterministically from (LoanFloor, DebtShopVisits) so it's fine that it resets on reload.</summary>
+    internal int OfferVisit = -1;
+    internal System.Type[]? CurrentOffers;
 
     /// <summary>PER-COMBAT transient: the 신용 불량 (Bad Credit) collection level 0..3. Reset to 0 at each
     /// combat start (by the injector) and ratcheted up by BadCreditCard every turn it sits in hand. Not
@@ -421,21 +426,34 @@ internal static class LoanService
     /// count × how many shops a run has; the price is the relative signal + a repay-build tax.</summary>
     internal static int CardDebtPrice(System.Type t)
     {
-        if (t == typeof(InvoiceCard) || t == typeof(GarnishmentCard)) return 60;                                // 고급: scaling attack / AoE
-        if (t == typeof(SettlementCard) || t == typeof(LoanStrikeCard) || t == typeof(MortgageCard)) return 45; // 중급
-        if (t == typeof(BloodPaymentCard)) return 35;                                                           // 기본: HP-payment utility
+        if (t == typeof(InvoiceCard) || t == typeof(GarnishmentCard)) return 60;   // 고급: scaling attack / AoE
+        if (t == typeof(RefundCard) || t == typeof(CounterclaimCard)
+            || t == typeof(StatementCard) || t == typeof(InterestSupportCard)) return 50;   // 파워 엔진(영구 가치)
+        if (t == typeof(SettlementCard) || t == typeof(LoanStrikeCard) || t == typeof(MortgageCard)) return 45;   // 중급
+        if (t == typeof(BloodPaymentCard)) return 35;   // 기본: HP-payment utility
         return 45;
     }
 
-    /// <summary>The non-power cards on offer at the shop right now: the deterministic per-loan order (정산 first, then
-    /// a LoanFloor-seeded shuffle) truncated to how many the debtor has unlocked — 3 on the first shop visit after
-    /// borrowing, 5 on the second, all on the third+. Same LoanFloor → both co-op peers see the same offers.</summary>
+    /// <summary>The cards on offer at the shop THIS visit — a rotating <see cref="ShopOfferCount"/>-card selection
+    /// drawn from the not-yet-bought pool, deterministic per (LoanFloor, DebtShopVisits) so both co-op peers + a
+    /// reload agree, and re-rolled only when you enter a NEW shop. Cached on the record so the selection is STABLE
+    /// while you shop (buying one card doesn't reshuffle the rest); a bought card drops out on the next visit.</summary>
     internal static System.Type[] RevealedPurchasable(LoanRecord rec)
     {
-        var order = CombatSequence(rec.LoanFloor);
-        int v = rec.DebtShopVisits;
-        int count = v <= 1 ? 3 : (v == 2 ? 5 : order.Length);
-        return order.Take(Math.Min(count, order.Length)).ToArray();
+        if (rec.CurrentOffers != null && rec.OfferVisit == rec.DebtShopVisits) return rec.CurrentOffers;
+        var available = new List<System.Type>();
+        foreach (var t in PurchasablePool) if (!rec.PurchasedCards.Contains(t.Name)) available.Add(t);
+        System.Type[] offers;
+        if (available.Count <= ShopOfferCount) offers = available.ToArray();
+        else
+        {
+            var rng = new System.Random(unchecked(rec.LoanFloor * 31 + rec.DebtShopVisits * 101 + 13));
+            for (int i = available.Count - 1; i > 0; i--) { int j = rng.Next(i + 1); (available[i], available[j]) = (available[j], available[i]); }
+            offers = available.GetRange(0, ShopOfferCount).ToArray();
+        }
+        rec.CurrentOffers = offers;
+        rec.OfferVisit = rec.DebtShopVisits;
+        return offers;
     }
 
     /// <summary>An offered card is buyable if the loan is active, it's been revealed, and it hasn't been bought yet.</summary>
@@ -503,51 +521,30 @@ internal static class LoanService
 
     /// <summary>Grant the 정기 납부 once per loan, when the debtor enters a shop that isn't the one they borrowed
     /// at (TotalFloor != LoanFloor). Deck mutation is local + deterministic → the same card lands on each peer.</summary>
-    // SHOP channel = POWER cards only. 정기 납부 (the repay engine) at LOAN TIME (slot 0); the other 6 power
-    // engines come SHUFFLED across shop revisits (slots 1-6). The non-power payoff cards (정산/청구서/혈납) are NOT
-    // here — you EARN those in combat, one per 10 payments (see CombatPool + OnCombatWon), so the core 영수증 loop
-    // no longer hinges on shop RNG.
+    // SHOP AUTO-GRANT channel = only 3 POWER cards handed out for free: 정기 납부 (the repay engine) at LOAN TIME,
+    // then 취업알선 (income) + 납부혜택 (survival) across the next two shop revisits. Everything else is BOUGHT at
+    // the debt shop (see PurchasablePool) so the free loop is a lean self-sufficient starter and the rest is choice.
     private static readonly System.Type[] FixedOrder =
     {
-        typeof(DunningLetterCard),    // slot 0 — granted at loan time
+        typeof(DunningLetterCard),    // slot 0 — granted at loan time (정기 납부, the repay engine)
     };
     private static readonly System.Type[] RemainderPool =
     {
-        typeof(JobPlacementCard), typeof(PaymentBenefitCard), typeof(RefundCard),
-        typeof(CounterclaimCard), typeof(StatementCard), typeof(InterestSupportCard),
+        typeof(JobPlacementCard),     // 취업알선 — income
+        typeof(PaymentBenefitCard),   // 납부혜택 — plating on payment
     };
-    private const int TotalEventCards = 7;   // FixedOrder(1) + RemainderPool(6) — POWER cards
+    private const int TotalEventCards = 3;   // FixedOrder(1) + RemainderPool(2) — the free starter set
 
-    // PURCHASABLE pool = the non-power cards the debtor BUYS on debt at the shop (see BuyCardOnDebt). Removed on
-    // repay like every other debt card. 정산 (the defensive 영수증-spender) is the FIXED head of the reveal order so
-    // it's the first thing offered every loan; the rest are SHUFFLED per-run (seeded from LoanFloor → both co-op
-    // peers + save/load agree) so which cards a given shop reveals varies run to run.
-    private static readonly System.Type[] CombatFixed =
+    // PURCHASABLE pool = everything NOT auto-granted: the 4 remaining POWER engines + the 6 non-power cards. The
+    // debtor BUYS these on debt at the shop (see BuyCardOnDebt); removed on repay like every other debt card. The
+    // shop shows a rotating ShopOfferCount-card selection per visit (see RevealedPurchasable), like a real merchant.
+    private static readonly System.Type[] PurchasablePool =
     {
-        typeof(SettlementCard),    // reveal slot 0 — always the first card offered
+        typeof(RefundCard), typeof(CounterclaimCard), typeof(StatementCard), typeof(InterestSupportCard),  // power engines
+        typeof(SettlementCard), typeof(InvoiceCard), typeof(GarnishmentCard),                              // receipt spenders
+        typeof(LoanStrikeCard), typeof(MortgageCard), typeof(BloodPaymentCard),                            // borrow / HP
     };
-    private static readonly System.Type[] CombatShufflePool =
-    {
-        typeof(InvoiceCard),       // 청구서 — X-cost single-target multi-hit (receipt spender)
-        typeof(BloodPaymentCard),  // 혈납 — HP-payment skill
-        typeof(GarnishmentCard),   // 가압류 — fixed-2-receipt AoE attack
-        typeof(LoanStrikeCard),    // 대출 강타 — BORROW axis: +debt, big single-target hit
-        typeof(MortgageCard),      // 저당 — BORROW axis: +debt, Block
-    };
-
-    /// <summary>The full per-loan reveal order: the fixed head (정산) followed by a deterministic shuffle of the rest
-    /// (seeded from the loan floor, distinct stream from <see cref="ShuffledRemainder"/>). Same LoanFloor → identical
-    /// order on both co-op peers and across save/load. <see cref="RevealedPurchasable"/> truncates it per shop visit.</summary>
-    private static System.Type[] CombatSequence(int seed)
-    {
-        var pool = (System.Type[])CombatShufflePool.Clone();
-        var rng = new System.Random(unchecked(seed * 31 + 17));   // offset seed → independent of the power shuffle
-        for (int i = pool.Length - 1; i > 0; i--) { int j = rng.Next(i + 1); (pool[i], pool[j]) = (pool[j], pool[i]); }
-        var seq = new System.Type[CombatFixed.Length + pool.Length];
-        CombatFixed.CopyTo(seq, 0);
-        pool.CopyTo(seq, CombatFixed.Length);
-        return seq;
-    }
+    private const int ShopOfferCount = 5;   // cards displayed per shop visit (rotating), like the merchant's card row
 
     /// <summary>Deterministic per-run shuffle of the remainder pool (seeded from the loan floor → same order on both
     /// co-op peers with no networking).</summary>
