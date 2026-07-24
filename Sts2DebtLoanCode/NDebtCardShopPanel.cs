@@ -150,7 +150,7 @@ internal sealed partial class NDebtCardShopPanel : Control
             b.Pressed += SlideOutAndClose;
             back = b;
         }
-        back.Position = new Vector2(44f, 42f);   // top-left, clearly ON the rug body (past its ragged edge)
+        back.Position = new Vector2(96f, 84f);   // top-left, well INSIDE the rug body (clear of its ragged edge)
         board.AddChild(back);
 
         // Scroll ACROSS: this loan canvas slides in from the right while the merchant's own rug pans left, so the
@@ -206,11 +206,30 @@ internal sealed partial class NDebtCardShopPanel : Control
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] offer card render failed ({type.Name}): {e.Message}"); }
 
-        // Native-style debt cost tag (gold coin + number, like the shop's price) under the card.
-        int price = LoanService.CardDebtPrice(type);
+        // Native-style debt cost tag (gold coin + green number). Price = tier ± per-visit variance, with one card
+        // per visit ON SALE (~30% off) — flagged with the merchant's own "%" sale tag on the card corner.
+        var rec = LoanService.For(_player);
+        int price = rec != null ? LoanService.ShopPriceFor(rec, type) : LoanService.CardDebtPrice(type);
+        bool isSale = rec != null && LoanService.SaleCardFor(rec) == type;
         var costTag = MakeCostTag(price);
         costTag.Position = new Vector2(cx - 42f, cardCy + 124f);
         _grid.AddChild(costTag);
+        if (isSale)
+        {
+            var tagTex = LoadSaleTag();
+            if (tagTex != null)
+            {
+                var tag = new TextureRect
+                {
+                    Texture = tagTex,
+                    ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+                    StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+                    Size = new Vector2(60f, 60f),
+                    Position = new Vector2(cx + 44f, cardCy - 150f),   // card top-right corner
+                };
+                _grid.AddChild(tag);
+            }
+        }
 
         // "품절" overlay label (hidden until bought), centered over the card.
         var ui = DebtLoanLoc.DebtShopUiFor(MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng");
@@ -352,6 +371,13 @@ internal sealed partial class NDebtCardShopPanel : Control
     private static Texture2D? LoadCoin()
     {
         try { return ResourceLoader.Load<Texture2D>("res://images/atlases/ui_atlas.sprites/top_bar/top_bar_gold.tres", null, ResourceLoader.CacheMode.Reuse); }
+        catch { return null; }
+    }
+
+    /// <summary>The merchant's own "%" sale tag, placed on the discounted offer this visit.</summary>
+    private static Texture2D? LoadSaleTag()
+    {
+        try { return ResourceLoader.Load<Texture2D>("res://images/rooms/merchant_room/shop_sales_tag.png", null, ResourceLoader.CacheMode.Reuse); }
         catch { return null; }
     }
 

@@ -783,7 +783,7 @@ internal static class SoloTest
                     var offers1 = LoanService.RevealedPurchasable(shopRec);
                     bool count5 = offers1.Length == 5;                                // 10-card pool → 5 shown
                     var buyType = offers1[0];
-                    int price = LoanService.CardDebtPrice(buyType);
+                    int price = LoanService.ShopPriceFor(shopRec, buyType);   // tier ± variance, sale applied
                     int owedBefore = shopRec.Principal;
                     bool bought = await LoanService.BuyCardOnDebt(player, buyType);
                     bool owedUp = LoanService.For(player)!.Principal == owedBefore + price;
