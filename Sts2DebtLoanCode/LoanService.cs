@@ -424,15 +424,28 @@ internal static class LoanService
     /// <summary>Debt price of a purchasable card, by strength tier. owed is a SOFT cost (it only raises the repay
     /// total — not shop inflation, node interest, or curse tiers), so the real limiter is the per-visit reveal
     /// count × how many shops a run has; the price is the relative signal + a repay-build tax.</summary>
-    /// <summary>Base tier price (before per-visit variance + sale). Nudged up a bit from the first pass.</summary>
+    private const int PriceMin = 50, PriceMax = 80;   // shop price band (before sale)
+
+    /// <summary>Base tier price (centre of the band; the shown base is this ± variance, clamped to [50,80]).</summary>
     internal static int CardDebtPrice(System.Type t)
     {
-        if (t == typeof(InvoiceCard) || t == typeof(GarnishmentCard)) return 70;   // 고급: scaling attack / AoE
+        if (t == typeof(InvoiceCard) || t == typeof(GarnishmentCard)) return 75;   // 고급: scaling attack / AoE
         if (t == typeof(RefundCard) || t == typeof(CounterclaimCard)
-            || t == typeof(StatementCard) || t == typeof(InterestSupportCard)) return 60;   // 파워 엔진(영구 가치)
-        if (t == typeof(SettlementCard) || t == typeof(LoanStrikeCard) || t == typeof(MortgageCard)) return 55;   // 중급
-        if (t == typeof(BloodPaymentCard)) return 45;   // 기본: HP-payment utility
-        return 55;
+            || t == typeof(StatementCard) || t == typeof(InterestSupportCard)) return 70;   // 파워 엔진(영구 가치)
+        if (t == typeof(SettlementCard) || t == typeof(LoanStrikeCard) || t == typeof(MortgageCard)) return 65;   // 중급
+        if (t == typeof(BloodPaymentCard)) return 55;   // 기본: HP-payment utility
+        return 65;
+    }
+
+    /// <summary>The pre-sale shown price: tier base ± a deterministic variance (−10..+10 in 5s), clamped to the
+    /// [50,80] band. Deterministic per (LoanFloor, visit, card). This is the "original" price struck through on a
+    /// sale card.</summary>
+    internal static int ShopBasePrice(LoanRecord rec, System.Type t)
+    {
+        int idx = System.Array.IndexOf(PurchasablePool, t);
+        var rng = new System.Random(unchecked(rec.LoanFloor * 911 + rec.DebtShopVisits * 277 + idx * 53 + 7));
+        int variance = rng.Next(-2, 3) * 5;   // −10, −5, 0, +5, +10
+        return Math.Clamp(CardDebtPrice(t) + variance, PriceMin, PriceMax);
     }
 
     /// <summary>Which of this visit's offers is ON SALE — a deterministic pick from the revealed set (per LoanFloor
@@ -450,12 +463,9 @@ internal static class LoanService
     /// visit, card) → co-op peers + a reload agree; the shown price == the charged price (BuyCardOnDebt uses this).</summary>
     internal static int ShopPriceFor(LoanRecord rec, System.Type t)
     {
-        int idx = System.Array.IndexOf(PurchasablePool, t);
-        var rng = new System.Random(unchecked(rec.LoanFloor * 911 + rec.DebtShopVisits * 277 + idx * 53 + 7));
-        int pct = rng.Next(-10, 16);   // −10%..+15%
-        int price = (int)Math.Round(CardDebtPrice(t) * (1 + pct / 100.0) / 5.0) * 5;
-        if (SaleCardFor(rec) == t) price = (int)Math.Round(price * 0.7 / 5.0) * 5;   // sale card ~30% off
-        return Math.Max(5, price);
+        int price = ShopBasePrice(rec, t);
+        if (SaleCardFor(rec) == t) price = Math.Max(5, (int)Math.Round(price * 0.7 / 5.0) * 5);   // sale card ~30% off
+        return price;
     }
 
     /// <summary>The cards on offer at the shop THIS visit — a rotating <see cref="ShopOfferCount"/>-card selection

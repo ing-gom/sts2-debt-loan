@@ -150,7 +150,10 @@ internal sealed partial class NDebtCardShopPanel : Control
             b.Pressed += SlideOutAndClose;
             back = b;
         }
-        back.Position = new Vector2(96f, 84f);   // top-left, well INSIDE the rug body (clear of its ragged edge)
+        back.Position = new Vector2(126f, 60f);   // higher + deeper inside the rug body
+        back.PivotOffset = new Vector2(backSize / 2f, backSize / 2f);
+        back.MouseEntered += () => HoverScale(back, 1.18f);   // slight grow on hover (like the entry button)
+        back.MouseExited += () => HoverScale(back, 1f);
         board.AddChild(back);
 
         // Scroll ACROSS: this loan canvas slides in from the right while the merchant's own rug pans left, so the
@@ -211,8 +214,9 @@ internal sealed partial class NDebtCardShopPanel : Control
         var rec = LoanService.For(_player);
         int price = rec != null ? LoanService.ShopPriceFor(rec, type) : LoanService.CardDebtPrice(type);
         bool isSale = rec != null && LoanService.SaleCardFor(rec) == type;
-        var costTag = MakeCostTag(price);
-        costTag.Position = new Vector2(cx - 42f, cardCy + 124f);
+        int original = isSale && rec != null ? LoanService.ShopBasePrice(rec, type) : 0;   // pre-sale, struck through
+        var costTag = MakeCostTag(price, original);
+        costTag.Position = new Vector2(cx - (isSale ? 58f : 42f), cardCy + 124f);
         _grid.AddChild(costTag);
         if (isSale)
         {
@@ -236,11 +240,15 @@ internal sealed partial class NDebtCardShopPanel : Control
         var soldLabel = MakeLabel(ui.Sold, 30, StsColors.red);
         if (soldLabel != null) { soldLabel.Position = new Vector2(cx - 36f, cardCy - 16f); soldLabel.Visible = false; _grid.AddChild(soldLabel); }
 
-        // Click hitbox over the card.
+        // Click hitbox over the card — also ENLARGES the card on hover (like previewing a card in the shop). The
+        // hitbox is a bit larger than the enlarged card so hovering its edge doesn't flip-flop.
+        var theCard = card;
         var buy = new Button { Flat = true, Text = "" };
-        buy.Position = new Vector2(cx - 88f, cardCy - 120f);
-        buy.Size = new Vector2(176f, 250f);
+        buy.Position = new Vector2(cx - 104f, cardCy - 145f);
+        buy.Size = new Vector2(208f, 300f);
         buy.Pressed += () => OnBuy(type);
+        buy.MouseEntered += () => HoverCard(theCard, CardScale * 1.16f, 5);
+        buy.MouseExited += () => HoverCard(theCard, CardScale, 0);
         _grid.AddChild(buy);
 
         // Local refresher: grey out + show 품절 + disable once bought.
@@ -326,9 +334,9 @@ internal sealed partial class NDebtCardShopPanel : Control
 
     /// <summary>A shop-style cost tag: the merchant's gold-coin icon + the debt number, so the price reads like a
     /// native shop price (the 외상 구매 title + debt framing make clear it's charged to your loan, not gold).</summary>
-    private Control MakeCostTag(int price)
+    private Control MakeCostTag(int price, int original = 0)
     {
-        var root = new Control { Size = new Vector2(100f, 40f) };
+        var root = new Control { Size = new Vector2(160f, 44f) };
         const float coinSize = 38f;
         var coin = LoadCoin();
         if (coin != null)
@@ -343,17 +351,54 @@ internal sealed partial class NDebtCardShopPanel : Control
             };
             root.AddChild(icon);
         }
-        // GREEN price — signals that everything here is bought on DEBT (goes onto what you owe). Given the coin's
-        // height + centered vertical alignment so the number's centre lines up with the coin (was riding high).
+        // GREEN price = the amount charged (goes onto your debt), size-matched to the coin.
         var num = MakeLabel(price.ToString(), 34, new Color(0.42f, 0.86f, 0.38f));
         if (num != null)
         {
             num.VerticalAlignment = VerticalAlignment.Center;
-            num.Size = new Vector2(64f, coinSize);
+            num.Size = new Vector2(60f, coinSize);
             num.Position = new Vector2(coinSize + 8f, 0f);
             root.AddChild(num);
         }
+        // ON SALE: the pre-sale price to its right, dimmed + struck through (like the merchant's discounted price).
+        if (original > price)
+        {
+            float ox = coinSize + 8f + 56f;
+            var orig = MakeLabel(original.ToString(), 24, new Color(0.72f, 0.72f, 0.72f));
+            if (orig != null)
+            {
+                orig.VerticalAlignment = VerticalAlignment.Center;
+                orig.Size = new Vector2(48f, coinSize);
+                orig.Position = new Vector2(ox, 4f);
+                root.AddChild(orig);
+            }
+            var line = new ColorRect
+            {
+                Color = new Color(0.88f, 0.32f, 0.32f),
+                Size = new Vector2(original >= 100 ? 46f : 32f, 3f),
+                Position = new Vector2(ox + 1f, coinSize / 2f + 1f),
+            };
+            root.AddChild(line);
+        }
         return root;
+    }
+
+    /// <summary>Tween a Control (the merchant back button) to a hover scale.</summary>
+    private void HoverScale(Control node, float scale)
+    {
+        if (!GodotObject.IsInstanceValid(node)) return;
+        CreateTween().TweenProperty(node, "scale", new Vector2(scale, scale), 0.10)
+                     .SetEase(Tween.EaseType.Out).SetTrans(Tween.TransitionType.Back);
+    }
+
+    /// <summary>Enlarge (or restore) an offer card on hover — a shop-style card preview. Raises its ZIndex so it
+    /// pops above its neighbours while enlarged.</summary>
+    private void HoverCard(NCard? card, float scale, int z)
+    {
+        if (card == null || !GodotObject.IsInstanceValid(card)) return;
+        card.ZIndex = z;
+        CreateTween().TweenProperty(card, "scale", new Vector2(scale, scale), 0.10)
+                     .SetEase(Tween.EaseType.Out).SetTrans(Tween.TransitionType.Back);
     }
 
     /// <summary>A merchant icon for the "back to the shop" button (the game's run-summary merchant portrait, else
