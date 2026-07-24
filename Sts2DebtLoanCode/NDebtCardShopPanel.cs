@@ -28,7 +28,7 @@ internal sealed partial class NDebtCardShopPanel : Control
 {
     // Shop-sized board; cards laid out in a grid like the merchant's own card rows (3 per row), at shop card size.
     private const float CardScale = 0.55f;
-    private const int PerRow = 3;
+    private const int PerRow = 5;   // one row of 5 (the shop shows 5 offers per visit)
 
     // Board + grid metrics, computed from the actual screen size in _Ready so the rug fills the screen like the
     // real shop (was a small fixed box that left the merchant's own rug showing around it).
