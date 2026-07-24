@@ -48,4 +48,8 @@
 - **DLL：** `dotnet build Sts2DebtLoan.csproj -c Release` → 部署到 `Slay the Spire 2/mods/Sts2DebtLoan/`。
 - **资源包**（遗物/卡牌美术、本地化）：由 `pck_src/` 通过 Godot 4.5.1 `--export-pack` 构建 → `Sts2DebtLoan.pck`。
 
+## 素材
+
+游戏内美术 —— 卡牌插图、遗物图标、能力图标 —— 均由 AI 图像生成制作。
+
 作者：**inggom**

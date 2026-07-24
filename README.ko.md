@@ -48,4 +48,8 @@
 - **DLL:** `dotnet build Sts2DebtLoan.csproj -c Release` → `Slay the Spire 2/mods/Sts2DebtLoan/`에 배포.
 - **리소스 팩** (유물/카드 아트, 로컬라이제이션): `pck_src/`에서 Godot 4.5.1 `--export-pack`로 빌드 → `Sts2DebtLoan.pck`.
 
+## 에셋
+
+인게임 아트 — 카드 일러스트, 유물 아이콘, 파워 아이콘 — 는 모두 AI 이미지 생성으로 제작했습니다.
+
 제작: **inggom**

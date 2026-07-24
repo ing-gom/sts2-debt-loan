@@ -48,4 +48,8 @@ Part of the author's monorepo; depends on the shared **Sts2.ModKit** SDK (`..\St
 - **DLL:** `dotnet build Sts2DebtLoan.csproj -c Release` → deploy to `Slay the Spire 2/mods/Sts2DebtLoan/`.
 - **Resource pack** (relic/card art, localization): built from `pck_src/` with Godot 4.5.1 `--export-pack` → `Sts2DebtLoan.pck`.
 
+## Assets
+
+All in-game art — card portraits, the relic icon, and power icons — was created with AI image generation.
+
 Author: **inggom**
