@@ -324,10 +324,16 @@ internal sealed partial class NDebtCardShopPanel : Control
             };
             root.AddChild(icon);
         }
-        // GREEN price — signals that everything here is bought on DEBT (goes onto what you owe). Sized to match
-        // the coin so the coin + number read as one tag.
+        // GREEN price — signals that everything here is bought on DEBT (goes onto what you owe). Given the coin's
+        // height + centered vertical alignment so the number's centre lines up with the coin (was riding high).
         var num = MakeLabel(price.ToString(), 34, new Color(0.42f, 0.86f, 0.38f));
-        if (num != null) { num.Position = new Vector2(coinSize + 8f, 1f); root.AddChild(num); }
+        if (num != null)
+        {
+            num.VerticalAlignment = VerticalAlignment.Center;
+            num.Size = new Vector2(64f, coinSize);
+            num.Position = new Vector2(coinSize + 8f, 0f);
+            root.AddChild(num);
+        }
         return root;
     }
 
