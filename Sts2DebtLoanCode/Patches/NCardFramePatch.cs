@@ -80,10 +80,15 @@ internal static class NCardFramePatch
                 banner.Material = null;
             }
 
-            // 3) portrait-border + type-plaque → GOLD (SelfModulate tints only the node, not the type text
-            //    child), so they join the gold family instead of the old olive/lavender that broke the palette.
-            SetGold(BorderF, __instance);
-            SetGold(PlaqueF, __instance);
+            // 3) portrait-border + type-plaque → GOLD via texture swap. The vanilla textures are green-based,
+            //    so a Modulate tint only muddies them; swapping to gold-recoloured textures is the reliable fix.
+            var pbTex = PBorderFor(__instance.Model);
+            if (pbTex != null && BorderF?.GetValue(__instance) is TextureRect pborder)
+            { pborder.Texture = pbTex; pborder.Material = null; pborder.SelfModulate = Colors.White; }
+
+            var plTex = PlaqueTex();
+            if (plTex != null && PlaqueF?.GetValue(__instance) is NinePatchRect plaque)
+            { plaque.Texture = plTex; plaque.Material = null; plaque.SelfModulate = Colors.White; }
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] frame recolor skipped: {e.Message}"); }
     }
@@ -128,12 +133,31 @@ internal static class NCardFramePatch
         if (mat != null && field?.GetValue(card) is CanvasItem ci) ci.Material = mat;
     }
 
-    // Warm gold for the portrait border + type plaque. SelfModulate multiplies only this node's own texture
-    // (not its children), so the "파워"/"공격" type text stays its own colour and readable.
-    private static readonly Color Gold = new Color(0.94f, 0.76f, 0.42f);
-    private static void SetGold(FieldInfo? field, NCard card)
+    private static readonly Dictionary<string, Texture2D?> _pborders = new();
+    private static Texture2D? _plaqueTex; private static bool _plaqueTried;
+
+    /// <summary>Gold-recoloured portrait border (the ring around the art) per card type.</summary>
+    private static Texture2D? PBorderFor(CardModel model)
     {
-        if (field?.GetValue(card) is CanvasItem ci) { ci.Material = null; ci.SelfModulate = Gold; }
+        var key = model.Type.ToString().ToLowerInvariant();
+        if (key != "attack" && key != "skill" && key != "power") key = "skill";
+        if (!_pborders.TryGetValue(key, out var tex))
+        {
+            tex = ResourceLoader.Load<Texture2D>($"res://{MainFile.ModId}/frames/pborder_{key}.png");
+            _pborders[key] = tex;
+        }
+        return tex;
+    }
+
+    /// <summary>Gold-recoloured type-plaque texture (the "파워"/"공격" tab background). Loaded once.</summary>
+    private static Texture2D? PlaqueTex()
+    {
+        if (!_plaqueTried)
+        {
+            _plaqueTried = true;
+            _plaqueTex = ResourceLoader.Load<Texture2D>($"res://{MainFile.ModId}/frames/plaque.png");
+        }
+        return _plaqueTex;
     }
 
     /// <summary>Duplicate a banner ShaderMaterial and push our slate-lavender h/s/v onto it.</summary>

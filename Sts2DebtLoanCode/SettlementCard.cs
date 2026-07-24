@@ -24,7 +24,7 @@ public sealed class SettlementCard : CardModel, IUsesPaymentTally
     private static CardPoolModel? _pool;
     public override CardPoolModel Pool => _pool ??= ModelDb.CardPool<ColorlessCardPool>();
 
-    public int TallyCost => -1;   // X: spends the WHOLE 납부 실적, block scales with it
+    public int TallyCost => -1;   // X: spends the WHOLE 영수증, block scales with it
 
     public override int MaxUpgradeLevel => 1;   // upgrade = 0 energy
 
@@ -44,7 +44,7 @@ public sealed class SettlementCard : CardModel, IUsesPaymentTally
     // face tracks payments automatically — same as Mirage scaling off enemy Poison.
     protected override IEnumerable<DynamicVar> CanonicalVars => new DynamicVar[]
     {
-        new CalculationBaseVar(BlockPerPayment),   // guaranteed base block → never a dead card at 0 납부 실적
+        new CalculationBaseVar(BlockPerPayment),   // guaranteed base block → never a dead card at 0 영수증
         new CalculationExtraVar(BlockPerPayment),
         new CalculatedBlockVar(ValueProp.Move).WithMultiplier((CardModel card, Creature? _) => LoanService.PaymentsThisCombat(card.Owner)),
     };
@@ -58,7 +58,7 @@ public sealed class SettlementCard : CardModel, IUsesPaymentTally
         int block = (int)DynamicVars.CalculatedBlock.Calculate(cardPlay.Target);
         if (block <= 0) return;
         await CreatureCmd.GainBlock(Owner.Creature, block, DynamicVars.CalculatedBlock.Props, cardPlay);
-        await LoanService.ConsumePaymentStack(Owner);   // spend the whole 납부 실적 stack (bank → unleash)
+        await LoanService.ConsumePaymentStack(Owner);   // spend the whole 영수증 stack (bank → unleash)
     }
 
     protected override void OnUpgrade()

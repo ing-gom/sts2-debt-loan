@@ -7,7 +7,7 @@ using MegaCrit.Sts2.Core.Nodes.Cards;   // NCard
 namespace Sts2DebtLoan;
 
 /// <summary>
-/// A card that spends the 납부 실적 (payment tally) resource. <see cref="TallyCost"/> is what shows on the card's
+/// A card that spends the 영수증 (payment tally) resource. <see cref="TallyCost"/> is what shows on the card's
 /// custom cost badge: <c>-1</c> = X (spend the WHOLE tally, scaling with it — 청구서/정산); <c>&gt;= 0</c> = a fixed
 /// amount (power cards, wired later). Enforcement (gate/consume) lives in each card's own OnPlay/IsPlayable.
 /// </summary>
@@ -17,7 +17,7 @@ internal interface IUsesPaymentTally
 }
 
 /// <summary>
-/// Draws a small "납부 실적" cost badge (square ledger symbol + the cost number, or "X") on every card that
+/// Draws a small "영수증" cost badge (square ledger symbol + the cost number, or "X") on every card that
 /// implements <see cref="IUsesPaymentTally"/> — a CUSTOM overlay, since our resource isn't the engine's energy/star
 /// so the native cost pips don't cover it. Mirrors the native star-cost pip idea: a badge just under the energy
 /// cost. We postfix <see cref="NCard"/>.Reload (same hook the frame recolor uses) and add/update/remove a named

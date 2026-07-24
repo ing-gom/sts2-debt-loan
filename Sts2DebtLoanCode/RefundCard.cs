@@ -4,6 +4,7 @@ using MegaCrit.Sts2.Core.Commands;                    // PowerCmd
 using MegaCrit.Sts2.Core.Entities.Cards;              // CardType, CardRarity, TargetType, CardPlay
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;     // PlayerChoiceContext
 using MegaCrit.Sts2.Core.HoverTips;                   // HoverTipFactory, IHoverTip
+using MegaCrit.Sts2.Core.Localization;                // LocString
 using MegaCrit.Sts2.Core.Localization.DynamicVars;    // DynamicVar
 using MegaCrit.Sts2.Core.Models;                      // CardModel, CardPoolModel, ModelDb
 using MegaCrit.Sts2.Core.Models.CardPools;            // ColorlessCardPool
@@ -30,6 +31,17 @@ public sealed class RefundCard : CardModel
 
     protected override IEnumerable<DynamicVar> CanonicalVars =>
         new[] { new DynamicVar("block", 4), new DynamicVar("gold", 5) };   // shown on the card face (성실 납부 payoff)
+
+    /// <summary>Inject {card} = the localized 성실 납부 (Diligent Payment) name this feeds — and append "+" when
+    /// THIS card is upgraded (환급+), so the description reads "성실 납부+" (the form it actually hands out).
+    /// Mirrors <see cref="DunningLetterCard.AddExtraArgsToDescription"/>.</summary>
+    protected override void AddExtraArgsToDescription(LocString description)
+    {
+        base.AddExtraArgsToDescription(description);
+        string card = new LocString("cards", "DILIGENT_PAYMENT_CARD.title").GetFormattedText();
+        if (IsUpgraded) card += "+";
+        description.Add("card", card);
+    }
 
     // Hover: explain the 납부 (Payment) it reacts to, AND preview the 성실 납부 card it feeds (성실 납부+ once upgraded).
     protected override IEnumerable<IHoverTip> ExtraHoverTips

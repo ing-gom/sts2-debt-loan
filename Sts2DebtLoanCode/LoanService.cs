@@ -34,7 +34,9 @@ internal sealed class LoanRecord
 
     /// <summary>How many rooms of node-interest have already been baked into <see cref="Principal"/> (0..
     /// MaxNodeInterestRooms). Tracked so room-entry accrual is idempotent and survives save/load.</summary>
-    internal int InterestRoomsApplied;
+    /// <summary>Total node-interest percent (of Borrowed) already baked into Principal, so it isn't re-charged on
+    /// reload or re-fire. Replaces the old rooms counter now that the per-room rate scales with borrower count.</summary>
+    internal int InterestPctApplied;
 
     /// <summary>TotalFloor of the shop where the loan was taken. Top-ups are allowed only at THAT shop.
     /// Rooms-since-loan (which drives the Debt-card count) is computed as TotalFloor − LoanFloor.</summary>
@@ -129,7 +131,7 @@ internal static class LoanService
         var combat = injectee?.Creature?.CombatState;
         if (combat == null || run?.Players == null) return;
 
-        await ResetPaymentsThisCombat(injectee!);   // fresh 납부 실적 each combat (drives 정산/청구서 scaling)
+        await ResetPaymentsThisCombat(injectee!);   // fresh 영수증 each combat (drives 정산/청구서 scaling)
 
         var cards = new List<CardModel>();
         foreach (var owner in run.Players)
@@ -201,7 +203,7 @@ internal static class LoanService
             relic.Borrowed = rec.Borrowed;
             relic.Principal = rec.Principal;
             relic.TotalPaid = rec.TotalPaid;
-            relic.InterestRoomsApplied = rec.InterestRoomsApplied;
+            relic.InterestPctApplied = rec.InterestPctApplied;
             relic.LoanFloor = rec.LoanFloor;
             relic.Active = rec.Active;
             relic.DunningLetterGranted = rec.DunningLetterGranted;
@@ -230,7 +232,7 @@ internal static class LoanService
         rec.Borrowed = relic.Borrowed;
         rec.Principal = relic.Principal;
         rec.TotalPaid = relic.TotalPaid;
-        rec.InterestRoomsApplied = relic.InterestRoomsApplied;
+        rec.InterestPctApplied = relic.InterestPctApplied;
         rec.LoanFloor = relic.LoanFloor;
         rec.Active = relic.Active;
         rec.DunningLetterGranted = relic.DunningLetterGranted;
@@ -431,7 +433,8 @@ internal static class LoanService
     {
         if (t == typeof(InvoiceCard) || t == typeof(GarnishmentCard)) return 75;   // 고급: scaling attack / AoE
         if (t == typeof(RefundCard) || t == typeof(CounterclaimCard)
-            || t == typeof(StatementCard) || t == typeof(InterestSupportCard)) return 70;   // 파워 엔진(영구 가치)
+            || t == typeof(StatementCard) || t == typeof(InterestSupportCard)
+            || t == typeof(CollectionCard)) return 70;   // 파워 엔진(영구 가치)
         if (t == typeof(SettlementCard) || t == typeof(LoanStrikeCard) || t == typeof(MortgageCard)) return 65;   // 중급
         if (t == typeof(BloodPaymentCard)) return 55;   // 기본: HP-payment utility
         return 65;
@@ -502,27 +505,80 @@ internal static class LoanService
         var rec = For(player);
         if (rec == null || !IsPurchasable(rec, type)) return false;
         int price = ShopPriceFor(rec, type);          // the shown price (tier ± variance, sale applied)
-        AddCombatDebt(player, price);                 // take on the debt (owed goes up; no gold gained)
-        rec.PurchasedCards.Add(type.Name);
-        await DebtLoanGrants.GrantCard(player, type);
-        SyncToRelic(player);
-        MainFile.Logger.Info($"[{MainFile.ModId}] bought {type.Name} on debt for {price}.");
+
+        // Only the shopper's OWN peer initiates the buy (the panel is local to the player who opened it). Then:
+        // SP → apply here; co-op → broadcast so the deck-add + owed-increase replay identically on BOTH peers
+        // (a local-only purchase would leave the partner's replica of this player's owed/deck/sold-set diverged
+        // → checksum drop). Mirrors GrantLoanDirect / Repay. The price rides the wire so it can't drift.
+        var run = RunManager.Instance;
+        bool sp = run?.IsSingleplayerOrFakeMultiplayer ?? true;
+        if (!(sp || LocalContext.IsMe(player))) return false;
+
+        if (sp) await ApplyBuyCard(player, type.Name, price);
+        else    DebtLoanNet.BroadcastBuy(player, type.Name, price);
+        MainFile.Logger.Info($"[{MainFile.ModId}] buy {type.Name} on debt for {price} ({(sp ? "SP local" : "co-op broadcast")}).");
         return true;
     }
 
-    /// <summary>Accrue per-room interest into the owed Principal: +NodeInterestPct% of Borrowed for each new room
-    /// carried, up to MaxNodeInterestRooms. Idempotent (only adds the rooms not yet applied) so re-fires and
-    /// reloads don't double-charge. Room count is deterministic (TotalFloor − LoanFloor) → co-op peers match.</summary>
+    /// <summary>Apply a debt-shop purchase on THIS peer: add the price onto what's owed, mark it sold, and drop
+    /// the card into the deck. Runs directly in SP, or once per peer via the networked <c>dl_sync buy</c> replay
+    /// in co-op. Idempotent — the sold-mark guards a double-apply on the initiator's own replay / any re-delivery,
+    /// so each peer charges the price and grants the card exactly once.</summary>
+    internal static async Task ApplyBuyCard(Player player, string typeName, int price)
+    {
+        var rec = For(player);
+        if (rec == null || !rec.Active) return;
+        if (rec.PurchasedCards.Contains(typeName)) return;      // already bought → no-op (idempotent)
+        var type = System.Array.Find(PurchasablePool, t => t.Name == typeName);
+        if (type == null) { MainFile.Logger.Warn($"[{MainFile.ModId}] dl_sync buy: unknown card '{typeName}'."); return; }
+
+        rec.Principal += price;                                 // owed goes up; no gold gained (bought on credit)
+        rec.PurchasedCards.Add(typeName);
+        await DebtLoanGrants.GrantCard(player, type);
+        SyncToRelic(player);
+        // No refresh event needed: NDebtCardShopPanel polls its refreshers every frame in _Process, so the sold
+        // state greys out on the next frame once the (possibly deferred co-op replay) purchase lands here.
+    }
+
+    /// <summary>Players in the run currently carrying an ACTIVE loan (Principal &gt; 0). Read from shared run state
+    /// so it's identical on every co-op peer — this is the ONLY input to the MP interest scaling, which keeps that
+    /// scaling lockstep-deterministic (never read a local/UI value here).</summary>
+    internal static int BorrowerCount(IRunState? run)
+    {
+        if (run?.Players == null) return 0;
+        int n = 0;
+        foreach (var p in run.Players) { var r = For(p); if (r != null && r.Active && r.Principal > 0) n++; }
+        return n;
+    }
+
+    /// <summary>Accrue per-room interest into the owed Principal as a percentage of Borrowed, tracked as the total
+    /// percent baked so far (<see cref="LoanRecord.InterestPctApplied"/>) — idempotent across re-fires and reloads.
+    /// <para>Both the RATE and the CAP scale with how many players carry a loan (N = <see cref="BorrowerCount"/>),
+    /// so debt shared by more people is harsher:</para>
+    /// <list type="bullet">
+    /// <item>rate  = NodeInterestPct × N per room (5% solo → 20% at 4 debtors: accrues faster)</item>
+    /// <item>cap   = base (NodeInterestPct × MaxNodeInterestRooms = 40%) + min(MpExtraCapMax, MpExtraCapPerBorrower × (N−1))</item>
+    /// </list>
+    /// SP is exactly the old behaviour (N=1 → 5%/room, 40% cap). N comes only from shared run state, so both co-op
+    /// peers compute the same target; if a partner repays and N drops, we never REFUND already-accrued interest.</summary>
     internal static void AccrueNodeInterest(Player? player)
     {
         var rec = For(player);
         if (rec == null || !rec.Active || rec.Principal <= 0 || player?.RunState == null) return;
-        int rooms = Math.Min(DebtLoanConfig.MaxNodeInterestRooms, Math.Max(0, player.RunState.TotalFloor - rec.LoanFloor));
-        if (rooms <= rec.InterestRoomsApplied) return;
-        int deltaRooms = rooms - rec.InterestRoomsApplied;
-        int add = (int)Math.Round(rec.Borrowed * (DebtLoanConfig.NodeInterestPct / 100.0) * deltaRooms);
+        int roomsCarried = Math.Max(0, player.RunState.TotalFloor - rec.LoanFloor);
+        if (roomsCarried <= 0) return;
+
+        int n = Math.Max(1, BorrowerCount(player.RunState));              // this player is active → at least 1
+        int perRoomPct = DebtLoanConfig.NodeInterestPct * n;             // 5% × N — faster accrual with more debtors
+        int baseCapPct = DebtLoanConfig.NodeInterestPct * DebtLoanConfig.MaxNodeInterestRooms;   // 40% (unchanged SP cap)
+        int capPct = baseCapPct + Math.Min(DebtLoanConfig.MpInterestExtraCapMaxPct,
+                                           DebtLoanConfig.MpInterestExtraCapPerBorrowerPct * (n - 1));
+        int targetPct = Math.Min(capPct, perRoomPct * roomsCarried);     // total node-interest % that should be baked by now
+        if (targetPct <= rec.InterestPctApplied) return;                 // nothing new (or N dropped — never refund)
+        int addPct = targetPct - rec.InterestPctApplied;
+        int add = (int)Math.Round(rec.Borrowed * (addPct / 100.0));
         rec.Principal += add;
-        rec.InterestRoomsApplied = rooms;
+        rec.InterestPctApplied = targetPct;
         SyncToRelic(player);
     }
 
@@ -576,6 +632,7 @@ internal static class LoanService
     private static readonly System.Type[] PurchasablePool =
     {
         typeof(RefundCard), typeof(CounterclaimCard), typeof(StatementCard), typeof(InterestSupportCard),  // power engines
+        typeof(CollectionCard),                                                                             // 추심: 공격판 환급 (scaling attack gen)
         typeof(SettlementCard), typeof(InvoiceCard), typeof(GarnishmentCard),                              // receipt spenders
         typeof(LoanStrikeCard), typeof(MortgageCard), typeof(BloodPaymentCard),                            // borrow / HP
     };
@@ -661,13 +718,23 @@ internal static class LoanService
     }
 
     // ── 납부 (Payment) resource system ─────────────────────────────────────────
-    // 납부 실적 (payment tally) is a CUSTOM combat resource, shown on its own HUD counter near the energy orb (like
+    // 영수증 (payment tally) is a CUSTOM combat resource, shown on its own HUD counter near the energy orb (like
     // Regent's Stars but our own, so no collision). It is NOT a power buff — it lives here as a per-combat value and
     // raises TallyChanged so the custom NPaymentTallyCounter node updates. Cards read it and CONSUME it. The value is
     // computed the same way on every peer (payments are lockstep), so the display stays in sync; the counter is local.
     private static readonly ConditionalWeakTable<Player, int[]> _tally = new();
 
-    /// <summary>Fired whenever a player's 납부 실적 changes → the HUD counter re-renders. (player, newValue).</summary>
+    /// <summary>PER-COMBAT monotonic count of 납부 (Payment) cards played this combat — bumped on every
+    /// <see cref="RecordPayment"/> and, UNLIKE the spendable 영수증 tally, NEVER consumed. 성실 납부
+    /// (Diligent Payment) scales its Block off this so 정산/청구서 draining the tally doesn't shrink it. Reset
+    /// each combat by <see cref="ResetPaymentsThisCombat"/>. Deterministic (payments are lockstep) → co-op safe.</summary>
+    private static readonly ConditionalWeakTable<Player, int[]> _paymentCount = new();
+
+    /// <summary>How many 납부 (Payment) have been made this combat (monotonic, not spent). Read by 성실 납부.</summary>
+    internal static int PaymentCountThisCombat(Player? p)
+        => p != null && _paymentCount.TryGetValue(p, out var a) ? a[0] : 0;
+
+    /// <summary>Fired whenever a player's 영수증 changes → the HUD counter re-renders. (player, newValue).</summary>
     internal static event Action<Player, int>? TallyChanged;
 
     /// <summary>Banked 납부 (Payment) count this combat. Read by 정산 (block × tally) and 청구서 (damage × tally),
@@ -701,6 +768,7 @@ internal static class LoanService
     internal static Task ResetPaymentsThisCombat(Player p)
     {
         SetTally(p, 0);
+        if (_paymentCount.TryGetValue(p, out var a)) a[0] = 0;   // reset the monotonic 납부 count too
         return Task.CompletedTask;
     }
 
@@ -716,7 +784,8 @@ internal static class LoanService
         bool wasOwing = rec0 != null && rec0.Active && rec0.Principal > 0;   // did this payment have a debt to clear?
         await AccrueInterest(player, amount, principalShareOverride: 1.0);   // 100% to principal (interest = the surcharge)
         if (player?.Creature == null) return;
-        SetTally(player, PaymentsThisCombat(player) + 1);   // 납부 실적 +1 → HUD counter updates
+        SetTally(player, PaymentsThisCombat(player) + 1);   // 영수증 +1 → HUD counter updates
+        _paymentCount.GetValue(player, _ => new int[1])[0]++;   // monotonic 납부 count (never spent) — 성실 납부 block scales off this
         if (rec0 != null && rec0.Active) { rec0.LifetimePayments++; SyncToRelic(player); }   // milestone counter (combat cards)
         var benefit = player.Creature.GetPower<PaymentBenefitPower>();
         if (benefit != null) await benefit.OnPayment(cc, player);
@@ -728,6 +797,8 @@ internal static class LoanService
         if (statement != null) await statement.OnPayment(cc, player);
         var interestSupport = player.Creature.GetPower<InterestSupportPower>();
         if (interestSupport != null) await interestSupport.OnPayment(cc, player, amount);   // refunds half the payment
+        // NOTE: 추심 (CollectionPower) no longer triggers on payment — it grants Vigor at each turn start (see
+        // CollectionPower.AfterPlayerTurnStart), scaling off the 영수증 tally, so nothing is wired here.
 
         // Paid the loan off mid-combat? Lift the whole debt right now (see SettleLoanInCombat).
         if (wasOwing)
@@ -766,6 +837,58 @@ internal static class LoanService
         rec.TotalPaid += cut;
         if (rec.Principal <= 0) rec.Active = false;   // spiral self-terminates; relic removed at next shop
         SyncToRelic(player);
+    }
+
+    // ── MP 대납 (Bailout) — help a teammate pay down their debt ────────────────────────────────────────
+    /// <summary>Co-op 대납 (Bailout): the <paramref name="payer"/> spends <paramref name="amount"/> gold to make a
+    /// 납부 (Payment) on the <paramref name="debtor"/>'s behalf. It routes through <see cref="RecordPayment"/> so it
+    /// is a REAL payment FOR THE DEBTOR — their 영수증 (payment tally) accumulates, their payment powers fire, and it
+    /// settles their loan mid-combat if it clears (lifts their curses). Only the GOLD comes from the payer; the
+    /// principal write-down + tally are the debtor's. Runs INSIDE the lockstep card play (the debtor's CombatId rides
+    /// the play action), so both peers resolve the same debtor and apply identically — no broadcast, like any combat
+    /// card. The payer covers what they can afford. Returns the gold actually applied (0 if the target owes nothing
+    /// or the payer is broke).</summary>
+    internal static async Task<int> ApplyBailout(PlayerChoiceContext cc, Player payer, Player debtor, int amount)
+    {
+        var rec = For(debtor);
+        if (rec == null || !rec.Active || rec.Principal <= 0 || amount <= 0) return 0;
+        int cut = Math.Min(Math.Min(rec.Principal, amount), (int)payer.Gold);   // pay what you can afford, capped at the debt
+        if (cut <= 0) return 0;
+
+        await PlayerCmd.LoseGold(cut, payer, GoldLossType.Spent);   // payer foots the bill (lockstep card play → no RewardSync)
+        await RecordPayment(debtor, cc, cut);                       // a real 납부 FOR THE DEBTOR: tally(영수증)++, powers fire, settle-on-zero
+        MainFile.Logger.Info($"[{MainFile.ModId}] bailout: {payer.NetId} paid {cut}g toward {debtor.NetId}'s debt (owed now {For(debtor)?.Principal ?? 0}).");
+        return cut;
+    }
+
+    /// <summary>MP 대납 (Bailout) on a MISSED payment: a 납부 (Payment) card left unplayed is about to Ethereal-exhaust
+    /// for nothing, so hand the RICHEST teammate who can afford it (gold ≥ <see cref="BailoutCard.BailoutGold"/>) a
+    /// 대납 card — Ethereal+Exhaust, upgraded to match a 빚 독촉+ — a fleeting chance to cover the debtor this turn. If
+    /// NO teammate can afford one, nothing is injected. Runs in the lockstep turn-end-in-hand path over shared state
+    /// (players + gold), so both peers pick the same recipient and deal the same card — co-op-safe, no broadcast.</summary>
+    internal static async Task GrantBailoutForMissedPayment(Player debtor, bool upgraded)
+    {
+        if (RunManager.Instance?.IsSingleplayerOrFakeMultiplayer ?? true) return;   // co-op only
+        var combat = debtor?.Creature?.CombatState;
+        var run = RunManager.Instance?.State;
+        if (combat == null || run?.Players == null || debtor == null) return;
+
+        // Richest OTHER player who can actually pay a bailout. Deterministic: reads shared gold, strict > keeps the
+        // FIRST in the (identical-on-both-peers) player order on a tie.
+        Player? recipient = null;
+        foreach (var p in run.Players)
+        {
+            if (p == debtor || p.Creature == null) continue;
+            if ((int)p.Gold < BailoutCard.BailoutGold) continue;
+            if (recipient == null || p.Gold > recipient.Gold) recipient = p;
+        }
+        if (recipient == null) return;   // nobody can afford it → no bailout injected
+
+        var card = combat.CreateCard<BailoutCard>(recipient);
+        if (card == null) return;
+        if (upgraded) { card.UpgradeInternal(); card.FinalizeUpgradeInternal(); }   // 빚 독촉+ missed → 대납+ (0-cost)
+        await CardPileCmd.AddGeneratedCardsToCombat(new List<CardModel> { card }, PileType.Hand, recipient, CardPilePosition.Top);
+        MainFile.Logger.Info($"[{MainFile.ModId}] missed payment by {debtor.NetId} → bailout{(upgraded ? "+" : "")} to {recipient.NetId} (gold {(int)recipient.Gold}).");
     }
 
     /// <summary>Repay the outstanding principal at a shop → good credit: relic removed, borrow again later.</summary>

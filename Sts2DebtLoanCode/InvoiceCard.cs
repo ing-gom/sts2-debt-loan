@@ -24,7 +24,7 @@ public sealed class InvoiceCard : CardModel, IUsesPaymentTally
     private static CardPoolModel? _pool;
     public override CardPoolModel Pool => _pool ??= ModelDb.CardPool<ColorlessCardPool>();
 
-    public int TallyCost => -1;   // X: spends the WHOLE 납부 실적, damage scales with it
+    public int TallyCost => -1;   // X: spends the WHOLE 영수증, damage scales with it
 
     public override int MaxUpgradeLevel => 1;   // upgrade = 0 energy
 
@@ -38,14 +38,14 @@ public sealed class InvoiceCard : CardModel, IUsesPaymentTally
     private const int DamagePerPayment = 4;
     private const string CalculatedHitsKey = "CalculatedHits";
 
-    // {Damage} = damage PER HIT; {CalculatedHits} = hit count = 1 base hit + 1 per 납부 실적 (Barrage's
+    // {Damage} = damage PER HIT; {CalculatedHits} = hit count = 1 base hit + 1 per 영수증 (Barrage's
     // CalculatedVar pattern — base 1 + extra 1 × payments = payments + 1). The base hit means it always lands at
     // least one strike even at 0 tally (no dead card). The multiplier is evaluated at render time, so the face's
     // multi-hit "{Damage} × {CalculatedHits}" tracks payments with no preview patch needed.
     protected override IEnumerable<DynamicVar> CanonicalVars => new DynamicVar[]
     {
         new DamageVar(DamagePerPayment, ValueProp.Move),
-        new CalculationBaseVar(1),   // guaranteed base hit → never a dead card at 0 납부 실적
+        new CalculationBaseVar(1),   // guaranteed base hit → never a dead card at 0 영수증
         new CalculationExtraVar(1),
         new CalculatedVar(CalculatedHitsKey).WithMultiplier((CardModel card, Creature? _) => LoanService.PaymentsThisCombat(card.Owner)),
     };
@@ -61,7 +61,7 @@ public sealed class InvoiceCard : CardModel, IUsesPaymentTally
         await DamageCmd.Attack(DynamicVars.Damage.BaseValue).WithHitCount(hits).FromCard(this)
             .Targeting(cardPlay.Target)
             .Execute(choiceContext);
-        await LoanService.ConsumePaymentStack(Owner);   // spend the whole 납부 실적 stack (bank → unleash)
+        await LoanService.ConsumePaymentStack(Owner);   // spend the whole 영수증 stack (bank → unleash)
     }
 
     protected override void OnUpgrade()

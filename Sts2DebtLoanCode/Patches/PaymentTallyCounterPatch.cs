@@ -12,7 +12,7 @@ using MegaCrit.Sts2.Core.Combat;                    // CombatState
 namespace Sts2DebtLoan;
 
 /// <summary>
-/// 납부 실적 (Payment Tally) — our own combat resource, shown on a CUSTOM HUD counter near the energy orb (like
+/// 영수증 (Payment Tally) — our own combat resource, shown on a CUSTOM HUD counter near the energy orb (like
 /// Regent's Stars, but our own so there is no collision). Not a power buff. The value lives in
 /// <see cref="LoanService"/>; this node listens to <see cref="LoanService.TallyChanged"/> and re-renders. It is added
 /// to the combat UI's <c>EnergyCounterContainer</c>, offset so it does not overlap the native Star counter, and hides

@@ -24,7 +24,7 @@ public sealed class LoanStrikeCard : CardModel
     private static CardPoolModel? _pool;
     public override CardPoolModel Pool => _pool ??= ModelDb.CardPool<ColorlessCardPool>();
 
-    public override int MaxUpgradeLevel => 1;   // upgrade = 0 energy
+    public override int MaxUpgradeLevel => 1;   // upgrade = drop Exhaust (repeatable); energy stays 1
 
     public override string PortraitPath =>
         IsUpgraded ? "res://Sts2DebtLoan/card_art/loan_strike_plus.png"

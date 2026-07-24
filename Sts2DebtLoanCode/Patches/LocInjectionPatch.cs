@@ -71,9 +71,11 @@ internal static class LocInjectionPatch
                 ["BAD_CREDIT_CARD.title"] = s.BcTitle,
                 ["BAD_CREDIT_CARD.description"] = s.BcDesc,
                 ["BAD_CREDIT_CARD.smartDescription"] = s.BcDesc,
-                ["FORCED_COLLECTION_CARD.title"] = s.FcTitle,
-                ["FORCED_COLLECTION_CARD.description"] = s.FcDesc,
-                ["FORCED_COLLECTION_CARD.smartDescription"] = s.FcDesc,
+                // NOTE: FORCED_COLLECTION_CARD loc is intentionally NOT injected. ForcedCollectionCard is a dead
+                // orphan (registered but never spawned, excluded from the compendium); the card the player actually
+                // sees is DebtorCard (DEBTOR_CARD, "강제 징수"). Its old FcTitle/FcDesc text described a superseded
+                // HP+principal mechanic and used {principal} — leaving it out avoids a stale duplicate. The Row
+                // still carries FcTitle/FcDesc for reference, but they're no longer surfaced.
                 // 독촉장 (Dunning Letter) leverage card — DunningLetterCard → DUNNING_LETTER_CARD.
                 ["DUNNING_LETTER_CARD.title"] = dl.Title,
                 ["DUNNING_LETTER_CARD.description"] = dl.CardDesc,
@@ -86,17 +88,26 @@ internal static class LocInjectionPatch
                 ["DUNNING_LETTER_POWER.title"] = dl.Title,
                 ["DUNNING_LETTER_POWER.description"] = dl.PowerDesc,
             };
-            foreach (var kv in DebtLoanLoc.ExtraPowerLoc(manager.Language)) powers[kv.Key] = kv.Value;   // 취업알선/납부 혜택/환급
+            // eng BASE first, then the current language ON TOP — so a key missing from a translated language
+            // (e.g. a newly added card not yet localized in jpn) falls back to English instead of showing the raw key.
+            foreach (var kv in DebtLoanLoc.ExtraPowerLoc("eng")) powers[kv.Key] = kv.Value;
+            if (manager.Language != "eng")
+                foreach (var kv in DebtLoanLoc.ExtraPowerLoc(manager.Language)) powers[kv.Key] = kv.Value;   // 취업알선/납부 혜택/환급/추심
             manager.GetTable("powers").MergeWith(powers);
 
-            // The new payment-set cards (품삯 / 취업알선 / 납부 혜택 / 환급 / 성실 납부 / 정산 / 청구서 / 혈납).
+            // The new payment-set cards (품삯 / 취업알선 / 납부 혜택 / 환급 / 성실 납부 / 정산 / 청구서 / 혈납 / 추심 …).
             var extraCards = new Dictionary<string, string>();
-            foreach (var kv in DebtLoanLoc.ExtraCardLoc(manager.Language))
+            void MergeCards(System.Collections.Generic.Dictionary<string, string> src)
             {
-                extraCards[kv.Key] = kv.Value;
-                if (kv.Key.EndsWith(".description"))                       // the card face path also reads smartDescription
-                    extraCards[kv.Key.Replace(".description", ".smartDescription")] = kv.Value;
+                foreach (var kv in src)
+                {
+                    extraCards[kv.Key] = kv.Value;
+                    if (kv.Key.EndsWith(".description"))                       // the card face path also reads smartDescription
+                        extraCards[kv.Key.Replace(".description", ".smartDescription")] = kv.Value;
+                }
             }
+            MergeCards(DebtLoanLoc.ExtraCardLoc("eng"));                       // eng base (fallback for untranslated keys)
+            if (manager.Language != "eng") MergeCards(DebtLoanLoc.ExtraCardLoc(manager.Language));   // language overrides
             manager.GetTable("cards").MergeWith(extraCards);
         }
         catch (Exception ex)

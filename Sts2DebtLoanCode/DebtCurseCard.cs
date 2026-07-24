@@ -65,6 +65,20 @@ public sealed class DebtCurseCard : CardModel
     /// enough). Grayed out when broke (BlockedByCardLogic), like Grand Finale's draw-pile check.</summary>
     protected override bool IsPlayable => Owner != null && (int)Owner.Gold >= PlayCost;
 
+    /// <summary>Fire the missed-payment co-op hook: if this card is still in hand at turn end (you didn't play it),
+    /// it's about to Ethereal-exhaust for 0 payment — in co-op that becomes an ally's chance to cover you.</summary>
+    public override bool HasTurnEndInHandEffect => true;
+
+    /// <summary>미납 (missed payment): unplayed at turn end. In co-op, hand the richest teammate who can afford it a
+    /// 대납 (Bailout) card (upgraded to match a 빚 독촉+) so they can pay on your behalf this turn. SP: nothing — the
+    /// Ethereal keyword just exhausts it as before. We do NOT remove the card here; Ethereal still exhausts it.
+    /// Runs in the lockstep turn-end path over shared state → co-op-safe (see GrantBailoutForMissedPayment).</summary>
+    protected override async Task OnTurnEndInHand(PlayerChoiceContext choiceContext)
+    {
+        if (Owner == null) return;
+        await LoanService.GrantBailoutForMissedPayment(Owner, IsUpgraded);
+    }
+
     /// <summary>Playing it: pay PlayCost gold at a 50% principal split (voluntary FAST repayment). If the 독촉장
     /// (Dunning Letter) power is active, ALSO gain Plating (판금) — the power is what turns playing your debt
     /// cards into a defensive engine (the reward lives on the power, not on the curse itself). The Exhaust

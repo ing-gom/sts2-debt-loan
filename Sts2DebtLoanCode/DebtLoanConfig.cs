@@ -37,8 +37,18 @@ internal static class DebtLoanConfig
     /// <summary>Interest added per ROOM you carry the debt, on the borrowed amount, on top of origination.</summary>
     internal static int NodeInterestPct = 5;
     /// <summary>How many rooms of <see cref="NodeInterestPct"/> accrue before it caps. 8 × 5% = +40% on top of
-    /// the 20% origination = a 60% ceiling.</summary>
+    /// the 20% origination = a 60% ceiling (the SP node cap; MP raises it, see below).</summary>
     internal static int MaxNodeInterestRooms = 8;
+
+    // ── Co-op interest scaling (a debt shared by more players is harsher; SP = 1 borrower = no change) ────
+    // Node interest RATE is NodeInterestPct × (borrower count) per room (accrues faster with more debtors), and
+    // the node cap grows on top of the 40% SP base by MpInterestExtraCapPerBorrowerPct per ADDITIONAL borrower,
+    // clamped to MpInterestExtraCapMaxPct. With the 4-player max: cap = 40 + min(40, 10×3) = 70% node → +20% origination
+    // = 90% total surcharge (owed ≈ 1.9× borrowed). SP (1 borrower): 40% node + 20% = 60%, unchanged.
+    /// <summary>Extra node-interest cap % added per ADDITIONAL borrower beyond the first (co-op only).</summary>
+    internal static int MpInterestExtraCapPerBorrowerPct = 10;
+    /// <summary>Ceiling on the co-op extra node-interest cap (never adds more than this on top of the 40% base).</summary>
+    internal static int MpInterestExtraCapMaxPct = 40;
 
     /// <summary>Highest act (0-based) where the merchant still lends: 0 = Act 1 only (default), 1 = through
     /// Act 2, 2 = through Act 3. Compared against <c>RunState.CurrentActIndex</c>.</summary>

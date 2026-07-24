@@ -292,11 +292,10 @@ internal static class SoloTest
                                                                     // fade so the speech bubble (3s) is unobstructed
                 await Shot("8_merchant_bark");                      // merchant hint naming the NEXT card (정산) when handing 독촉장
                 var shopNode = FindNode<NMerchantInventory>(stree.Root);
-                var repayBtn = FindNode<NMerchantRepayButton>(stree.Root);
                 try { shopNode?.Open(); } catch { }
                 await Task.Delay(500);
-                tG = shopNode != null && repayBtn != null;
-                W($"  assert repay-button: shopNode={(shopNode != null)} attached={(repayBtn != null)} -> {tG}");
+                tG = shopNode != null;
+                W($"  assert shop-open: shopNode={(shopNode != null)} -> {tG} (원금 상환 버튼은 빚 상점 패널로 이동 → 3c 스샷 확인)");
                 await Shot("3_shop");
 
                 // Debt-shop ENTRY: verify our "외상 구매" button attached in the REAL shop, screenshot both buttons,
@@ -305,7 +304,7 @@ internal static class SoloTest
                 var recG = LoanService.For(player); if (recG != null) recG.DebtShopVisits = 3;   // reveal all 6 offers
                 await Task.Delay(800);   // let the button's _Process position + show it
                 W($"  assert debt-shop-button: attached={(debtBtn != null)} visible={debtBtn?.Visible}");
-                await Shot("3b_shop_buttons");                       // real shop: 빚 갚기 + 외상 구매 buttons below the grid
+                await Shot("3b_shop_buttons");                       // real shop: 외상 구매 button (원금 상환은 빚 상점 패널로 이동)
                 if (shopNode != null)
                 {
                     NDebtCardShopPanel.Show(shopNode, player);
@@ -509,10 +508,44 @@ internal static class SoloTest
                     dlU.UpgradeInternal(); dlU.FinalizeUpgradeInternal();
                     string dlUFace = dlU.GetDescriptionForPile(PileType.Hand).Replace("\n", " | ");
                     W($"  [upgrade] 독촉장+ title='{dlU.Title}' FACE='{dlUFace}'");
+
+                    // ── 강화 시 {card} 명칭 검증 (this session's fix): 지급 카드가 '+' 형태로 표시되는가 ──
+                    // 언어 무관: 지급되는 카드의 로컬 이름 + "+" 가 face 에 들어있는지 확인.
+                    string LocName(string key) => new MegaCrit.Sts2.Core.Localization.LocString("cards", key).GetFormattedText();
+                    string wages = LocName("WAGES_CARD.title");
+                    string diligent = LocName("DILIGENT_PAYMENT_CARD.title");
+                    string payment = LocName("DEBT_CURSE_CARD.title");
+
+                    var jpU = player.RunState.CreateCard<JobPlacementCard>(player);
+                    jpU.UpgradeInternal(); jpU.FinalizeUpgradeInternal();
+                    string jpUFace = jpU.GetDescriptionForPile(PileType.Hand).Replace("\n", " | ");
+                    bool jpOk = jpUFace.Contains(wages + "+");
+                    W($"  [강화명칭] 취업알선+ FACE='{jpUFace}' -> '{wages}+' {(jpOk ? "OK" : "MISSING")}");
+
+                    var rfU = player.RunState.CreateCard<RefundCard>(player);
+                    rfU.UpgradeInternal(); rfU.FinalizeUpgradeInternal();
+                    string rfUFace = rfU.GetDescriptionForPile(PileType.Hand).Replace("\n", " | ");
+                    bool rfOk = rfUFace.Contains(diligent + "+");
+                    W($"  [강화명칭] 환급+ FACE='{rfUFace}' -> '{diligent}+' {(rfOk ? "OK" : "MISSING")}");
+
+                    bool dlOk = dlUFace.Contains(payment + "+");
+                    W($"  [강화명칭] 정기 납부+ -> '{payment}+' {(dlOk ? "OK" : "MISSING")}");
+
+                    // 추심(집행 지급 파워): FACE 가 지급 토큰(집행)을 참조하는지 + 집행 등록 확인. 추심+는 1코(에너지).
+                    string shakedown = LocName("SHAKEDOWN_CARD.title");
+                    string coFace = player.RunState.CreateCard<CollectionCard>(player).GetDescriptionForPile(PileType.Hand).Replace("\n", " | ");
+                    bool coOk = coFace.Contains(shakedown);
+                    W($"  [추심] FACE='{coFace}' -> 지급 토큰 '{shakedown}' {(coOk ? "OK" : "MISSING")}");
+
+                    // 개행 검증: 대출 강타 / 저당 = 효과+빚 두 줄 (\n 존재)
+                    var lsNl = player.RunState.CreateCard<LoanStrikeCard>(player).GetDescriptionForPile(PileType.Hand).Contains("\n");
+                    var mgNl = player.RunState.CreateCard<MortgageCard>(player).GetDescriptionForPile(PileType.Hand).Contains("\n");
+                    W($"  [개행] 대출강타 2줄={(lsNl ? "OK" : "NO")} 저당 2줄={(mgNl ? "OK" : "NO")}");
                     // New payment-set cards: registration + loc resolve.
                     foreach (var t in new[] { typeof(WagesCard), typeof(JobPlacementCard), typeof(PaymentBenefitCard),
                                               typeof(RefundCard), typeof(DiligentPaymentCard), typeof(SettlementCard),
-                                              typeof(InvoiceCard), typeof(BloodPaymentCard) })
+                                              typeof(InvoiceCard), typeof(BloodPaymentCard),
+                                              typeof(CollectionCard), typeof(ShakedownCard) })
                     {
                         var m = ModelDb.GetByIdOrNull<CardModel>(ModelDb.GetId(t));
                         if (m == null) { W($"  [newcard] {t.Name}: NOT REGISTERED"); continue; }
@@ -597,6 +630,10 @@ internal static class SoloTest
                 int dpGain = (PileType.Hand.GetPile(player)?.Cards.Count(c => c is DiligentPaymentCard) ?? 0) - dp0;
                 bool tP1 = pays == 3 && platingAmt >= 3 && dpGain >= 3;   // 납부 실적 counter + both reactive powers fired 3×
                 W($"  assert payment-trigger: 납부실적={pays}(3) plating={platingAmt}(>=3, exp 9) diligentCardsAdded={dpGain}(>=3) -> {tP1}");
+
+                // 추심(집행): 매 턴 집행 토큰 지급(0코, 1영수증→활력3). 인게임 실측은 추심 플레이 후 턴 시작 훅 필요 —
+                // 여기선 영수증 카운트만 로깅(집행 지급=CollectionPower.AfterPlayerTurnStart, 정기 납부 훅과 동형).
+                W($"  [추심 참고] 현재 영수증={LoanService.PaymentsThisCombat(player)} → 집행으로 1영수증당 활력3 (다음 공격 강화)");
 
                 // Engine-expansion powers fired 3× too: 자본 타격 dealt damage, 이자 지원 refunded half, 명세서 applied.
                 int ccDrop = (ccHp0 >= 0 && enemy != null) ? ccHp0 - enemy.CurrentHp : -1;       // ~15 (3×5) if unblocked

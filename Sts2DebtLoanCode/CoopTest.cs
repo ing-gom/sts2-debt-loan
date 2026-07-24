@@ -1,10 +1,10 @@
 // LOCAL TEST ONLY — dormant unless `selftest.coop.flag` is next to the mod DLL, and only compiled when
-// DEBTLOAN_SELFTEST is defined. Drives the co-op lobby, takes a loan on the HOST's local player through
-// the mod's real path (GrantLoanDirect → the networked dl_sync command), then both peers record what they
-// see: the host's Ledger relic principal, the run-wide Debt total, and how many Debt cards were injected
-// into THIS peer's own combat. Convergence = both peers agree AND the client (who borrowed nothing) still
-// got a Debt card (the "shared debt" contagion), with no session drop across a room boundary. See the
-// coop-verify skill.
+// DEBTLOAN_SELFTEST is defined. Drives the co-op lobby, then on the HOST's local player runs the mod's real
+// out-of-combat paths: takes a loan (GrantLoanDirect → networked dl_sync) and BUYS A CARD ON DEBT
+// (BuyCardOnDebt → networked dl_sync buy). Both peers then record what they SEE of the host's replicated loan:
+// owed principal, how many cards were bought on debt, and whether a bought card is really in the host's deck
+// on this peer. Convergence = both peers agree on all three AND no session drop across a room boundary (the
+// checksum boundary that a local-only purchase would fail). See the coop-verify skill.
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -113,13 +113,16 @@ internal static class CoopTest
         }
     }
 
-    // ── The DebtLoan scenario ────────────────────────────────────────────────────────────────────────
-    // HOST borrows on its local player. That fires GrantLoanDirect → the networked dl_sync command, which
-    // must (a) grant the Ledger relic on BOTH peers with the same principal, and (b) make RunWideDebtTotal
-    // = 1 on both. Then a combat: the run-wide Debt total injects into EVERY player's draw pile, so the
-    // JOIN player — who borrowed nothing — must still receive a Debt card (the shared-debt contagion). A
-    // room jump out of combat forces the replica checksum; a divergent relic principal or debt count drops
-    // the JOIN there.
+    // ── The DebtLoan co-op scenario (v2 — debt-shop purchase replication) ──────────────────────────────
+    // The shop model changed: cards are now BOUGHT ON DEBT at the debt shop, a LOCAL deck mutation on the
+    // shopper's peer. If that isn't networked, the partner's replica of the shopper's owed / deck / sold-set
+    // diverges → the next room's checksum drops the client. So the HOST: (1) takes a loan (Ledger replicates
+    // via dl_sync), (2) BUYS A CARD ON DEBT — which must broadcast `dl_sync buy` so BOTH peers add the price to
+    // the host's owed, drop the card into the host's deck, and mark it sold — then (3) fights (run-wide debt
+    // injection still fires) and (4) jumps rooms to force the checksum. The JOIN reads the HOST's REPLICATED
+    // owed + purchased-count + deck: they must match and the session must NOT drop. (MP interest scaling + the
+    // missed-payment 대납 grant are lockstep-deterministic combat paths — static-analysis + solo verified; the
+    // debt injection is logged here for observation.)
 
     private static async Task HostPhase(RunManager run)
     {
@@ -132,42 +135,92 @@ internal static class CoopTest
 
             DebtLoanConfig.MaxLoan = 9999;   // don't let the cap block the test loan
 
-            // 1) Take a loan on the host's local player → dl_sync replicates the Ledger + record to BOTH peers.
+            // 1) Take a loan → dl_sync replicates the Ledger + record to BOTH peers.
             Step("HOST take loan");
             await LoanService.GrantLoanDirect(me, 100);
             await Task.Delay(5000);          // let dl_sync replicate to the client
-            var host = run.State!.Players.OrderBy(p => p.NetId).First();
-            W($"HOST: after loan, ledgerPrincipal(host)={LedgerPrincipalOf(host)} debtTotal={LoanService.RunWideDebtTotal(run.State)}");
+            W($"HOST: after loan, owed={LedgerPrincipalOf(me)} purchased={PurchasedCount(me)}");
             await Shot("02_loan");
 
-            // 2) Enter combat → the run-wide Debt total injects into every player's draw pile (contagion).
+            // 2) ★ Buy a card on debt → dl_sync buy must replicate owed += price + the deck card + the sold-mark.
+            Step("HOST buy card on debt");
+            var rec = LoanService.For(me);
+            var offers = rec != null ? LoanService.RevealedPurchasable(rec) : System.Array.Empty<System.Type>();
+            if (rec != null && offers.Length > 0)
+            {
+                var type = offers[0];
+                int price = LoanService.ShopPriceFor(rec, type);
+                int before = rec.Principal;
+                W($"HOST: buying {type.Name} for {price} (owed {before} → expect {before + price})");
+                await LoanService.BuyCardOnDebt(me, type);
+                await Task.Delay(5000);      // let dl_sync buy replay on BOTH peers
+                W($"HOST: after buy, owed={LedgerPrincipalOf(me)} purchased={PurchasedCount(me)} deckHasBought={DeckHasAnyPurchased(me)}");
+            }
+            else W("HOST: no debt-shop offers to buy (skipping purchase step)");
+            await Shot("03_bought");
+
+            // 3) Combat → run-wide debt injection still fires; 4) room jump → checksum boundary.
             Step("HOST enter combat");
             run.ActionQueueSynchronizer.RequestEnqueue(new ConsoleCmdGameAction(me, "room monster", inCombat: false));
             await Task.Delay(9000);
-            int myDebt = 0;
+            int joinBailoutMax = 0;
             var cm = CombatManager.Instance;
             if (cm != null && cm.IsInProgress)
             {
-                myDebt = CombatDebtCards(me);
-                W($"HOST: in combat, my Debt cards = {myDebt}, debtTotal={LoanService.RunWideDebtTotal(run.State)}");
-                await Shot("03_combat");
-                for (int t = 0; t < 2; t++)
+                W($"HOST: in combat, my Debt cards = {CombatDebtCards(me)}");
+                await Shot("04_combat");
+
+                var joinP = run.State!.Players.OrderBy(p => p.NetId).Last();   // non-host player (NetId 1000)
+                W($"HOST: JOIN gold={(int)joinP.Gold} (>=20 → eligible for 대납)");
+
+                // ④ Fire the missed-payment grant (networked → both peers, exactly as a missed 납부's OnTurnEndInHand
+                // does) so the wealthy JOIN receives a 대납. We do NOT advance the turn, so the Ethereal 대납 lingers
+                // in the JOIN's hand for it to PLAY (③ below). The turn-end TRIGGER is analysed + solo-verified; the
+                // co-op-critical parts are this GRANT's cross-peer convergence and the 대납's USE.
+                Step("HOST fire missed-payment bailout grant");
+                run.ActionQueueSynchronizer.RequestEnqueue(new ConsoleCmdGameAction(me, "dl_testmiss", inCombat: true));
+                int owedPreBailout = LedgerPrincipalOf(me);
+                W($"HOST: owed before bailout={owedPreBailout}");
+
+                Step("HOST await 대납 granted to JOIN");
+                for (int probe = 0; probe < 12 && joinBailoutMax == 0; probe++)
                 {
-                    Step($"HOST combat turn {t + 1}");
-                    cm.SetReadyToEndTurn(me, canBackOut: false);
-                    await Task.Delay(8000);
-                    myDebt = Math.Max(myDebt, CombatDebtCards(me));   // catch cards that reach hand mid-fight
+                    await Task.Delay(1500);
+                    joinBailoutMax = Math.Max(joinBailoutMax, BailoutCardsInHand(joinP));
+                    if (probe % 3 == 0 || joinBailoutMax > 0) W($"HOST: probe {probe} JOIN대납={BailoutCardsInHand(joinP)}(max={joinBailoutMax})");
                 }
-                // Exit combat → checksum boundary (a divergent relic/debt count drops the JOIN here).
+                W($"HOST: ④ JOIN received 대납 max={joinBailoutMax} (expect >=1)");
+                await Shot("04b_bailout");
+
+                // ③ The JOIN now PLAYS the 대납 targeting the HOST (its own loop drives the play). STOP ending turns
+                // (leave the JOIN a stable turn to play in) and watch the HOST's owed drop by the bailout (no interest
+                // accrues mid-combat, so any drop is the 대납 paying down the debt via RecordPayment).
+                Step("HOST wait for JOIN to play 대납 → owed drops");
+                for (int probe = 0; probe < 20; probe++)
+                {
+                    await Task.Delay(1500);
+                    int owedNow = LedgerPrincipalOf(me);
+                    if (owedNow >= 0 && owedNow < owedPreBailout)
+                    {
+                        W($"HOST: ③ owed dropped {owedPreBailout}→{owedNow} (JOIN played 대납 on my debt)");
+                        break;
+                    }
+                    if (probe % 4 == 0) W($"HOST: waiting for 대납 play — owed={owedNow} (pre={owedPreBailout})");
+                }
+                int owedPostBailout = LedgerPrincipalOf(me);
+                W($"HOST: ③ owed {owedPreBailout}→{owedPostBailout} (expect drop ~20 once JOIN plays the 대납)");
+                await Shot("04c_bailout_used");
+
+                // Exit combat → checksum boundary (a divergent owed / deck / sold-set drops the JOIN here).
                 run.ActionQueueSynchronizer.RequestEnqueue(new ConsoleCmdGameAction(me, "room rest", inCombat: true));
                 await Task.Delay(8000);
             }
             else W("HOST: combat did not start (room monster jump failed)");
 
             if (run.State == null || run.State.Players.Count == 0) { W("HOST: SESSION DROPPED"); Flush(false); return; }
-            var host2 = run.State.Players.OrderBy(p => p.NetId).First();
-            W($"HOST: FINAL ledgerPrincipal={LedgerPrincipalOf(host2)} debtTotal={LoanService.RunWideDebtTotal(run.State)} myCombatDebt={myDebt}");
-            await Shot("04_final");
+            var host = run.State.Players.OrderBy(p => p.NetId).First();
+            W($"HOST: FINAL owed={LedgerPrincipalOf(host)} purchased={PurchasedCount(host)} deckHasBought={DeckHasAnyPurchased(host)} joinBailoutMax={joinBailoutMax}");
+            await Shot("05_final");
             W("=== coop host done ===");
             Flush(true);
         }
@@ -182,30 +235,42 @@ internal static class CoopTest
             await Shot("01_run");            // ★mandatory: the JOIN side also entered the run
 
             // Wait for the HOST to finish its whole script (the two instances share one mods folder, so the
-            // host's result FILE is a reliable done-signal). While waiting, auto-ready in combat (so the
-            // host's fight can progress) and record the MAX Debt cards that land in MY OWN combat piles —
-            // the client borrowed nothing, so any Debt card here proves the shared-debt contagion.
+            // host's result FILE is a reliable done-signal). While waiting, auto-ready in combat (so the host's
+            // fight can progress) and record what the client SEES of the HOST's replicated loan: owed, how many
+            // cards the host bought on debt, and whether a bought card is actually in the host's deck on THIS
+            // peer. If `dl_sync buy` didn't replicate, purchased=0 / owed is stale here → and the room jump drops us.
             string hostTxt = Path.Combine(ModDir(), "selftest.coop.host.txt");
-            int myDebtMax = 0;
             string lastLine = "";
+            int bailoutMax = 0;
+            bool playedBailout = false;
             for (int i = 0; i < 90 && !File.Exists(hostTxt); i++)
             {
                 Step($"JOIN waiting for host (t+{i * 2}s)");
-                try
+                var meJ = LocalPlayerOf(run);
+                if (meJ != null)
                 {
+                    int myBail = BailoutCardsInHand(meJ);
+                    bailoutMax = Math.Max(bailoutMax, myBail);   // ④ did I receive a 대납?
                     var cm = CombatManager.Instance;
-                    var meJ = LocalPlayerOf(run);
-                    if (cm?.IsInProgress == true && meJ != null)
+                    // ③ Once I hold a 대납, PLAY it targeting the HOST (pays down its debt). Networked PlayCardAction via
+                    // TryManualPlay → the target's CombatId rides the wire (lockstep, same path as any AnyEnemy card).
+                    // We don't end the turn, so the Ethereal 대납 stays in hand until this fires.
+                    if (myBail > 0 && !playedBailout && cm?.IsInProgress == true)
                     {
-                        cm.SetReadyToEndTurn(meJ, canBackOut: false);
-                        myDebtMax = Math.Max(myDebtMax, CombatDebtCards(meJ));
+                        var hostPlayer = run.State?.Players.OrderBy(p => p.NetId).First();
+                        var bailout = FindBailoutInHand(meJ);
+                        if (bailout != null && hostPlayer?.Creature != null)
+                        {
+                            bool ok = false;
+                            try { ok = bailout.TryManualPlay(hostPlayer.Creature); } catch (Exception e) { W("JOIN play 대납: " + e.Message); }
+                            W($"JOIN: playing 대납 at host (NetId {hostPlayer.NetId}) → enqueued={ok}");
+                            if (ok) playedBailout = true;
+                        }
                     }
                 }
-                catch { /* combat participation is best-effort */ }
 
                 string line = (run.State != null && run.State.Players.Count > 0)
-                    ? $"ledgerPrincipal(host)={LedgerPrincipalOf(run.State.Players.OrderBy(p => p.NetId).First())} " +
-                      $"debtTotal={LoanService.RunWideDebtTotal(run.State)} myCombatDebt={myDebtMax}"
+                    ? $"{Of(run.State.Players.OrderBy(p => p.NetId).First())} myBailout={bailoutMax} played={playedBailout}"
                     : "(state null — session dropped?)";
                 if (line != lastLine) { W($"JOIN t+{i * 2}s: {line}"); lastLine = line; }
                 await Task.Delay(2000);
@@ -219,12 +284,14 @@ internal static class CoopTest
                 return;
             }
             var host = run.State.Players.OrderBy(p => p.NetId).First();
-            W($"JOIN: FINAL ledgerPrincipal={LedgerPrincipalOf(host)} debtTotal={LoanService.RunWideDebtTotal(run.State)} myCombatDebt={myDebtMax}");
+            W($"JOIN: FINAL {Of(host)} myBailout={bailoutMax} played={playedBailout}");
             await Shot("02_final");          // ★mandatory: what the client actually SEES after replication
             W("=== coop join done ===");
             Flush(true);
         }
         catch (Exception e) { W("JOIN exception: " + e); Flush(false); }
+
+        static string Of(Player h) => $"owed(host)={LedgerPrincipalOf(h)} purchased(host)={PurchasedCount(h)} deckHasBought={DeckHasAnyPurchased(h)}";
     }
 
     /// <summary>Principal recorded on a player's Ledger relic, or -1 if they don't carry one. Both peers
@@ -233,6 +300,20 @@ internal static class CoopTest
     {
         var relic = LoanService.LedgerRelicOf(p);
         return relic?.Principal ?? -1;
+    }
+
+    /// <summary>How many cards this player has bought on debt (their sold-set size), or -1 if they carry no loan.
+    /// Replicated via `dl_sync buy` → both peers must agree.</summary>
+    private static int PurchasedCount(Player p) => LoanService.For(p)?.PurchasedCards.Count ?? -1;
+
+    /// <summary>True if the player's DECK actually holds a card they bought on debt — proves the purchase's deck
+    /// mutation (not just the owed number) replicated to THIS peer.</summary>
+    private static bool DeckHasAnyPurchased(Player p)
+    {
+        var rec = LoanService.For(p);
+        var deck = PileType.Deck.GetPile(p);
+        if (rec == null || deck == null || rec.PurchasedCards.Count == 0) return false;
+        return deck.Cards.Any(c => rec.PurchasedCards.Contains(c.GetType().Name));
     }
 
     /// <summary>Debt cards currently in a player's combat piles (draw/hand/discard).</summary>
@@ -245,6 +326,47 @@ internal static class CoopTest
             if (pile != null) n += pile.Cards.Count(c => c is DebtCurseCard);
         }
         return n;
+    }
+
+    /// <summary>납부 (DebtCurseCard) cards in a player's HAND — confirms the test injection landed on this peer.
+    /// Guarded: GetPile(Hand) throws OUT of combat, and this is polled before/after combat too.</summary>
+    private static int PaymentCardsInHand(Player p)
+    {
+        try { return PileType.Hand.GetPile(p)?.Cards.Count(c => c is DebtCurseCard) ?? 0; } catch { return 0; }
+    }
+
+    /// <summary>대납 (BailoutCard) cards in a player's HAND — the missed-payment grant handed to a wealthy ally.
+    /// Guarded the same way (polled out of combat).</summary>
+    private static int BailoutCardsInHand(Player p)
+    {
+        try { return PileType.Hand.GetPile(p)?.Cards.Count(c => c is BailoutCard) ?? 0; } catch { return 0; }
+    }
+
+    /// <summary>The first 대납 (BailoutCard) in a player's hand, or null. Used by the JOIN to PLAY it at the host.</summary>
+    private static CardModel? FindBailoutInHand(Player p)
+    {
+        try { return PileType.Hand.GetPile(p)?.Cards.FirstOrDefault(c => c is BailoutCard); } catch { return null; }
+    }
+
+    /// <summary>End a co-op turn the ONLY way that actually works: enqueue the NETWORKED <c>EndPlayerTurnAction</c>
+    /// for this peer's local player. <c>SetReadyToEndTurn</c> only adds the caller to the LOCAL ready-set (1 of 2),
+    /// so the turn never ends; the networked action replays on both peers, so each peer's set reaches 2 → the turn
+    /// ends and end-of-turn hooks (OnTurnEndInHand) fire. Both peers must call this for the shared turn to advance.
+    /// Guarded to the play phase + not-already-ready (a second enqueue would be a stale no-op / an Undo toggle).</summary>
+    private static void TryEndTurn(Player p)
+    {
+        try
+        {
+            var cm = CombatManager.Instance;
+            var sync = RunManager.Instance?.ActionQueueSynchronizer;
+            if (cm == null || sync == null || !cm.IsInProgress) return;
+            if (cm.IsPlayerReadyToEndTurn(p)) return;   // already ready → a re-enqueue would be a stale no-op
+            // (No play-phase guard: EndPlayerTurnAction is round-stamped, so an enqueue during the enemy turn is
+            //  ignored by its own round check — harmless.)
+            int round = p.Creature!.CombatState!.RoundNumber;
+            sync.RequestEnqueue(new MegaCrit.Sts2.Core.GameActions.EndPlayerTurnAction(p, round));
+        }
+        catch (Exception e) { W("TryEndTurn: " + e.Message); }
     }
 
     #region selection automation (auto-selector + screen pump)
@@ -446,3 +568,31 @@ internal static class CoopTest
         try { File.WriteAllText(Path.Combine(ModDir(), $"selftest.coop.{_role}.txt"), _out.ToString()); } catch { }
     }
 }
+
+#if DEBTLOAN_SELFTEST
+/// <summary>TEST-ONLY networked command (Debug builds only — stripped from Release): inject a 납부 (DebtCurseCard)
+/// into the issuing player's combat HAND on BOTH peers, so the co-op self-test can MISS it (end the turn without
+/// playing it) and drive the REAL trigger — the 납부's OnTurnEndInHand → GrantBailoutForMissedPayment. Networked
+/// (like dl_sync) so both peers put the card in the same hand lockstep, exactly as the 정기 납부 power feeds it.</summary>
+public sealed class DebtLoanTestMissCmd : MegaCrit.Sts2.Core.DevConsole.ConsoleCommands.AbstractConsoleCmd
+{
+    public override string CmdName => "dl_testmiss";
+    public override string Args => "";
+    public override string Description => "TEST: inject a 납부 card into your combat hand (both peers).";
+    public override bool IsNetworked => true;
+    public override bool DebugOnly => false;
+
+    public override CmdResult Process(Player? issuingPlayer, string[] args)
+    {
+        if (issuingPlayer?.Creature?.CombatState == null)
+            return new CmdResult(success: false, "dl_testmiss: not in combat.");
+        // Fire the SAME grant a missed 납부's OnTurnEndInHand fires — networked, so it replays on BOTH peers exactly
+        // as the real hook does (fires on both peers, lockstep). We drive it directly rather than through a real
+        // turn-end because the end-of-turn-in-hand snapshot is taken at TURN START, so a card provisioned during the
+        // test (never present at a turn start) can't reach that hook in the harness. The turn-end path itself is
+        // solo-verified; here we verify the co-op-critical GRANT + its cross-peer convergence + the 대납's USE.
+        TaskHelper.RunSafely(LoanService.GrantBailoutForMissedPayment(issuingPlayer, upgraded: false));
+        return new CmdResult(success: true, "dl_testmiss: fired missed-payment bailout grant.");
+    }
+}
+#endif

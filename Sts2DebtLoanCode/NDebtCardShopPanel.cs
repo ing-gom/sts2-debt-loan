@@ -6,8 +6,11 @@ using MegaCrit.Sts2.addons.mega_text;          // MegaLabel
 using MegaCrit.Sts2.Core.Entities.Cards;       // PileType, CardPreviewMode
 using MegaCrit.Sts2.Core.Entities.Players;     // Player
 using MegaCrit.Sts2.Core.Helpers;              // TaskHelper, StsColors
+using MegaCrit.Sts2.Core.Assets;               // PreloadManager (repay icon fallback)
+using MegaCrit.Sts2.Core.HoverTips;            // HoverTip, IHoverTip, HoverTipAlignment
 using MegaCrit.Sts2.Core.Models;               // CardModel, ModelDb
 using MegaCrit.Sts2.Core.Nodes.Cards;          // NCard
+using MegaCrit.Sts2.Core.Nodes.HoverTips;      // NHoverTipSet
 using MegaCrit.Sts2.Core.Nodes.Screens.Shops;  // NMerchantInventory
 
 namespace Sts2DebtLoan;
@@ -155,6 +158,10 @@ internal sealed partial class NDebtCardShopPanel : Control
         back.MouseEntered += () => HoverScale(back, 1.18f);   // slight grow on hover (like the entry button)
         back.MouseExited += () => HoverScale(back, 1f);
         board.AddChild(back);
+
+        // 원금 상환 (repay loan) — MOVED here from the main merchant shop, so settling the loan lives in the same
+        // 빚 상점 where you take cards on debt.
+        BuildRepayControl(board);
 
         // Scroll ACROSS: this loan canvas slides in from the right while the merchant's own rug pans left, so the
         // two read as one continuous canvas being scrolled sideways.
@@ -401,6 +408,139 @@ internal sealed partial class NDebtCardShopPanel : Control
         card.ZIndex = z;
         CreateTween().TweenProperty(card, "scale", new Vector2(scale, scale), 0.10)
                      .SetEase(Tween.EaseType.Out).SetTrans(Tween.TransitionType.Back);
+    }
+
+    /// <summary>The "원금 상환" (repay loan) control — MOVED here from the main merchant shop so settling the loan
+    /// lives in the same 빚 상점 where you take cards on debt. Bottom-center action row: caption + ledger icon +
+    /// the outstanding principal as a real GOLD price (cream if affordable, red if not — distinct from the
+    /// debt-green offer prices). Click → <see cref="LoanService.Repay"/>. Hidden while there's no active loan.</summary>
+    private void BuildRepayControl(Control board)
+    {
+        const float iconSize = 60f;
+        float bandY = _bh - 46f;   // vertical center of the bottom action row (TODO: nudge if it crowds the bottom card row)
+        float cx = _bw / 2f;
+        var ui = DebtLoanLoc.RepayUiFor(MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng");
+
+        var icon = new TextureButton
+        {
+            TextureNormal = LoadRepayIcon(),
+            IgnoreTextureSize = true,
+            StretchMode = TextureButton.StretchModeEnum.KeepAspectCentered,
+            CustomMinimumSize = new Vector2(iconSize, iconSize),
+            Size = new Vector2(iconSize, iconSize),
+            Position = new Vector2(cx - iconSize / 2f, bandY - iconSize / 2f),
+            PivotOffset = new Vector2(iconSize / 2f, iconSize / 2f),
+        };
+        board.AddChild(icon);
+
+        // Caption "원금 상환" to the LEFT of the icon (right-aligned so it butts up against it).
+        var caption = MakeLabel(ui.Title, 26, StsColors.cream);
+        if (caption != null)
+        {
+            caption.HorizontalAlignment = HorizontalAlignment.Right;
+            caption.VerticalAlignment = VerticalAlignment.Center;
+            caption.Size = new Vector2(180f, 40f);
+            caption.Position = new Vector2(cx - iconSize / 2f - 12f - 180f, bandY - 20f);
+            board.AddChild(caption);
+        }
+
+        // Cost (coin + gold number) to the RIGHT of the icon.
+        TextureRect? coinIcon = null;
+        var coin = LoadCoin();
+        if (coin != null)
+        {
+            coinIcon = new TextureRect
+            {
+                Texture = coin,
+                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+                StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+                Size = new Vector2(32f, 32f),
+                Position = new Vector2(cx + iconSize / 2f + 12f, bandY - 16f),
+                MouseFilter = MouseFilterEnum.Ignore,
+            };
+            board.AddChild(coinIcon);
+        }
+        var costLabel = MakeLabel("", 30, StsColors.cream);
+        if (costLabel != null)
+        {
+            costLabel.VerticalAlignment = VerticalAlignment.Center;
+            costLabel.Size = new Vector2(80f, 36f);
+            costLabel.Position = new Vector2(cx + iconSize / 2f + 12f + 40f, bandY - 18f);
+            board.AddChild(costLabel);
+        }
+
+        icon.MouseEntered += () =>
+        {
+            HoverScale(icon, 1.15f);
+            var rec = LoanService.For(_player);
+            int cost = rec?.Principal ?? 0;
+            bool hasLoan = rec != null && rec.Active && cost > 0;
+            bool usable = hasLoan && (int)_player.Gold >= cost;
+            string body = !hasLoan ? ui.NoLoan : usable ? string.Format(ui.PayBack, cost) : string.Format(ui.NotEnough, cost);
+            NHoverTipSet.CreateAndShow(icon, MakeRepayTip(ui.Title, body), HoverTipAlignment.Left);
+        };
+        icon.MouseExited += () => { HoverScale(icon, 1f); NHoverTipSet.Remove(icon); };
+        icon.Pressed += () => TaskHelper.RunSafely(RepayFlow());
+
+        void Refresh()
+        {
+            var rec = LoanService.For(_player);
+            int cost = rec?.Principal ?? 0;
+            bool hasLoan = rec != null && rec.Active && cost > 0;
+            bool affordable = (int)_player.Gold >= cost;
+            icon.Visible = hasLoan;
+            if (coinIcon != null) coinIcon.Visible = hasLoan;
+            if (caption != null) caption.Visible = hasLoan;
+            if (costLabel != null)
+            {
+                costLabel.Visible = hasLoan;
+                costLabel.Text = cost.ToString();
+                costLabel.Modulate = affordable ? StsColors.cream : StsColors.red;
+            }
+            icon.Modulate = (hasLoan && affordable) ? Colors.White : StsColors.halfTransparentWhite;
+        }
+        _refreshers.Add(Refresh);
+        Refresh();
+    }
+
+    private async System.Threading.Tasks.Task RepayFlow()
+    {
+        try
+        {
+            var rec = LoanService.For(_player);
+            if (rec == null || !rec.Active || (int)_player.Gold < rec.Principal) return;
+            bool ok = await LoanService.Repay(_player);
+            if (ok) MainFile.Logger.Info($"[{MainFile.ModId}] debt-shop repay succeeded.");
+        }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] debt-shop repay failed: {e.Message}"); }
+        finally { foreach (var r in _refreshers) { try { r(); } catch { } } }
+    }
+
+    private static IHoverTip MakeRepayTip(string title, string body)
+        => new HoverTip { Title = title, Description = body, Id = "sts2debtloan_debtshop_repay" };
+
+    /// <summary>Repay icon: the mod's ledger art from the pck, else a loose dev PNG next to the DLL, else a
+    /// vanilla fallback (copied from the old NMerchantRepayButton so the button keeps its look after the move).</summary>
+    private static Texture2D? LoadRepayIcon()
+    {
+        try
+        {
+            var tex = ResourceLoader.Load<Texture2D>("res://Sts2DebtLoan/icons/debt_loan_relic.png", null, ResourceLoader.CacheMode.Reuse);
+            if (tex != null) return tex;
+        }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] repay icon pck load failed: {e.Message}"); }
+        try
+        {
+            string? dir = System.IO.Path.GetDirectoryName(typeof(NDebtCardShopPanel).Assembly.Location);
+            string? file = dir != null ? System.IO.Path.Combine(dir, "repay_shop_icon.png") : null;
+            if (file != null && System.IO.File.Exists(file))
+            {
+                var img = Image.LoadFromFile(file);
+                if (img != null) return ImageTexture.CreateFromImage(img);
+            }
+        }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] repay icon loose load failed: {e.Message}"); }
+        return PreloadManager.Cache.GetTexture2D("res://images/ui/rest_site/option_reforge.png");
     }
 
     /// <summary>A merchant icon for the "back to the shop" button (the game's run-summary merchant portrait, else

@@ -4,6 +4,7 @@ using MegaCrit.Sts2.Core.Commands;                    // PowerCmd
 using MegaCrit.Sts2.Core.Entities.Cards;              // CardType, CardRarity, TargetType, CardPlay
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;     // PlayerChoiceContext
 using MegaCrit.Sts2.Core.HoverTips;                   // HoverTipFactory, IHoverTip
+using MegaCrit.Sts2.Core.Localization;                // LocString
 using MegaCrit.Sts2.Core.Localization.DynamicVars;    // DynamicVar
 using MegaCrit.Sts2.Core.Models;                      // CardModel, CardPoolModel, ModelDb
 using MegaCrit.Sts2.Core.Models.CardPools;            // ColorlessCardPool
@@ -33,6 +34,17 @@ public sealed class JobPlacementCard : CardModel
     private const int Fee = 50;   // gold borrowed onto the loan when played (unchanged by upgrade)
 
     protected override IEnumerable<DynamicVar> CanonicalVars => new[] { new DynamicVar("fee", Fee) };
+
+    /// <summary>Inject {card} = the localized 품삯 (Wages) name this feeds — and append "+" when THIS card is
+    /// upgraded (취업알선+), so the description reads "품삯+" (the form it actually hands out). Mirrors
+    /// <see cref="DunningLetterCard.AddExtraArgsToDescription"/>.</summary>
+    protected override void AddExtraArgsToDescription(LocString description)
+    {
+        base.AddExtraArgsToDescription(description);
+        string card = new LocString("cards", "WAGES_CARD.title").GetFormattedText();
+        if (IsUpgraded) card += "+";
+        description.Add("card", card);
+    }
 
     // Hover: preview the 품삯 (Wages) card it feeds you each turn (품삯+ once upgraded).
     protected override IEnumerable<IHoverTip> ExtraHoverTips =>

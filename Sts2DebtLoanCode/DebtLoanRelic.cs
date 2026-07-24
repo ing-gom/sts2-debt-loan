@@ -27,7 +27,7 @@ public sealed class DebtLoanRelic : RelicModel
     protected override string PackedIconOutlinePath => "res://Sts2DebtLoan/icons/debt_loan_relic_outline.png";
     protected override string BigIconPath => "res://Sts2DebtLoan/icons/debt_loan_relic.png";
 
-    private int _borrowed, _principal, _totalPaid, _loanFloor, _interestRoomsApplied;
+    private int _borrowed, _principal, _totalPaid, _loanFloor, _interestPctApplied;
     private bool _active;
     private int _cards;   // transient (not saved): current per-combat Debt-card count, for the hover {cards}
 
@@ -40,9 +40,10 @@ public sealed class DebtLoanRelic : RelicModel
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public int TotalPaid { get => _totalPaid; set { AssertMutable(); _totalPaid = value; } }
 
-    /// <summary>Rooms of node-interest already baked into Principal (so it isn't re-charged on reload).</summary>
+    /// <summary>Total node-interest percent (of Borrowed) already baked into Principal (so it isn't re-charged on
+    /// reload). Percent, not rooms, because the per-room rate now scales with the number of borrowers in co-op.</summary>
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
-    public int InterestRoomsApplied { get => _interestRoomsApplied; set { AssertMutable(); _interestRoomsApplied = value; } }
+    public int InterestPctApplied { get => _interestPctApplied; set { AssertMutable(); _interestPctApplied = value; } }
 
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public int LoanFloor { get => _loanFloor; set { AssertMutable(); _loanFloor = value; } }

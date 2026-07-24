@@ -13,11 +13,11 @@ using MegaCrit.Sts2.Core.Runs;                 // RunManager
 namespace Sts2DebtLoan;
 
 /// <summary>
-/// A second merchant-screen control, sitting beside the "Repay Loan" button: "외상 구매" (Buy on credit). Present
-/// only while the LOCAL player carries an active loan. Clicking opens <see cref="NDebtCardShopPanel"/>, where the
-/// non-power cards are bought on debt. Same attach pattern as <see cref="NMerchantRepayButton"/> — a bare
-/// TextureButton wrapped in a Control, parented onto the shop's slots container via a postfix on
-/// <see cref="NMerchantInventory._Ready"/>, positioned in the shop-action row (LEFT of the repay button).
+/// The merchant-screen "외상 구매" (Buy on credit) control. Present only while the LOCAL player carries an active
+/// loan. Clicking opens <see cref="NDebtCardShopPanel"/>, where the non-power cards are bought on debt AND the loan
+/// can be repaid (the "원금 상환" button now lives inside that panel, not on the main shop). A bare TextureButton
+/// wrapped in a Control, parented onto the shop's slots container via a postfix on
+/// <see cref="NMerchantInventory._Ready"/>, positioned in the shop-action row below the grid.
 /// </summary>
 internal sealed partial class NDebtCardShopButton : Control
 {
