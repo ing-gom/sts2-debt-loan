@@ -116,12 +116,7 @@ internal sealed partial class NDebtCardShopPanel : Control
         _gridTop = topArea;
         _rowPitch = (_bh - topArea - bottomArea) / 2f;   // 6 cards → 2 rows
 
-        var ui = DebtLoanLoc.DebtShopUiFor(MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng");
-
-        // Header: title to the RIGHT of the top-left merchant (back) icon.
-        var title = MakeLabel(ui.Title, 42, StsColors.cream);
-        if (title != null) { title.Position = new Vector2(140f, 34f); board.AddChild(title); }
-
+        // No title text — the merchant (back) icon + the card grid carry the screen.
         // Offers sit directly on the rug in a shop-style grid (no scroll — the grid holds the whole pool).
         _grid = new Control();
         _grid.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
@@ -155,7 +150,7 @@ internal sealed partial class NDebtCardShopPanel : Control
             b.Pressed += SlideOutAndClose;
             back = b;
         }
-        back.Position = new Vector2(36f, 22f);   // top-left corner
+        back.Position = new Vector2(44f, 42f);   // top-left, clearly ON the rug body (past its ragged edge)
         board.AddChild(back);
 
         // Scroll ACROSS: this loan canvas slides in from the right while the merchant's own rug pans left, so the
@@ -314,7 +309,8 @@ internal sealed partial class NDebtCardShopPanel : Control
     /// native shop price (the 외상 구매 title + debt framing make clear it's charged to your loan, not gold).</summary>
     private Control MakeCostTag(int price)
     {
-        var root = new Control { Size = new Vector2(96f, 40f) };
+        var root = new Control { Size = new Vector2(100f, 40f) };
+        const float coinSize = 38f;
         var coin = LoadCoin();
         if (coin != null)
         {
@@ -323,13 +319,15 @@ internal sealed partial class NDebtCardShopPanel : Control
                 Texture = coin,
                 ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
                 StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-                Size = new Vector2(34f, 34f),
-                Position = new Vector2(0f, 2f),
+                Size = new Vector2(coinSize, coinSize),
+                Position = new Vector2(0f, 0f),
             };
             root.AddChild(icon);
         }
-        var num = MakeLabel(price.ToString(), 30, StsColors.cream);
-        if (num != null) { num.Position = new Vector2(42f, 0f); root.AddChild(num); }
+        // GREEN price — signals that everything here is bought on DEBT (goes onto what you owe). Sized to match
+        // the coin so the coin + number read as one tag.
+        var num = MakeLabel(price.ToString(), 34, new Color(0.42f, 0.86f, 0.38f));
+        if (num != null) { num.Position = new Vector2(coinSize + 8f, 1f); root.AddChild(num); }
         return root;
     }
 
