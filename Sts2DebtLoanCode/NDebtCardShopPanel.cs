@@ -112,12 +112,20 @@ internal sealed partial class NDebtCardShopPanel : Control
         board.Position = rug.Position;
         AddChild(board);
 
-        // Grid metrics: 3 columns spread across the width, 2 rows in the space between the header and the bottom.
-        const float sideMargin = 90f, topArea = 128f, bottomArea = 84f;
+        // Grid metrics: PerRow columns across the width; the card row(s) are VERTICALLY CENTERED in the band between
+        // the top header and the bottom repay row. A single row of 5 used to hug the top and leave the bottom ~60%
+        // of the rug empty — now the block is centered for whatever number of offers this visit reveals.
+        const float sideMargin = 90f, topArea = 128f, bottomArea = 172f;   // bottomArea reserves room for the (bigger) repay row
         _colPitch = (_bw - sideMargin * 2f) / PerRow;
         _gridX = sideMargin;
-        _gridTop = topArea;
-        _rowPitch = (_bh - topArea - bottomArea) / 2f;   // 6 cards → 2 rows
+
+        var recForRows = LoanService.For(_player);
+        int offerCount = recForRows != null ? LoanService.RevealedPurchasable(recForRows).Length : 0;
+        int rowCount = Math.Max(1, (offerCount + PerRow - 1) / PerRow);
+        const float cellH = 330f;                                  // fixed per-row height (card art + price tag)
+        _rowPitch = cellH;
+        float band = _bh - topArea - bottomArea;                   // vertical space available for the card block
+        _gridTop = topArea + MathF.Max(0f, (band - rowCount * cellH) / 2f);   // center the block in that band
 
         // No title text — the merchant (back) icon + the card grid carry the screen.
         // Offers sit directly on the rug in a shop-style grid (no scroll — the grid holds the whole pool).
@@ -416,8 +424,8 @@ internal sealed partial class NDebtCardShopPanel : Control
     /// debt-green offer prices). Click → <see cref="LoanService.Repay"/>. Hidden while there's no active loan.</summary>
     private void BuildRepayControl(Control board)
     {
-        const float iconSize = 60f;
-        float bandY = _bh - 46f;   // vertical center of the bottom action row (TODO: nudge if it crowds the bottom card row)
+        const float iconSize = 92f;   // enlarged repay button (was 60) — the primary action on this screen
+        float bandY = _bh - 84f;      // vertical center of the bottom action row (raised to fit the bigger button)
         float cx = _bw / 2f;
         var ui = DebtLoanLoc.RepayUiFor(MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng");
 
@@ -434,13 +442,13 @@ internal sealed partial class NDebtCardShopPanel : Control
         board.AddChild(icon);
 
         // Caption "원금 상환" to the LEFT of the icon (right-aligned so it butts up against it).
-        var caption = MakeLabel(ui.Title, 26, StsColors.cream);
+        var caption = MakeLabel(ui.Title, 36, StsColors.cream);
         if (caption != null)
         {
             caption.HorizontalAlignment = HorizontalAlignment.Right;
             caption.VerticalAlignment = VerticalAlignment.Center;
-            caption.Size = new Vector2(180f, 40f);
-            caption.Position = new Vector2(cx - iconSize / 2f - 12f - 180f, bandY - 20f);
+            caption.Size = new Vector2(240f, 52f);
+            caption.Position = new Vector2(cx - iconSize / 2f - 14f - 240f, bandY - 26f);
             board.AddChild(caption);
         }
 
@@ -454,18 +462,18 @@ internal sealed partial class NDebtCardShopPanel : Control
                 Texture = coin,
                 ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
                 StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-                Size = new Vector2(32f, 32f),
-                Position = new Vector2(cx + iconSize / 2f + 12f, bandY - 16f),
+                Size = new Vector2(46f, 46f),
+                Position = new Vector2(cx + iconSize / 2f + 14f, bandY - 23f),
                 MouseFilter = MouseFilterEnum.Ignore,
             };
             board.AddChild(coinIcon);
         }
-        var costLabel = MakeLabel("", 30, StsColors.cream);
+        var costLabel = MakeLabel("", 42, StsColors.cream);
         if (costLabel != null)
         {
             costLabel.VerticalAlignment = VerticalAlignment.Center;
-            costLabel.Size = new Vector2(80f, 36f);
-            costLabel.Position = new Vector2(cx + iconSize / 2f + 12f + 40f, bandY - 18f);
+            costLabel.Size = new Vector2(110f, 52f);
+            costLabel.Position = new Vector2(cx + iconSize / 2f + 14f + 54f, bandY - 26f);
             board.AddChild(costLabel);
         }
 

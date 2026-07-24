@@ -35,6 +35,7 @@ internal static class NCardFramePatch
         typeof(RefundCard), typeof(SettlementCard), typeof(InvoiceCard), typeof(BloodPaymentCard),
         typeof(GarnishmentCard), typeof(LoanStrikeCard), typeof(MortgageCard),
         typeof(CounterclaimCard), typeof(StatementCard), typeof(InterestSupportCard),
+        typeof(CollectionCard),   // 추심 — a held payment-set Power (feeds the 집행 token); the token stays plain
     };
 
     // Slate-lavender h/s/v for the banner / portrait-border / type-plaque (kept from the earlier look so they
