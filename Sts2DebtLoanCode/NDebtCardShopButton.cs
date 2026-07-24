@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using Godot;
+using MegaCrit.Sts2.addons.mega_text;          // MegaLabel
 using MegaCrit.Sts2.Core.Assets;               // PreloadManager
 using MegaCrit.Sts2.Core.Context;              // LocalContext
 using MegaCrit.Sts2.Core.Entities.Players;     // Player
@@ -21,14 +22,13 @@ namespace Sts2DebtLoan;
 /// </summary>
 internal sealed partial class NDebtCardShopButton : Control
 {
-    private const float IconSize = 60f;
+    private const float IconSize = 72f;
     private const float HoverScale = 1.2f;
-    private const float BelowGap = 12f;
-    private const float LeftShift = 96f;   // sit LEFT of the repay button so the two don't overlap
 
     private NMerchantInventory _shop = null!;
     private Player? _player;
     private TextureButton _icon = null!;
+    private MegaLabel? _label;
     private Tween? _hoverTween;
     private bool _positioned;
 
@@ -60,6 +60,31 @@ internal sealed partial class NDebtCardShopButton : Control
         _icon.MouseExited += () => { ScaleWidget(1f); NHoverTipSet.Remove(_icon); };
         AddChild(_icon);
         PivotOffset = new Vector2(IconSize / 2f, IconSize / 2f);
+
+        // Always-visible "외상 구매" caption under the icon (game font, so Korean renders), so the entry point is
+        // obvious at a glance without hovering — clone a shop MegaLabel for the font.
+        var lang = MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng";
+        if (FindMegaLabel(_shop)?.Duplicate() is MegaLabel ml)
+        {
+            ml.SetAnchorsAndOffsetsPreset(LayoutPreset.TopLeft);
+            ml.GrowHorizontal = GrowDirection.Both; ml.GrowVertical = GrowDirection.End;
+            ml.CustomMinimumSize = Vector2.Zero; ml.Size = Vector2.Zero; ml.Scale = Vector2.One;
+            ml.HorizontalAlignment = HorizontalAlignment.Center;
+            ml.ClipText = false; ml.AutowrapMode = TextServer.AutowrapMode.Off;
+            ml.Text = DebtLoanLoc.DebtShopUiFor(lang).Title;
+            ml.AddThemeFontSizeOverride("font_size", 24);
+            ml.Modulate = StsColors.cream;
+            ml.Position = new Vector2(IconSize / 2f - 60f, IconSize + 6f);
+            _label = ml;
+            AddChild(ml);
+        }
+    }
+
+    private static MegaLabel? FindMegaLabel(Node n)
+    {
+        if (n is MegaLabel ml) return ml;
+        foreach (var c in n.GetChildren()) { var r = FindMegaLabel(c); if (r != null) return r; }
+        return null;
     }
 
     public override void _Process(double delta)
@@ -87,34 +112,19 @@ internal sealed partial class NDebtCardShopButton : Control
                    .SetEase(Tween.EaseType.Out).SetTrans(Tween.TransitionType.Back);
     }
 
-    /// <summary>Sit below the relic/potion grid, LEFT of the repay button (which right-aligns to the grid edge).</summary>
+    /// <summary>Sit in the EMPTY right zone of the merchant rug (past the item grid / chevron area), where nothing
+    /// else is drawn — so the button + its caption are unobstructed. Positioned as a fraction of the rug's size
+    /// (the rug is <see cref="NMerchantInventory._slotsContainer"/>, our parent).</summary>
     private void PositionInShop()
     {
         if (_positioned) return;
-        Control? board = _shop._slotsContainer;
-        if (board == null) return;
-
-        float maxRight = float.MinValue, gridBottom = float.MinValue;
-        int count = 0;
-        foreach (var c in new[] { _shop._relicContainer, _shop._potionContainer })
-        {
-            if (c == null) continue;
-            foreach (var slot in c.GetChildren().OfType<NMerchantSlot>())
-            {
-                Rect2 r = slot.GetGlobalRect();
-                if (r.Size.X < 2f) continue;
-                maxRight = Math.Max(maxRight, r.End.X);
-                gridBottom = Math.Max(gridBottom, r.End.Y);
-                count++;
-            }
-        }
-        if (count == 0) return;
-
-        float iconCx = maxRight - IconSize / 2f - LeftShift;   // left of the repay button's slot
-        float iconCy = gridBottom + BelowGap + IconSize / 2f;
-        Transform2D inv = board.GetGlobalTransform().AffineInverse();
-        Vector2 local = inv * new Vector2(iconCx, iconCy);
-        Position = local - new Vector2(IconSize / 2f, IconSize / 2f);
+        Control? rug = _shop._slotsContainer;
+        if (rug == null) return;
+        Vector2 sz = rug.Size;
+        if (sz.X < 100f) return;   // rug not laid out yet
+        // Far-right empty strip, high up — clear of the card grid, the relic/potion column, and the native
+        // re-roll coin (which sits right-CENTER). The caption sits just under the icon.
+        Position = new Vector2(sz.X * 0.90f - IconSize / 2f, sz.Y * 0.30f);
         _positioned = true;
     }
 

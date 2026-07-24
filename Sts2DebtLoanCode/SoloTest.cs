@@ -298,6 +298,22 @@ internal static class SoloTest
                 tG = shopNode != null && repayBtn != null;
                 W($"  assert repay-button: shopNode={(shopNode != null)} attached={(repayBtn != null)} -> {tG}");
                 await Shot("3_shop");
+
+                // Debt-shop ENTRY: verify our "외상 구매" button attached in the REAL shop, screenshot both buttons,
+                // then open the panel over the live shop and screenshot it (the actual in-shop entry flow).
+                var debtBtn = FindNode<NDebtCardShopButton>(stree.Root);
+                var recG = LoanService.For(player); if (recG != null) recG.DebtShopVisits = 3;   // reveal all 6 offers
+                await Task.Delay(800);   // let the button's _Process position + show it
+                W($"  assert debt-shop-button: attached={(debtBtn != null)} visible={debtBtn?.Visible}");
+                await Shot("3b_shop_buttons");                       // real shop: 빚 갚기 + 외상 구매 buttons below the grid
+                if (shopNode != null)
+                {
+                    NDebtCardShopPanel.Show(shopNode, player);
+                    await Task.Delay(1100);
+                    await Shot("3c_shop_panel");                     // the debt-card screen opened FROM the real shop
+                    NDebtCardShopPanel.CloseOpen();                  // don't let it linger into the next room
+                    await Task.Delay(200);
+                }
             }
             all &= tG;
 

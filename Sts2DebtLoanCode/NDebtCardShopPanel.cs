@@ -208,6 +208,9 @@ internal sealed partial class NDebtCardShopPanel : Control
         _layer?.QueueFree();
     }
 
+    /// <summary>Close whatever panel is open (solo-verify uses this before leaving the shop room).</summary>
+    internal static void CloseOpen() => _open?.Close();
+
     public override void _UnhandledKeyInput(InputEvent ev)
     {
         if (ev is InputEventKey { Pressed: true, Keycode: Key.Escape }) Close();
