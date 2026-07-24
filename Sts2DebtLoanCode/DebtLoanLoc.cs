@@ -250,6 +250,29 @@ internal static class DebtLoanLoc
         ["tur"] = new("Ödeme", "Ödediğin her altın [b]borcundan[/b] düşülür (faiz dahil). Borcu ne kadar uzun taşırsan o kadar çok [b]faiz[/b] birikir — erken öde, dükkân maliyetini düşük tut. Her ödeme sana ayrıca 1 [b]makbuz[/b] kazandırır."),
     };
 
+    // ── 영수증 (Receipt) keyword tooltip (14 languages). Shown on cards that SPEND Receipts, explaining that you
+    //    earn them by making Payments and this card consumes them. Injected as DEBT_RECEIPT.* in the "relics" table.
+    internal static PayRow ReceiptFor(string? lang)
+        => lang != null && ReceiptByLang.TryGetValue(lang, out var r) ? r : ReceiptByLang["eng"];
+
+    private static readonly Dictionary<string, PayRow> ReceiptByLang = new()
+    {
+        ["eng"] = new("Receipt", "You earn 1 [b]Receipt[/b] every time you make a payment. This card spends [b]Receipts[/b]."),
+        ["kor"] = new("영수증", "납부할 때마다 [b]영수증[/b]을 1개 얻습니다. 이 카드는 [b]영수증[/b]을 소비합니다."),
+        ["jpn"] = new("レシート", "支払うたびに[b]レシート[/b]を1枚得る。このカードは[b]レシート[/b]を消費する。"),
+        ["zhs"] = new("收据", "每次还款都会获得1张[b]收据[/b]。此牌会消耗[b]收据[/b]。"),
+        ["deu"] = new("Beleg", "Bei jeder Zahlung erhältst du 1 [b]Beleg[/b]. Diese Karte verbraucht [b]Belege[/b]."),
+        ["fra"] = new("Reçu", "Chaque paiement te rapporte 1 [b]reçu[/b]. Cette carte dépense des [b]reçus[/b]."),
+        ["spa"] = new("Recibo", "Cada pago te otorga 1 [b]recibo[/b]. Esta carta gasta [b]recibos[/b]."),
+        ["esp"] = new("Recibo", "Cada pago te otorga 1 [b]recibo[/b]. Esta carta gasta [b]recibos[/b]."),
+        ["ita"] = new("Ricevuta", "Ogni pagamento ti dà 1 [b]ricevuta[/b]. Questa carta consuma [b]ricevute[/b]."),
+        ["pol"] = new("Paragon", "Każda spłata daje 1 [b]paragon[/b]. Ta karta zużywa [b]paragony[/b]."),
+        ["ptb"] = new("Recibo", "Cada pagamento rende 1 [b]recibo[/b]. Esta carta gasta [b]recibos[/b]."),
+        ["rus"] = new("Чек", "Каждый платёж приносит 1 [b]чек[/b]. Эта карта тратит [b]чеки[/b]."),
+        ["tha"] = new("ใบเสร็จ", "ทุกครั้งที่ชำระเงินจะได้รับ[b]ใบเสร็จ[/b] 1 ใบ การ์ดนี้ใช้[b]ใบเสร็จ[/b]"),
+        ["tur"] = new("Makbuz", "Her ödemede 1 [b]makbuz[/b] kazanırsın. Bu kart [b]makbuz[/b] harcar."),
+    };
+
     // ── Shop "Repay Loan" button hover tooltip (14 languages). {0} = outstanding principal (gold owed). The
     //    ledger name inside PayBack matches the relic's own localized name (see ByLang above).
     internal readonly struct RepayUiRow

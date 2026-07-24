@@ -32,7 +32,7 @@ public sealed class CounterclaimCard : CardModel, IUsesPaymentTally
 
     protected override IEnumerable<DynamicVar> CanonicalVars => new[] { new DynamicVar("dmg", 5) };
 
-    protected override IEnumerable<IHoverTip> ExtraHoverTips => new[] { DebtLoanHoverTips.Payment() };
+    protected override IEnumerable<IHoverTip> ExtraHoverTips => new[] { DebtLoanHoverTips.Receipt(), DebtLoanHoverTips.Payment() };
 
     public CounterclaimCard() : base(canonicalEnergyCost: 1, CardType.Power, CardRarity.Event, TargetType.None) { }
 

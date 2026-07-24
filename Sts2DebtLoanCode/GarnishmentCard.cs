@@ -40,7 +40,7 @@ public sealed class GarnishmentCard : CardModel, IUsesPaymentTally
     };
 
     protected override IEnumerable<MegaCrit.Sts2.Core.HoverTips.IHoverTip> ExtraHoverTips =>
-        new[] { DebtLoanHoverTips.Payment() };
+        new[] { DebtLoanHoverTips.Receipt(), DebtLoanHoverTips.Payment() };
 
     public GarnishmentCard() : base(canonicalEnergyCost: 1, CardType.Attack, CardRarity.Event, TargetType.AllEnemies) { }
 

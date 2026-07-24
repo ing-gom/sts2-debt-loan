@@ -45,6 +45,10 @@ internal static class LocInjectionPatch
             var pay = DebtLoanLoc.PaymentFor(manager.Language);
             relics["DEBT_PAYMENT.title"] = pay.Title;
             relics["DEBT_PAYMENT.description"] = pay.Desc;
+            // 영수증 (Receipt) hover tip shown on cards that SPEND Receipts (custom HoverTip references these keys).
+            var rcpt = DebtLoanLoc.ReceiptFor(manager.Language);
+            relics["DEBT_RECEIPT.title"] = rcpt.Title;
+            relics["DEBT_RECEIPT.description"] = rcpt.Desc;
             manager.GetTable("relics").MergeWith(relics);
 
             // The card FACE renders from ".description" (+ ".smartDescription") with SmartFormat + BBCode.

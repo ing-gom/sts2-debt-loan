@@ -809,6 +809,11 @@ internal static class SoloTest
                     var firstOffer = LoanService.RevealedPurchasable(LoanService.For(player)!).FirstOrDefault();
                     if (firstOffer != null) { await LoanService.BuyCardOnDebt(player, firstOffer); await Task.Delay(500); await Shot("6f_debtshop_bought"); }
                     W("  debt-shop panel rendered (see 6e_debtshop / 6f_debtshop_bought)");
+                    // 영수증 (Receipt) tooltip: the loc must resolve (not raw key) — it's shown on hover over any
+                    // receipt-spending card (Invoice/Settlement/Garnishment + Counterclaim/Statement/InterestSupport).
+                    var rcptTitle = new MegaCrit.Sts2.Core.Localization.LocString("relics", "DEBT_RECEIPT.title").GetFormattedText();
+                    var rcptDesc = new MegaCrit.Sts2.Core.Localization.LocString("relics", "DEBT_RECEIPT.description").GetFormattedText();
+                    W($"  receipt-tooltip loc: title='{rcptTitle}' desc='{rcptDesc}'");
                 }
                 catch (Exception e) { W("  debt-shop panel render failed: " + e.Message); }
             }

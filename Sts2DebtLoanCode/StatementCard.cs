@@ -29,7 +29,7 @@ public sealed class StatementCard : CardModel, IUsesPaymentTally
                    : "res://Sts2DebtLoan/card_art/statement.png";
     public override string BetaPortraitPath => PortraitPath;
 
-    protected override IEnumerable<IHoverTip> ExtraHoverTips => new[] { DebtLoanHoverTips.Payment() };
+    protected override IEnumerable<IHoverTip> ExtraHoverTips => new[] { DebtLoanHoverTips.Receipt(), DebtLoanHoverTips.Payment() };
 
     public StatementCard() : base(canonicalEnergyCost: 1, CardType.Power, CardRarity.Event, TargetType.None) { }
 

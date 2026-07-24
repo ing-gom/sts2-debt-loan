@@ -52,7 +52,7 @@ public sealed class InvoiceCard : CardModel, IUsesPaymentTally
 
     // Hover: explain the 납부 (Payment) count this scales off.
     protected override IEnumerable<MegaCrit.Sts2.Core.HoverTips.IHoverTip> ExtraHoverTips =>
-        new[] { DebtLoanHoverTips.Payment() };
+        new[] { DebtLoanHoverTips.Receipt(), DebtLoanHoverTips.Payment() };
 
     public InvoiceCard() : base(canonicalEnergyCost: 1, CardType.Attack, CardRarity.Event, TargetType.AnyEnemy) { }
 
