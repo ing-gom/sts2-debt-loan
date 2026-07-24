@@ -273,6 +273,29 @@ internal static class DebtLoanLoc
         ["tur"] = new("Makbuz", "Her ödemede 1 [b]makbuz[/b] kazanırsın. Bu kart [b]makbuz[/b] harcar."),
     };
 
+    // ── Receipt COUNTER hover tip (HUD counter, like the game's STAR_COUNT/ENERGY_COUNT): a "current count" phrasing.
+    //    Same title as the receipt keyword; description injected as DEBT_RECEIPT_COUNT.description.
+    internal static string ReceiptCountFor(string? lang)
+        => lang != null && ReceiptCountByLang.TryGetValue(lang, out var d) ? d : ReceiptCountByLang["eng"];
+
+    private static readonly Dictionary<string, string> ReceiptCountByLang = new()
+    {
+        ["eng"] = "Your current [b]Receipt[/b] count. You earn 1 with every payment, and some cards spend Receipts.",
+        ["kor"] = "현재 보유한 [b]영수증[/b] 개수. 납부할 때마다 1개 얻으며, 일부 카드가 영수증을 소비합니다.",
+        ["jpn"] = "現在の[b]レシート[/b]の数。支払うたびに1枚得られ、一部のカードがレシートを消費する。",
+        ["zhs"] = "你当前的[b]收据[/b]数量。每次还款获得1张，部分卡牌会消耗收据。",
+        ["deu"] = "Deine aktuelle Anzahl an [b]Belegen[/b]. Du erhältst 1 pro Zahlung; manche Karten verbrauchen Belege.",
+        ["fra"] = "Ton nombre actuel de [b]reçus[/b]. Tu en gagnes 1 par paiement ; certaines cartes dépensent des reçus.",
+        ["spa"] = "Tu cantidad actual de [b]recibos[/b]. Ganas 1 con cada pago; algunas cartas gastan recibos.",
+        ["esp"] = "Tu cantidad actual de [b]recibos[/b]. Ganas 1 con cada pago; algunas cartas gastan recibos.",
+        ["ita"] = "Il tuo numero attuale di [b]ricevute[/b]. Ne guadagni 1 a ogni pagamento; alcune carte consumano ricevute.",
+        ["pol"] = "Twoja aktualna liczba [b]paragonów[/b]. Zdobywasz 1 za każdą spłatę; niektóre karty zużywają paragony.",
+        ["ptb"] = "Sua quantidade atual de [b]recibos[/b]. Você ganha 1 a cada pagamento; algumas cartas gastam recibos.",
+        ["rus"] = "Ваше текущее количество [b]чеков[/b]. Вы получаете 1 за каждый платёж; некоторые карты тратят чеки.",
+        ["tha"] = "จำนวน[b]ใบเสร็จ[/b]ที่คุณมีตอนนี้ ได้รับ 1 ใบทุกครั้งที่ชำระเงิน การ์ดบางใบใช้ใบเสร็จ",
+        ["tur"] = "Mevcut [b]makbuz[/b] sayın. Her ödemede 1 kazanırsın; bazı kartlar makbuz harcar.",
+    };
+
     // ── Shop "Repay Loan" button hover tooltip (14 languages). {0} = outstanding principal (gold owed). The
     //    ledger name inside PayBack matches the relic's own localized name (see ByLang above).
     internal readonly struct RepayUiRow

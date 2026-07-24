@@ -3,7 +3,10 @@ using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Players;          // Player
 using MegaCrit.Sts2.Core.Context;                   // LocalContext
+using MegaCrit.Sts2.Core.HoverTips;                 // HoverTip, IHoverTip, HoverTipAlignment
+using MegaCrit.Sts2.Core.Localization;              // LocString
 using MegaCrit.Sts2.Core.Nodes.Combat;              // NCombatUi
+using MegaCrit.Sts2.Core.Nodes.HoverTips;           // NHoverTipSet
 using MegaCrit.Sts2.Core.Combat;                    // CombatState
 
 namespace Sts2DebtLoan;
@@ -27,8 +30,10 @@ internal sealed partial class NPaymentTallyCounter : Control
     {
         const float S = 64f;   // square book symbol size (a bit smaller than the ~100px energy orb)
         var c = new NPaymentTallyCounter { _player = player, Name = "DebtLoanTallyCounter" };
-        c.MouseFilter = MouseFilterEnum.Ignore;
+        c.MouseFilter = MouseFilterEnum.Stop;   // receive hover so the resource tooltip can show (like the Star counter)
         c.CustomMinimumSize = new Vector2(S, S);
+        c.MouseEntered += () => NHoverTipSet.CreateAndShow(c, MakeTip(), HoverTipAlignment.Right);
+        c.MouseExited += () => NHoverTipSet.Remove(c);
 
         // square ledger-book symbol
         if (_iconTex == null)
@@ -66,6 +71,12 @@ internal sealed partial class NPaymentTallyCounter : Control
         c.Refresh();
         return c;
     }
+
+    /// <summary>The receipt resource tooltip — game convention (cf. STAR_COUNT): a "current count" explanation on the
+    /// HUD counter, so hovering the counter tells the player what 영수증 is and how it flows.</summary>
+    private static IHoverTip MakeTip() => new HoverTip(
+        new LocString("relics", "DEBT_RECEIPT_COUNT.title"),
+        new LocString("relics", "DEBT_RECEIPT_COUNT.description"));
 
     private void OnTallyChanged(Player p, int value)
     {

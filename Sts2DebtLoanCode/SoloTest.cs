@@ -750,6 +750,28 @@ internal static class SoloTest
                 W($"  2-digit tally check: 납부실적={LoanService.PaymentsThisCombat(player)} (see 6d_twodigit)");
                 await Shot("6d_twodigit");
 
+                // Receipt COUNTER hover tip (game convention, cf. STAR_COUNT): drive the counter's tooltip + shot it.
+                try
+                {
+                    if (Engine.GetMainLoop() is SceneTree stt)
+                    {
+                        var counter = FindNode<NPaymentTallyCounter>(stt.Root);
+                        if (counter != null)
+                        {
+                            var tip = new MegaCrit.Sts2.Core.HoverTips.HoverTip(
+                                new MegaCrit.Sts2.Core.Localization.LocString("relics", "DEBT_RECEIPT_COUNT.title"),
+                                new MegaCrit.Sts2.Core.Localization.LocString("relics", "DEBT_RECEIPT_COUNT.description"));
+                            MegaCrit.Sts2.Core.Nodes.HoverTips.NHoverTipSet.CreateAndShow(counter, tip, MegaCrit.Sts2.Core.HoverTips.HoverTipAlignment.Right);
+                            await Task.Delay(450);
+                            await Shot("6d2_receipt_tip");
+                            MegaCrit.Sts2.Core.Nodes.HoverTips.NHoverTipSet.Remove(counter);
+                            W("  receipt counter tooltip rendered (see 6d2_receipt_tip)");
+                        }
+                        else W("  receipt counter node not found for tooltip shot");
+                    }
+                }
+                catch (Exception e) { W("  receipt tip render failed: " + e.Message); }
+
                 // tP7) DEBT-SHOP PURCHASE: the 6 non-power cards are BOUGHT on debt at the shop. The reveal grows per
                 //      distinct shop visit (1→3, 2→5, 3+→all), 정산 is always the head; buying adds the price to owed +
                 //      drops the card in the deck, and a bought card can't be rebought.

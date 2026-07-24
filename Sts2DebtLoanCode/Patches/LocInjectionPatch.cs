@@ -49,6 +49,9 @@ internal static class LocInjectionPatch
             var rcpt = DebtLoanLoc.ReceiptFor(manager.Language);
             relics["DEBT_RECEIPT.title"] = rcpt.Title;
             relics["DEBT_RECEIPT.description"] = rcpt.Desc;
+            // 영수증 COUNTER hover tip (HUD counter, "current count" phrasing like the game's STAR_COUNT).
+            relics["DEBT_RECEIPT_COUNT.title"] = rcpt.Title;
+            relics["DEBT_RECEIPT_COUNT.description"] = DebtLoanLoc.ReceiptCountFor(manager.Language);
             manager.GetTable("relics").MergeWith(relics);
 
             // The card FACE renders from ".description" (+ ".smartDescription") with SmartFormat + BBCode.
