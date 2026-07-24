@@ -1,35 +1,43 @@
-# Sts2DebtLoan — Merchant Loans (상점 대출)
+# Sts2DebtLoan — Merchant Loans
 
-A [Slay the Spire 2](https://store.steampowered.com/app/2868840/) mod that lets you **borrow gold at the merchant** to afford an item you can't quite pay for — at a price.
+**English** · [한국어](README.ko.md) · [中文](README.zh.md)
 
-## How it works
+A [Slay the Spire 2](https://store.steampowered.com/app/2868840/) mod that lets you **borrow gold at the merchant** to afford what you can't quite pay for — then work the debt back off, or drown in it.
 
-- At an **Act 1** shop, an item you can't fully afford can still be bought: the shortfall is lent to you (up to a **300 gold** total cap).
-- Taking a loan grants the **Merchant's Ledger** relic, which carries the debt.
-- Leave it unpaid and **Debt** curse cards seep into your deck as you travel:
-  - **1** card after 14 rooms · **3** after 17 · **5** after 20 (capped).
-  - Each Debt card drains gold at the end of your turn while it's in hand — that's the interest.
-- **Repay the principal** at any shop to clear the debt, **or** once total interest reaches **200% of the loan** the ledger settles itself. Either way, every Debt card is then removed.
+## Core loop
 
-Config (in-game ModConfig): max loan, interest per Debt card, interest ceiling %, allow loans outside Act 1.
+1. **Borrow.** At a shop, an item you can't fully afford can still be bought — the shortfall is lent to you, up to a cap. You receive the **Merchant's Ledger** relic, which tracks what you owe.
+2. **Interest grows.** You owe more than you borrowed: an origination fee up front, plus interest that accrues each room you carry the debt. The longer you drag it out, the more it costs.
+3. **Fall behind → curses.** Carry the debt too long and escalating **Debt** curse cards seep into your combats — **Delinquency**, then **Seizure**, then **Bad Credit** and its relentless **Forced Collection**.
+4. **Pay it down.** The **Standing Order** power feeds you **Payment** cards each turn; play them (and the payment-engine cards) to whittle down the principal, earning **Plating** as you go. **Repay the principal at any shop** to clear the Ledger and restore your credit — then you can borrow again.
+
+## The debt shop
+
+Once you owe, a dedicated **debt shop** lets you buy payment-engine cards **on credit** — settlement, invoice, garnishment and more — adding their price onto what you owe. The stock rotates each visit, with one card on sale every time.
+
+## Co-op (multiplayer)
+
+Debt is a shared burden:
+
+- **Contagion** — a partner's loan seeps into *your* combats too.
+- **Harsher together** — interest accrues faster and climbs higher the more players are in debt.
+- **Bailout (대납)** — a multiplayer-only card that pays down a teammate's debt for them. When someone misses a payment, the wealthiest ally is handed a Bailout card so they can cover it.
+
+## Config (in-game ModConfig)
+
+Maximum loan amount, and which acts the merchant will lend in.
 
 ## Status
 
-v0.1.0 — prototype. Verified headlessly (single-player) end to end:
+Actively developed. Verified headlessly, end to end, in **single-player** (`solo-verify`) and in **2-instance co-op** (`coop-verify`: shop-purchase replication, bailout grant, and bailout use all converge across peers with no desync). Not yet published to the Steam Workshop.
 
-- Loan grant → relic, room-count → Debt-card escalation (14/17/20 → 1/3/5), repay-retire, interest-cap-retire.
-- **Save/load persistence** (state lives on the relic as `[SavedProperty]` fields; rebuilt on `NGame.LoadRun`).
-- **Shop purchase interception** (`MerchantEntry.OnTryPurchaseWrapper`) and the **repay button** (`NMerchantRepayButton`) attach + function in a real shop.
-
-See [`DESIGN.md`](DESIGN.md) for the full design + remaining TODOs (yellow price tags, grant-only relic, co-op).
+See [`DESIGN.md`](DESIGN.md) for the full design notes.
 
 ## Build
 
-This mod is part of the author's monorepo and depends on the shared **Sts2.ModKit** SDK
-(`..\Sts2.ModKit\build\Sts2.ModKit.props` in the csproj). To build standalone, point that import
-at a copy of Sts2.ModKit.
+Part of the author's monorepo; depends on the shared **Sts2.ModKit** SDK (`..\Sts2.ModKit\build\Sts2.ModKit.props` in the csproj). To build standalone, point that import at a copy of Sts2.ModKit.
 
-- DLL: `dotnet build Sts2DebtLoan.csproj -c Release` → deploy to `Slay the Spire 2/mods/Sts2DebtLoan/`.
-- Resource pack (relic icon): built from `pck_src/` with Godot 4.5.1 `--export-pack` → `Sts2DebtLoan.pck`.
+- **DLL:** `dotnet build Sts2DebtLoan.csproj -c Release` → deploy to `Slay the Spire 2/mods/Sts2DebtLoan/`.
+- **Resource pack** (relic/card art, localization): built from `pck_src/` with Godot 4.5.1 `--export-pack` → `Sts2DebtLoan.pck`.
 
 Author: **inggom**
