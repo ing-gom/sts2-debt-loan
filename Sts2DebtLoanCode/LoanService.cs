@@ -425,17 +425,19 @@ internal static class LoanService
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] combat-milestone grant failed: {e.Message}"); }
     }
 
-    /// <summary>Grant any not-yet-earned combat payoff cards whose payment milestone the player has crossed this run
-    /// (정산 at 10, 청구서 at 20, 혈납 at 30). Removed on repay like every other debt card (RemoveAllDebtLoanCards).
-    /// internal so the self-test can invoke it directly (what a combat win does).</summary>
+    /// <summary>Grant any not-yet-earned combat payoff cards whose payment milestone the player has crossed this run.
+    /// 정산 lands first (at 10); the remaining cards arrive in the per-run shuffled order (see <see cref="CombatSequence"/>),
+    /// one per <see cref="PaymentsPerCombatCard"/> payments. Removed on repay like every other debt card
+    /// (RemoveAllDebtLoanCards). internal so the self-test can invoke it directly (what a combat win does).</summary>
     internal static void TryGrantCombatCards(Player player)
     {
         var rec = For(player);
         if (rec == null || !rec.Active) return;
+        var seq = CombatSequence(rec.LoanFloor);
         int earned = rec.LifetimePayments / PaymentsPerCombatCard;   // milestones reached
-        while (rec.CombatCardsGranted < CombatPool.Length && rec.CombatCardsGranted < earned)
+        while (rec.CombatCardsGranted < seq.Length && rec.CombatCardsGranted < earned)
         {
-            var type = CombatPool[rec.CombatCardsGranted];
+            var type = seq[rec.CombatCardsGranted];
             rec.CombatCardsGranted++;
             _ = DebtLoanGrants.GrantCard(player, type);
         }
@@ -492,14 +494,36 @@ internal static class LoanService
 
     // COMBAT channel = the non-power payoff cards, earned one per <see cref="PaymentsPerCombatCard"/> payments
     // (run-wide, tracked on the loan), granted at that combat's WIN. Removed on repay like every other debt card.
-    private static readonly System.Type[] CombatPool =
+    // 정산 (the defensive 영수증-spender) is FIXED first (milestone 10) so every loan gets a spender early; the
+    // rest are SHUFFLED per-run (seeded from LoanFloor → both co-op peers + save/load agree) so which extras you
+    // actually see varies run to run — instead of a fixed tail whose deep entries (40/50/60 payments) never show.
+    private static readonly System.Type[] CombatFixed =
     {
-        typeof(SettlementCard),    // at 10 payments
-        typeof(InvoiceCard),       // at 20 payments
-        typeof(BloodPaymentCard),  // at 30 payments
-        typeof(GarnishmentCard),   // at 40 payments (AoE attack)
+        typeof(SettlementCard),    // always at 10 payments (guaranteed early receipt-spender)
+    };
+    private static readonly System.Type[] CombatShufflePool =
+    {
+        typeof(InvoiceCard),       // 청구서 — X-cost single-target multi-hit (receipt spender)
+        typeof(BloodPaymentCard),  // 혈납 — HP-payment skill
+        typeof(GarnishmentCard),   // 가압류 — fixed-2-receipt AoE attack
+        typeof(LoanStrikeCard),    // 대출 강타 — BORROW axis: +debt, big single-target hit
+        typeof(MortgageCard),      // 저당 — BORROW axis: +debt, Block
     };
     private const int PaymentsPerCombatCard = 10;
+
+    /// <summary>The full per-run combat-card sequence: the fixed head (정산) followed by a deterministic shuffle of
+    /// the rest (seeded from the loan floor, distinct stream from <see cref="ShuffledRemainder"/>). Same LoanFloor →
+    /// identical order on both co-op peers and across save/load.</summary>
+    private static System.Type[] CombatSequence(int seed)
+    {
+        var pool = (System.Type[])CombatShufflePool.Clone();
+        var rng = new System.Random(unchecked(seed * 31 + 17));   // offset seed → independent of the power shuffle
+        for (int i = pool.Length - 1; i > 0; i--) { int j = rng.Next(i + 1); (pool[i], pool[j]) = (pool[j], pool[i]); }
+        var seq = new System.Type[CombatFixed.Length + pool.Length];
+        CombatFixed.CopyTo(seq, 0);
+        pool.CopyTo(seq, CombatFixed.Length);
+        return seq;
+    }
 
     /// <summary>Deterministic per-run shuffle of the remainder pool (seeded from the loan floor → same order on both
     /// co-op peers with no networking).</summary>

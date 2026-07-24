@@ -31,7 +31,7 @@ internal static class NCardFramePatch
     {
         typeof(DunningLetterCard), typeof(JobPlacementCard), typeof(PaymentBenefitCard),
         typeof(RefundCard), typeof(SettlementCard), typeof(InvoiceCard), typeof(BloodPaymentCard),
-        typeof(GarnishmentCard),
+        typeof(GarnishmentCard), typeof(LoanStrikeCard), typeof(MortgageCard),
     };
     // 연한 회보라 (slate lavender): violet hue, low saturation (grayish), bright (pale). Tunable.
     // TargetH is a field (not const) so the solo-verify hue-sweep can override it per render; ship value 0.72.

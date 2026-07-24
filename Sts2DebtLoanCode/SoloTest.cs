@@ -614,8 +614,8 @@ internal static class SoloTest
                     await Task.Delay(300);
                     var badgeCards = new List<CardModel>
                     {
-                        cstate!.CreateCard<InvoiceCard>(player), cstate!.CreateCard<GarnishmentCard>(player),
-                        cstate!.CreateCard<CounterclaimCard>(player), cstate!.CreateCard<InterestSupportCard>(player),
+                        cstate!.CreateCard<LoanStrikeCard>(player), cstate!.CreateCard<MortgageCard>(player),
+                        cstate!.CreateCard<GarnishmentCard>(player), cstate!.CreateCard<InvoiceCard>(player),
                     };
                     await CardPileCmd.AddGeneratedCardsToCombat(badgeCards, PileType.Hand, player, CardPilePosition.Top);
                     await Task.Delay(500);
@@ -733,8 +733,9 @@ internal static class SoloTest
                 W($"  2-digit tally check: 납부실적={LoanService.PaymentsThisCombat(player)} (see 6d_twodigit)");
                 await Shot("6d_twodigit");
 
-                // tP7) COMBAT MILESTONE: the non-power cards (정산/청구서/혈납) are earned one per 10 payments at combat
-                //      win. Drive LifetimePayments and run the grant (what OnCombatWon does) to check the math.
+                // tP7) COMBAT MILESTONE: the 6 non-power cards are earned one per 10 payments at combat win — 정산
+                //      always first (fixed head), then the other 5 in per-run SHUFFLED order (CombatSequence). Assert
+                //      the COUNT crossed at each milestone (order is now seed-dependent, so we don't name types past 정산).
                 bool tP7;
                 {
                     LoanService.ResetFor(player);
@@ -745,15 +746,21 @@ internal static class SoloTest
                     bool m5 = mileRec.CombatCardsGranted == 0;    // 5 < 10 → nothing yet
                     mileRec.LifetimePayments = 10;
                     LoanService.TryGrantCombatCards(player);
-                    bool m10 = mileRec.CombatCardsGranted == 1;   // 10 → 정산
+                    bool m10 = mileRec.CombatCardsGranted == 1;   // 10 → 정산 (fixed head)
+                    // first granted card must be 정산 (the guaranteed early spender), regardless of the shuffle —
+                    // GrantCard adds to the master Deck pile, so that's where the granted 정산 lands.
+                    bool headIsSettlement = PileType.Deck.GetPile(player)?.Cards?.Any(c => c is SettlementCard) ?? false;
                     mileRec.LifetimePayments = 25;
                     LoanService.TryGrantCombatCards(player);
-                    bool m25 = mileRec.CombatCardsGranted == 2;   // 25 → +청구서 (2 milestones), not 혈납 yet
+                    bool m25 = mileRec.CombatCardsGranted == 2;   // 25 → 2 milestones crossed
                     mileRec.LifetimePayments = 40;
                     LoanService.TryGrantCombatCards(player);
-                    bool m40 = mileRec.CombatCardsGranted == 4;   // 40 → +혈납 +가압류 (all 4)
-                    tP7 = m5 && m10 && m25 && m40;
-                    W($"  assert combat-milestone: @5={m5}(0) @10={m10}(1=정산) @25={m25}(2=+청구서) @40={m40}(4=+혈납+가압류) -> {tP7}");
+                    bool m40 = mileRec.CombatCardsGranted == 4;   // 40 → 4 crossed
+                    mileRec.LifetimePayments = 60;
+                    LoanService.TryGrantCombatCards(player);
+                    bool m60 = mileRec.CombatCardsGranted == 6;   // 60 → all 6 (pool exhausted, no more)
+                    tP7 = m5 && m10 && m25 && m40 && m60 && headIsSettlement;
+                    W($"  assert combat-milestone: @5={m5}(0) @10={m10}(1) head정산={headIsSettlement} @25={m25}(2) @40={m40}(4) @60={m60}(6) -> {tP7}");
                 }
 
                 bool tP = tP1 && tP2 && tP3 && tP4 && tP5 && tP7;
