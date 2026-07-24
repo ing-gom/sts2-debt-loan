@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using Godot;
-using MegaCrit.Sts2.addons.mega_text;          // MegaLabel
 using MegaCrit.Sts2.Core.Assets;               // PreloadManager
 using MegaCrit.Sts2.Core.Context;              // LocalContext
 using MegaCrit.Sts2.Core.Entities.Players;     // Player
@@ -22,13 +21,12 @@ namespace Sts2DebtLoan;
 /// </summary>
 internal sealed partial class NDebtCardShopButton : Control
 {
-    private const float IconSize = 72f;
+    private const float IconSize = 96f;   // standalone (no caption) → a bit larger so it reads as a button
     private const float HoverScale = 1.2f;
 
     private NMerchantInventory _shop = null!;
     private Player? _player;
     private TextureButton _icon = null!;
-    private MegaLabel? _label;
     private Tween? _hoverTween;
     private bool _positioned;
 
@@ -60,31 +58,8 @@ internal sealed partial class NDebtCardShopButton : Control
         _icon.MouseExited += () => { ScaleWidget(1f); NHoverTipSet.Remove(_icon); };
         AddChild(_icon);
         PivotOffset = new Vector2(IconSize / 2f, IconSize / 2f);
-
-        // Always-visible "외상 구매" caption under the icon (game font, so Korean renders), so the entry point is
-        // obvious at a glance without hovering — clone a shop MegaLabel for the font.
-        var lang = MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng";
-        if (FindMegaLabel(_shop)?.Duplicate() is MegaLabel ml)
-        {
-            ml.SetAnchorsAndOffsetsPreset(LayoutPreset.TopLeft);
-            ml.GrowHorizontal = GrowDirection.Both; ml.GrowVertical = GrowDirection.End;
-            ml.CustomMinimumSize = Vector2.Zero; ml.Size = Vector2.Zero; ml.Scale = Vector2.One;
-            ml.HorizontalAlignment = HorizontalAlignment.Center;
-            ml.ClipText = false; ml.AutowrapMode = TextServer.AutowrapMode.Off;
-            ml.Text = DebtLoanLoc.DebtShopUiFor(lang).Title + " ▶";   // ▶ hints the "scroll right to the loan shop"
-            ml.AddThemeFontSizeOverride("font_size", 24);
-            ml.Modulate = StsColors.cream;
-            ml.Position = new Vector2(IconSize / 2f - 60f, IconSize + 6f);
-            _label = ml;
-            AddChild(ml);
-        }
-    }
-
-    private static MegaLabel? FindMegaLabel(Node n)
-    {
-        if (n is MegaLabel ml) return ml;
-        foreach (var c in n.GetChildren()) { var r = FindMegaLabel(c); if (r != null) return r; }
-        return null;
+        // No always-visible caption — the card-stack icon speaks for itself; hovering grows it (ScaleWidget) and
+        // shows the tooltip ("누르면 빚 상점으로 이동됩니다", via MakeTip).
     }
 
     public override void _Process(double delta)
