@@ -82,29 +82,35 @@ internal sealed partial class NDebtCardShopPanel : Control
         SetAnchorsAndOffsetsPreset(LayoutPreset.TopLeft);
         Size = _screen;
         Position = new Vector2(_screen.X, 0f);
-        MouseFilter = MouseFilterEnum.Stop;
+        MouseFilter = MouseFilterEnum.Ignore;   // the board blocks mouse on the rug; the HUD above the rug stays clickable
 
         Node? searchRoot = (Node?)_shop ?? (Engine.GetMainLoop() as SceneTree)?.Root;
         _labelTemplate = searchRoot != null ? FindMegaLabel(searchRoot) : null;
         _shopContainer = _shop?._slotsContainer;
         _shopOrigX = _shopContainer?.Position.X ?? 0f;
 
-        // Board (the "돗자리"/stall): the SHOP'S OWN rug texture, FULL screen so it fully covers once panned in and
-        // the seam with the real rug is seamless (same texture).
+        // Board (the "돗자리"/stall): the SHOP'S OWN rug texture, sized + positioned to MATCH the real merchant rug
+        // (read from the live shop container) so the width equals the shop's and it does NOT cover the top HUD.
         var board = new TextureRect
         {
             Texture = LoadRug(),
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
             StretchMode = TextureRect.StretchModeEnum.KeepAspectCovered,
             ClipContents = false,
+            MouseFilter = MouseFilterEnum.Stop,
         };
-        _bw = _screen.X;
-        _bh = _screen.Y;
-        board.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        Rect2 rug = _shopContainer != null && _shopContainer.GetGlobalRect().Size.X > 100f
+                    ? _shopContainer.GetGlobalRect()
+                    : new Rect2(0f, 72f, _screen.X, _screen.Y - 72f);   // fallback (no shop): below the HUD bar
+        _bw = rug.Size.X;
+        _bh = rug.Size.Y;
+        board.SetAnchorsAndOffsetsPreset(LayoutPreset.TopLeft);
+        board.Size = rug.Size;
+        board.Position = rug.Position;
         AddChild(board);
 
-        // Grid metrics: 3 columns spread across the width, 2 rows in the space between the title and the close row.
-        const float sideMargin = 90f, topArea = 130f, bottomArea = 96f;
+        // Grid metrics: 3 columns spread across the width, 2 rows in the space between the header and the bottom.
+        const float sideMargin = 90f, topArea = 128f, bottomArea = 84f;
         _colPitch = (_bw - sideMargin * 2f) / PerRow;
         _gridX = sideMargin;
         _gridTop = topArea;
@@ -112,8 +118,9 @@ internal sealed partial class NDebtCardShopPanel : Control
 
         var ui = DebtLoanLoc.DebtShopUiFor(MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng");
 
-        var title = MakeLabel(ui.Title, 44, StsColors.cream);
-        if (title != null) { title.Position = new Vector2(50f, 34f); board.AddChild(title); }
+        // Header: title to the RIGHT of the top-left merchant (back) icon.
+        var title = MakeLabel(ui.Title, 42, StsColors.cream);
+        if (title != null) { title.Position = new Vector2(140f, 34f); board.AddChild(title); }
 
         // Offers sit directly on the rug in a shop-style grid (no scroll — the grid holds the whole pool).
         _grid = new Control();
@@ -122,8 +129,9 @@ internal sealed partial class NDebtCardShopPanel : Control
 
         BuildOffers();
 
-        // MERCHANT icon at the FAR LEFT — click it to scroll back to the shop (instead of a plain arrow: it reads
-        // as "return to the merchant"). Falls back to a ◀ text button if the merchant texture can't be loaded.
+        // MERCHANT icon in the TOP-LEFT CORNER — click it to scroll back to the shop (reads as "return to the
+        // merchant"). No caption. Falls back to a ◀ text button if the merchant texture can't be loaded.
+        const float backSize = 88f;
         var merchantTex = LoadMerchantIcon();
         Control back;
         if (merchantTex != null)
@@ -133,8 +141,8 @@ internal sealed partial class NDebtCardShopPanel : Control
                 TextureNormal = merchantTex,
                 IgnoreTextureSize = true,
                 StretchMode = TextureButton.StretchModeEnum.KeepAspectCentered,
-                CustomMinimumSize = new Vector2(108f, 108f),
-                Size = new Vector2(108f, 108f),
+                CustomMinimumSize = new Vector2(backSize, backSize),
+                Size = new Vector2(backSize, backSize),
             };
             ((TextureButton)back).Pressed += SlideOutAndClose;
         }
@@ -143,14 +151,12 @@ internal sealed partial class NDebtCardShopPanel : Control
             var b = new Button { Text = "◀", Flat = false };
             if (_labelTemplate?.GetThemeDefaultFont() is Font f) b.AddThemeFontOverride("font", f);
             b.AddThemeFontSizeOverride("font_size", 40);
-            b.Size = new Vector2(80f, 80f);
+            b.Size = new Vector2(backSize, backSize);
             b.Pressed += SlideOutAndClose;
             back = b;
         }
-        back.Position = new Vector2(110f, _bh / 2f - 54f);   // in from the rug's ragged left edge, on the solid rug
+        back.Position = new Vector2(36f, 22f);   // top-left corner
         board.AddChild(back);
-        var backCap = MakeLabel(ui.Close, 22, StsColors.cream);   // "돌아가기" hint under the merchant icon
-        if (backCap != null) { backCap.Position = new Vector2(120f, _bh / 2f + 58f); board.AddChild(backCap); }
 
         // Scroll ACROSS: this loan canvas slides in from the right while the merchant's own rug pans left, so the
         // two read as one continuous canvas being scrolled sideways.
