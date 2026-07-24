@@ -44,6 +44,8 @@ internal sealed partial class NDebtCardShopPanel : Control
     private CanvasLayer _layer = null!;
     private Vector2 _screen;
     private bool _closing;
+    private Control? _shopContainer;   // the merchant's own rug container — panned left so the shop "extends" sideways
+    private float _shopOrigX;
 
     public static void Show(NMerchantInventory shop, Player player)
     {
@@ -73,9 +75,9 @@ internal sealed partial class NDebtCardShopPanel : Control
 
     public override void _Ready()
     {
-        // Screen-sized panel that starts OFF to the right and slides in — a "scroll right to the loan shop"
-        // transition. Sliding this whole Control moves the dim + rug together, so during the slide the real shop
-        // is still visible on the left (the canvas scrolls across).
+        // Screen-sized panel that starts OFF to the right. On show, the merchant's own rug container pans LEFT while
+        // this loan canvas comes in from the RIGHT — as if the merchant's canvas were extended sideways and you
+        // scroll across it. No dim: both are the same rug, so it reads as one continuous surface, not a modal.
         _screen = GetViewportRect().Size;
         SetAnchorsAndOffsetsPreset(LayoutPreset.TopLeft);
         Size = _screen;
@@ -84,14 +86,11 @@ internal sealed partial class NDebtCardShopPanel : Control
 
         Node? searchRoot = (Node?)_shop ?? (Engine.GetMainLoop() as SceneTree)?.Root;
         _labelTemplate = searchRoot != null ? FindMegaLabel(searchRoot) : null;
+        _shopContainer = _shop?._slotsContainer;
+        _shopOrigX = _shopContainer?.Position.X ?? 0f;
 
-        // Dim backdrop that swallows clicks to the shop behind (but NOT a click-to-close, to avoid misfires).
-        var dim = new ColorRect { Color = new Color(0, 0, 0, 0.72f), MouseFilter = MouseFilterEnum.Stop };
-        dim.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        AddChild(dim);
-
-        // Board (the "돗자리"/stall): the SHOP'S OWN rug texture (res://images/rooms/merchant_room/shop_rug.png —
-        // the same TextureRect the merchant's SlotsContainer uses) so the panel reads as an extension of the shop.
+        // Board (the "돗자리"/stall): the SHOP'S OWN rug texture, FULL screen so it fully covers once panned in and
+        // the seam with the real rug is seamless (same texture).
         var board = new TextureRect
         {
             Texture = LoadRug(),
@@ -99,13 +98,9 @@ internal sealed partial class NDebtCardShopPanel : Control
             StretchMode = TextureRect.StretchModeEnum.KeepAspectCovered,
             ClipContents = false,
         };
-        // Fill (almost) the whole screen, like the real merchant rug — a small margin so the dim shows at the edges.
-        const float margin = 36f;
-        _bw = _screen.X - margin * 2f;
-        _bh = _screen.Y - margin * 2f;
-        board.SetAnchorsAndOffsetsPreset(LayoutPreset.Center);
-        board.Size = new Vector2(_bw, _bh);
-        board.Position = new Vector2(-_bw / 2f, -_bh / 2f);
+        _bw = _screen.X;
+        _bh = _screen.Y;
+        board.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         AddChild(board);
 
         // Grid metrics: 3 columns spread across the width, 2 rows in the space between the title and the close row.
@@ -138,20 +133,25 @@ internal sealed partial class NDebtCardShopPanel : Control
         var backCap = MakeLabel(ui.Close, 22, StsColors.cream);   // "돌아가기" hint under the arrow
         if (backCap != null) { backCap.Position = new Vector2(12f, _bh / 2f + 46f); board.AddChild(backCap); }
 
-        // Slide IN from the right (even-paced so the "scroll across" reads clearly).
-        var tw = CreateTween();
+        // Scroll ACROSS: this loan canvas slides in from the right while the merchant's own rug pans left, so the
+        // two read as one continuous canvas being scrolled sideways.
+        var tw = CreateTween().SetParallel(true);
         tw.TweenProperty(this, "position:x", 0f, 0.55).SetEase(Tween.EaseType.InOut).SetTrans(Tween.TransitionType.Sine);
+        if (_shopContainer != null)
+            tw.TweenProperty(_shopContainer, "position:x", _shopOrigX - _screen.X, 0.55).SetEase(Tween.EaseType.InOut).SetTrans(Tween.TransitionType.Sine);
     }
 
-    /// <summary>Slide the loan canvas back out to the right, then free it — the "scroll back to the shop" motion.</summary>
+    /// <summary>Scroll back: the loan canvas slides out to the right and the merchant's rug pans back into place.</summary>
     private void SlideOutAndClose()
     {
         if (_closing) return;
         _closing = true;
         if (_open == this) _open = null;   // stop _Process refreshers from re-touching freed nodes late
-        var tw = CreateTween();
-        tw.TweenProperty(this, "position:x", _screen.X, 0.32).SetEase(Tween.EaseType.In).SetTrans(Tween.TransitionType.Cubic);
-        tw.TweenCallback(Callable.From(() => _layer?.QueueFree()));
+        var tw = CreateTween().SetParallel(true);
+        tw.TweenProperty(this, "position:x", _screen.X, 0.34).SetEase(Tween.EaseType.InOut).SetTrans(Tween.TransitionType.Sine);
+        if (_shopContainer != null && GodotObject.IsInstanceValid(_shopContainer))
+            tw.TweenProperty(_shopContainer, "position:x", _shopOrigX, 0.34).SetEase(Tween.EaseType.InOut).SetTrans(Tween.TransitionType.Sine);
+        tw.Chain().TweenCallback(Callable.From(() => _layer?.QueueFree()));
     }
 
     private void BuildOffers()
@@ -245,6 +245,9 @@ internal sealed partial class NDebtCardShopPanel : Control
     private void Close()
     {
         if (_open == this) _open = null;
+        // Restore the merchant rug to where the game left it (instant close path, e.g. leaving the room in a test).
+        if (_shopContainer != null && GodotObject.IsInstanceValid(_shopContainer))
+            _shopContainer.Position = new Vector2(_shopOrigX, _shopContainer.Position.Y);
         _layer?.QueueFree();
     }
 
