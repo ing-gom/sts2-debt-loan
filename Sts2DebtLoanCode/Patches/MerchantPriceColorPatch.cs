@@ -12,15 +12,20 @@ using MegaCrit.Sts2.Core.Runs;                 // RunManager
 namespace Sts2DebtLoan;
 
 /// <summary>
-/// Paints a merchant item's price tag GREEN when the player can't afford it but a loan can cover it
+/// Paints a merchant item's price tag PURPLE when the player can't afford it but a loan can cover it
 /// (Act-1, under the 300 cap, before the deadline). Each slot subtype's <c>UpdateVisual</c> sets
 /// <c>_costLabel.Modulate = EnoughGold ? cream : red</c>; we postfix it and, for a loanable item, flip
-/// the red to green. We do NOT touch <c>EnoughGold</c> (that would break the purchase gate) — only the
+/// the red to purple. We do NOT touch <c>EnoughGold</c> (that would break the purchase gate) — only the
 /// label colour. The purchase itself is handled by <see cref="MerchantLoanPurchasePatch"/>.
+/// <para>★ Purple, not green: vanilla already paints ON-SALE prices green (NMerchantSlot.UpdateVisual:
+/// <c>IsOnSale ? green : cream</c>), so a green loan tag collided with the sale colour. Purple is distinct
+/// from sale-green, unaffordable-red and normal-cream, and matches the mod's purple+gold debt identity.</para>
 /// </summary>
 [HarmonyPatch]
 internal static class MerchantPriceColorPatch
 {
+    // Loan-coverable price tint — the mod's purple (distinct from sale-green / unaffordable-red / cream).
+    private static readonly Godot.Color LoanPurple = new(0.66f, 0.42f, 0.85f);   // ~#A86BD8
     private static readonly Type[] SlotTypes =
     {
         typeof(NMerchantRelic), typeof(NMerchantCard), typeof(NMerchantPotion), typeof(NMerchantCardRemoval),
@@ -49,9 +54,9 @@ internal static class MerchantPriceColorPatch
             if (player == null) return;
 
             if (LoanService.CanLoanCover(entry, player))
-                __instance._costLabel.Modulate = StsColors.green;
+                __instance._costLabel.Modulate = LoanPurple;
         }
-        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] green price tag failed: {e.Message}"); }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] loan price tag failed: {e.Message}"); }
     }
 
     /// <summary>The MerchantEntry backing a slot (each subtype holds one: _relicEntry/_cardEntry/…).</summary>
