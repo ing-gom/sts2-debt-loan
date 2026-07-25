@@ -799,6 +799,13 @@ internal static class LoanService
         TallyChanged?.Invoke(p, cell[0]);
     }
 
+    /// <summary>Bank <paramref name="n"/> extra 영수증 (receipts). 납부 calls this for the BONUS receipt when you
+    /// actually paid gold — the base receipt already came from <see cref="RecordPayment"/>. HUD updates via SetTally.</summary>
+    internal static void GrantReceipt(Player? p, int n = 1)
+    {
+        if (p != null && n != 0) SetTally(p, PaymentsThisCombat(p) + n);
+    }
+
     /// <summary>Spend the WHOLE 영수증 tally (called by 청구서/정산 after they pay out). No-op if none.</summary>
     internal static Task ConsumePaymentStack(Player? p)
     {

@@ -19,8 +19,9 @@ namespace Sts2DebtLoan;
 /// Unlike a plain unplayable curse, it gives the player AGENCY, with NO passive drain:
 ///   • It is ETHEREAL — if you leave it in hand it simply exhausts at end of turn, costing nothing.
 ///     There is no automatic collection any more (the old end-of-turn 10-gold drain was removed).
-///   • You may PLAY it (energy cost 1) to pay 20 gold, split 50/50 principal/interest — VOLUNTARY faster
-///     repayment, and it's gone (Exhaust). You can only play it if you have the gold (IsPlayable gate).
+///   • You may PLAY it (energy cost 1) to pay UP TO 20 gold (whatever you have), split 50/50 principal/interest —
+///     VOLUNTARY repayment, and it's gone (Exhaust). No gold gate: even broke you can play it to bank a 영수증
+///     (receipt) and run the payment engine; you just retire no principal that turn.
 ///     While the 독촉장 (Dunning Letter) power is active, playing it also grants Plating (판금) — the power is
 ///     what makes dumping your debt cards worthwhile (a defensive/repayment engine, no offense).
 /// The UPGRADED form (빚 독촉+, fed by the 독촉장+ power) is identical but 0-energy. Auto-registered;
@@ -61,9 +62,11 @@ public sealed class DebtCurseCard : CardModel
 
     public DebtCurseCard() : base(canonicalEnergyCost: 1, CardType.Skill, CardRarity.Event, TargetType.None) { }
 
-    /// <summary>Gold gate: you can't play it unless you can actually pay the play cost (energy alone isn't
-    /// enough). Grayed out when broke (BlockedByCardLogic), like Grand Finale's draw-pile check.</summary>
-    protected override bool IsPlayable => Owner != null && (int)Owner.Gold >= PlayCost;
+    // No gold gate: you can ALWAYS play it for 1 energy. Playing it pays what you can (up to PlayCost) and banks a
+    // 영수증 (receipt) regardless — so the payment ENGINE runs on energy, not gold. When broke you still fuel the
+    // receipt economy (payoff cards + reactive powers), you just don't retire any principal (so the debt lingers →
+    // interest/garnishment pressure stays). Gold-rich players ALSO pay the debt down. This fixes the old bootstrap
+    // deadlock (no gold → no payment → no receipt → engine dead).
 
     /// <summary>Fire the missed-payment co-op hook: if this card is still in hand at turn end (you didn't play it),
     /// it's about to Ethereal-exhaust for 0 payment — in co-op that becomes an ally's chance to cover you.</summary>
@@ -86,12 +89,14 @@ public sealed class DebtCurseCard : CardModel
     protected override async Task OnPlay(PlayerChoiceContext choiceContext, CardPlay cardPlay)
     {
         if (Owner?.Creature == null) return;
-        int drain = Mathf.Min(PlayCost, (int)Owner.Gold);
-        if (drain <= 0) return;
-        await PlayerCmd.LoseGold(drain, Owner);
+        int drain = Mathf.Min(PlayCost, (int)Owner.Gold);   // pay what you can — may be 0 when broke
+        if (drain > 0) await PlayerCmd.LoseGold(drain, Owner);
         // Payment: 50/50 split + counter + fire the payment-reactive powers (납부 혜택 → Plating, 환급 → card…).
+        // RecordPayment banks a 영수증 and fires the reactive powers EVEN at drain 0 (engine runs on energy); it just
+        // retires no principal when you paid nothing.
         // The 판금 reward no longer lives here — it moved to the 납부 혜택 power (fired via RecordPayment).
-        await LoanService.RecordPayment(Owner, choiceContext, drain);
+        await LoanService.RecordPayment(Owner, choiceContext, drain);   // base 영수증 +1 (even at 0 gold)
+        if (drain > 0) LoanService.GrantReceipt(Owner);                 // paid real gold → BONUS 영수증 (2 total this play)
         // This 납부 card is being played (Exhaust removes it) → count it for 성실 납부's block (soul: block per
         // Payment card you actually spent). Bump AFTER RecordPayment so a 성실 납부 handed out this same play (환급)
         // already reflects it. Bailouts/other payment paths don't call this → they don't inflate 성실 납부.
