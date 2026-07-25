@@ -43,6 +43,15 @@ internal sealed class LoanRecord
     /// principal. Drives the "remaining interest vs remaining principal" split on the ledger hover. Persisted.</summary>
     internal int InterestPaid;
 
+    /// <summary>Card/shop debt taken on credit (debt-shop buys + card fees). Counts as PRINCIPAL and joins the node
+    /// interest base (Borrowed + CardDebt), but does NOT get the origination fee (that's loans only). Persisted.</summary>
+    internal int CardDebt;
+
+    /// <summary>Absolute node interest accrued so far, in gold (base = Borrowed + CardDebt, capped at the node % cap
+    /// AND the absolute <see cref="DebtLoanConfig.InterestGoldCap"/>). Tracked as gold (not a %) so a growing base
+    /// from card debt doesn't retroactively rescale it. Persisted.</summary>
+    internal int NodeInterestGold;
+
     /// <summary>TotalFloor of the shop where the loan was taken. Top-ups are allowed only at THAT shop.
     /// Rooms-since-loan (which drives the Debt-card count) is computed as TotalFloor − LoanFloor.</summary>
     internal int LoanFloor = -1;
@@ -221,6 +230,8 @@ internal static class LoanService
             relic.TotalPaid = rec.TotalPaid;
             relic.InterestPctApplied = rec.InterestPctApplied;
             relic.InterestPaid = rec.InterestPaid;
+            relic.CardDebt = rec.CardDebt;
+            relic.NodeInterestGold = rec.NodeInterestGold;
             relic.LoanFloor = rec.LoanFloor;
             relic.Active = rec.Active;
             relic.DunningLetterGranted = rec.DunningLetterGranted;
@@ -252,6 +263,12 @@ internal static class LoanService
         rec.TotalPaid = relic.TotalPaid;
         rec.InterestPctApplied = relic.InterestPctApplied;
         rec.InterestPaid = relic.InterestPaid;
+        rec.CardDebt = relic.CardDebt;
+        rec.NodeInterestGold = relic.NodeInterestGold;
+        // Migration: pre-v0.9.16 saves have InterestPctApplied but no NodeInterestGold. Reconstruct it so their
+        // interest doesn't reset to just origination on load.
+        if (rec.NodeInterestGold == 0 && rec.InterestPctApplied > 0)
+            rec.NodeInterestGold = (int)Math.Round((rec.Borrowed + rec.CardDebt) * (rec.InterestPctApplied / 100.0));
         rec.LoanFloor = relic.LoanFloor;
         rec.Active = relic.Active;
         rec.DunningLetterGranted = relic.DunningLetterGranted;
@@ -570,6 +587,7 @@ internal static class LoanService
         if (type == null) { MainFile.Logger.Warn($"[{MainFile.ModId}] dl_sync buy: unknown card '{typeName}'."); return; }
 
         rec.Principal += price;                                 // owed goes up; no gold gained (bought on credit)
+        rec.CardDebt += price;                                  // card debt = principal that also accrues node interest
         rec.ShopSpentThisVisit += price;                        // count against this shop's per-visit credit line
         rec.PurchasedCards.Add(typeName);
         await DebtLoanGrants.GrantCard(player, type);   // fly-in shows again now the panel sits at the shop's layer depth
@@ -617,12 +635,20 @@ internal static class LoanService
         int n = Math.Max(1, BorrowerCount(player.RunState));              // this player is active → at least 1
         int perRoomPct = DebtLoanConfig.NodeInterestPct * n;             // 5% × N — faster accrual with more debtors
         int capPct = NodeInterestCapPct(player);                         // 40% SP (grows with borrower count in co-op)
-        int targetPct = Math.Min(capPct, perRoomPct * roomsCarried);     // total node-interest % that should be baked by now
-        if (targetPct <= rec.InterestPctApplied) return;                 // nothing new (or N dropped — never refund)
-        int addPct = targetPct - rec.InterestPctApplied;
-        int add = (int)Math.Round(rec.Borrowed * (addPct / 100.0));
+        int targetPct = Math.Min(capPct, perRoomPct * roomsCarried);     // node-interest % that should be baked by now
+
+        // Node interest is charged as GOLD on the whole interest base (loan + card debt), capped two ways: by the
+        // node % AND by the absolute InterestGoldCap (total interest = origination + node never exceeds it). Tracked
+        // as absolute gold so growing card debt doesn't retroactively rescale already-accrued interest.
+        int baseAmt = rec.Borrowed + rec.CardDebt;
+        int origination = (int)Math.Round(rec.Borrowed * (DebtLoanConfig.BorrowOriginationPct / 100.0));
+        int maxNodeGold = Math.Max(0, DebtLoanConfig.InterestGoldCap - origination);   // absolute ceiling minus origination
+        int targetNodeGold = Math.Min(maxNodeGold, (int)Math.Round(baseAmt * (targetPct / 100.0)));
+        if (targetNodeGold <= rec.NodeInterestGold) { rec.InterestPctApplied = Math.Max(rec.InterestPctApplied, targetPct); return; }
+        int add = targetNodeGold - rec.NodeInterestGold;
         rec.Principal += add;
-        rec.InterestPctApplied = targetPct;
+        rec.NodeInterestGold = targetNodeGold;
+        rec.InterestPctApplied = targetPct;   // kept for the garnishment "interest maxed" check
         SyncToRelic(player);
     }
 
@@ -734,10 +760,10 @@ internal static class LoanService
         SyncToRelic(player);
     }
 
-    /// <summary>Total interest CHARGED on the loan so far = origination (20%) + accrued node interest, as gold of the
-    /// borrowed principal. Grows as node interest accrues; independent of payments.</summary>
+    /// <summary>Total interest CHARGED on the loan so far = origination (20% of the borrowed loan) + the accrued node
+    /// interest gold (on loan + card debt, absolute-capped). Grows as node interest accrues; independent of payments.</summary>
     internal static int InterestChargedNow(LoanRecord rec)
-        => (int)Math.Round(rec.Borrowed * ((DebtLoanConfig.BorrowOriginationPct + rec.InterestPctApplied) / 100.0));
+        => (int)Math.Round(rec.Borrowed * (DebtLoanConfig.BorrowOriginationPct / 100.0)) + rec.NodeInterestGold;
 
     /// <summary>Interest still owed = charged − already paid (never below 0). Payments clear this before principal.</summary>
     internal static int InterestRemaining(LoanRecord rec) => Math.Max(0, InterestChargedNow(rec) - rec.InterestPaid);
@@ -768,6 +794,7 @@ internal static class LoanService
         var rec = For(player);
         if (rec == null || !rec.Active || amount <= 0) return;
         rec.Principal += amount;   // owed goes up; the player gains no gold (it's a fee, not a loan)
+        rec.CardDebt += amount;    // card-fee debt = principal that also accrues node interest
         SyncToRelic(player);
     }
 

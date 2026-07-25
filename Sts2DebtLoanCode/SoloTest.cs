@@ -746,9 +746,9 @@ internal static class SoloTest
                 // No power any more, and no per-turn generation → can't be stalled for gold.
                 var recP = LoanService.For(player)!;
                 if (!recP.Active || recP.Principal <= 0) { await LoanService.GrantLoanDirect(player, 200); recP = LoanService.For(player)!; }
-                await LoanService.ConsumePaymentStack(player);                                         // tally → 0 (clean gate check)
-                bool jobGate0 = !cstate!.CreateCard<JobPlacementCard>(player).CanPlay();               // 0 < 2 → blocked
-                for (int i = 0; i < 2; i++) await LoanService.RecordPayment(player, pcc, 5);           // tally → 2 (each also pays 5 principal)
+                await LoanService.ConsumePaymentStack(player);                                         // tally → 0
+                bool jobPlayable0 = cstate!.CreateCard<JobPlacementCard>(player).CanPlay();            // no 영수증 gate any more → playable at 0
+                for (int i = 0; i < 2; i++) await LoanService.RecordPayment(player, pcc, 5);           // tally → 2 (JobPlacement must NOT spend these)
                 await Task.Delay(120);
                 int owed0 = recP.Principal;
                 int jobGold0 = (int)player.Gold;                     // must NOT rise (fee is added to debt, not paid out)
@@ -761,12 +761,12 @@ internal static class SoloTest
                 await Task.Delay(150);
                 int owedGain = recP.Principal - owed0;               // expect +20 (fee only; the play makes no payment)
                 int jobGoldGain = (int)player.Gold - jobGold0;       // expect 0
-                int tallyAfter = LoanService.PaymentsThisCombat(player);   // expect 0 (2 - 2 spent)
+                int tallyAfter = LoanService.PaymentsThisCombat(player);   // expect UNCHANGED (no receipt cost now)
                 int handWages = (PileType.Hand.GetPile(player)?.Cards.Count(c => c is WagesCard) ?? 0) - handPre;   // expect 1
                 int drawWages = (PileType.Draw.GetPile(player)?.Cards.Count(c => c is WagesCard) ?? 0) - drawPre;   // expect 2
-                bool tP4 = jobGate0 && owedGain == 20 && jobGoldGain == 0 && tallyAfter == tally0 - 2
+                bool tP4 = jobPlayable0 && owedGain == 20 && jobGoldGain == 0 && tallyAfter == tally0
                            && handWages >= 1 && drawWages >= 2;
-                W($"  assert job-placement(skill): gate0={jobGate0} gate2={jobGate2} owedGain={owedGain}(=20) goldGain={jobGoldGain}(=0) tally {tally0}->{tallyAfter}(spent2) hand+{handWages}(>=1) draw+{drawWages}(>=2) -> {tP4}");
+                W($"  assert job-placement(skill): playable0={jobPlayable0}(no gate) owedGain={owedGain}(=20) goldGain={jobGoldGain}(=0) tally {tally0}->{tallyAfter}(unchanged) hand+{handWages}(>=1) draw+{drawWages}(>=2) -> {tP4}");
 
                 // tP5) EMPIRICAL 골드 차감: play a real 빚 독촉 (Dunning) through the pipeline and assert the player's
                 //      ACTUAL held gold drops by the 20-gold play cost (bug report: "납부했을 때 실제 보유 골드가 안 줄어듦").
@@ -879,12 +879,15 @@ internal static class SoloTest
                     await LoanService.GrantLoanDirect(player, 100);
                     var recShop = LoanService.For(player)!;
                     recShop.DebtShopVisits = 3;                                  // reveal all offers
+                    int savedCredit = DebtLoanConfig.ShopCreditLimit;
+                    DebtLoanConfig.ShopCreditLimit = 9999;                       // isolate this test from the per-visit credit cap
                     var off = LoanService.RevealedPurchasable(recShop);
                     int d0 = deckDebt();
                     await LoanService.BuyCardOnDebt(player, off[0]); await Task.Delay(80); int d1 = deckDebt();   // 1st buy → +1 Debt
                     await LoanService.BuyCardOnDebt(player, off[1]); await Task.Delay(80); int d2 = deckDebt();   // same visit → no extra
-                    recShop.LastDebtGrantFloor = -999;                          // simulate a NEW shop visit
+                    recShop.LastDebtGrantFloor = -999; recShop.ShopSpentThisVisit = 0;   // simulate a NEW shop visit (fresh floor + credit)
                     await LoanService.BuyCardOnDebt(player, off[2]); await Task.Delay(80); int d3 = deckDebt();   // new visit → +1 Debt
+                    DebtLoanConfig.ShopCreditLimit = savedCredit;               // restore
                     if ((int)player.Gold < recShop.Principal) await PlayerCmd.GainGold(recShop.Principal - (int)player.Gold, player, false);
                     await LoanService.Repay(player); await Task.Delay(120); int d4 = deckDebt();                  // repay → all swept
                     tP7b = d1 == d0 + 1 && d2 == d1 && d3 == d2 + 1 && d4 == 0;

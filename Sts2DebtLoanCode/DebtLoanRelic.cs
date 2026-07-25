@@ -27,7 +27,7 @@ public sealed class DebtLoanRelic : RelicModel
     protected override string PackedIconOutlinePath => "res://Sts2DebtLoan/icons/debt_loan_relic_outline.png";
     protected override string BigIconPath => "res://Sts2DebtLoan/icons/debt_loan_relic.png";
 
-    private int _borrowed, _principal, _totalPaid, _loanFloor, _interestPctApplied, _interestPaid;
+    private int _borrowed, _principal, _totalPaid, _loanFloor, _interestPctApplied, _interestPaid, _cardDebt, _nodeInterestGold;
     private bool _active;
     private int _cards;   // transient (not saved): current per-combat Debt-card count, for the hover {cards}
 
@@ -48,6 +48,14 @@ public sealed class DebtLoanRelic : RelicModel
     /// <summary>Interest paid off so far (payments retire interest before principal). Persisted.</summary>
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public int InterestPaid { get => _interestPaid; set { AssertMutable(); _interestPaid = value; } }
+
+    /// <summary>Card/shop debt (part of principal + node interest base). Persisted.</summary>
+    [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
+    public int CardDebt { get => _cardDebt; set { AssertMutable(); _cardDebt = value; } }
+
+    /// <summary>Absolute node interest accrued (gold). Persisted.</summary>
+    [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
+    public int NodeInterestGold { get => _nodeInterestGold; set { AssertMutable(); _nodeInterestGold = value; } }
 
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public int LoanFloor { get => _loanFloor; set { AssertMutable(); _loanFloor = value; } }
@@ -125,7 +133,7 @@ public sealed class DebtLoanRelic : RelicModel
     protected override IEnumerable<DynamicVar> CanonicalVars =>
         new[]
         {
-            new DynamicVar("borrowed", _borrowed),   // raw amount borrowed (reference; doesn't shrink)
+            new DynamicVar("borrowed", _borrowed + _cardDebt),   // total principal taken (loan + card/shop debt)
             new DynamicVar("igold", InterestRemaining),   // interest STILL owed (payments clear this first → shrinks)
             new DynamicVar("prem", PrincipalRemaining),   // borrowed principal still owed (owed − remaining interest)
             new DynamicVar("owed", _principal),      // total you'd repay right now
@@ -133,8 +141,8 @@ public sealed class DebtLoanRelic : RelicModel
             new DynamicVar("cards", _cards),
         };
 
-    /// <summary>Total interest CHARGED so far in gold = borrowed × (origination + node interest %).</summary>
-    private int InterestCharged => (int)System.Math.Round(_borrowed * ((DebtLoanConfig.BorrowOriginationPct + _interestPctApplied) / 100.0));
+    /// <summary>Total interest CHARGED so far in gold = origination (20% of the loan) + accrued node interest gold.</summary>
+    private int InterestCharged => (int)System.Math.Round(_borrowed * (DebtLoanConfig.BorrowOriginationPct / 100.0)) + _nodeInterestGold;
     /// <summary>Interest STILL owed (charged − paid; payments retire interest first). Shrinks as you pay.</summary>
     private int InterestRemaining => System.Math.Max(0, InterestCharged - _interestPaid);
     /// <summary>Borrowed principal still owed = total owed minus the remaining interest slice (never below 0).</summary>
@@ -171,7 +179,7 @@ public sealed class DebtLoanRelic : RelicModel
         try
         {
             var vars = DynamicVars;
-            if (vars.TryGetValue("borrowed", out var bo)) bo.BaseValue = _borrowed;
+            if (vars.TryGetValue("borrowed", out var bo)) bo.BaseValue = _borrowed + _cardDebt;
             if (vars.TryGetValue("igold", out var ig)) ig.BaseValue = InterestRemaining;   // interest still owed
             if (vars.TryGetValue("prem", out var pr)) pr.BaseValue = PrincipalRemaining;   // principal still owed
             if (vars.TryGetValue("owed", out var b)) b.BaseValue = _principal;             // total owed

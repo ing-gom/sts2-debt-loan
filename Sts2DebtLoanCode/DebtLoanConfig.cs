@@ -48,6 +48,11 @@ internal static class DebtLoanConfig
     internal static int BorrowOriginationPct = 20;
     /// <summary>Interest added per ROOM you carry the debt, on the borrowed amount, on top of origination.</summary>
     internal static int NodeInterestPct = 5;
+
+    /// <summary>Absolute ceiling (gold) on the TOTAL interest a loan can ever accrue (origination + node, across the
+    /// borrowed loan AND card/shop debt). Interest never exceeds this no matter how much card debt piles onto the
+    /// base — so it can't grow without bound. Spec: 100.</summary>
+    internal static int InterestGoldCap = 100;
     /// <summary>How many rooms of <see cref="NodeInterestPct"/> accrue before it caps. 8 × 5% = +40% on top of
     /// the 20% origination = a 60% ceiling (the SP node cap; MP raises it, see below).</summary>
     internal static int MaxNodeInterestRooms = 8;
