@@ -9,8 +9,10 @@ using MegaCrit.Sts2.Core.Helpers;              // TaskHelper, StsColors
 using MegaCrit.Sts2.Core.Assets;               // PreloadManager (repay icon fallback)
 using MegaCrit.Sts2.Core.HoverTips;            // HoverTip, IHoverTip, HoverTipAlignment
 using MegaCrit.Sts2.Core.Models;               // CardModel, ModelDb
+using MegaCrit.Sts2.Core.Nodes;                // NGame (card inspect screen)
 using MegaCrit.Sts2.Core.Nodes.Cards;          // NCard
 using MegaCrit.Sts2.Core.Nodes.HoverTips;      // NHoverTipSet
+using MegaCrit.Sts2.Core.Nodes.Screens;        // NInspectCardScreen
 using System.Reflection;                        // read the shop's native back button rect
 using MegaCrit.Sts2.Core.Nodes.Screens.Shops;  // NMerchantInventory
 
@@ -228,6 +230,25 @@ internal sealed partial class NDebtCardShopPanel : Control
         var model = ModelDb.GetByIdOrNull<CardModel>(ModelDb.GetId(type));
         if (model == null) return;
 
+        // One offer per visit is stocked ALREADY UPGRADED (see LoanService.UpgradedCardFor). Render / hover-tip /
+        // inspect that offer from an upgraded MUTABLE CLONE of the canonical model — never from the ModelDb model
+        // itself (that is shared and canonical), and never via RunState.CreateCard (that registers a real run card
+        // for a display-only node). This is the game's own preview pattern (NInspectCardScreen.UpdateCardDisplay).
+        var recForUpg = LoanService.For(_player);
+        bool isUpgradedOffer = recForUpg != null && LoanService.UpgradedCardFor(recForUpg) == type;
+        var display = model;
+        if (isUpgradedOffer)
+        {
+            try
+            {
+                var up = model.ToMutable();
+                up.UpgradeInternal();
+                up.FinalizeUpgradeInternal();
+                display = up;
+            }
+            catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] upgraded offer render failed ({type.Name}): {e.Message}"); }
+        }
+
         int col = index % PerRow, row = index / PerRow;
         float cx = _gridX + col * _colPitch + _colPitch / 2f;
         float cardCy = _gridTop + row * _rowPitch + _rowPitch * 0.42f;   // card CENTER y in this row cell
@@ -236,7 +257,7 @@ internal sealed partial class NDebtCardShopPanel : Control
         NCard? card = null;
         try
         {
-            card = NCard.Create(model);
+            card = NCard.Create(display);
             if (card != null)
             {
                 _grid.AddChild(card);
@@ -304,15 +325,30 @@ internal sealed partial class NDebtCardShopPanel : Control
         buy.Pressed += () => OnBuy(type);
         // Hover enlarges the card AND its price tag + 품절/한도 초과 labels + sale mark together (all raised in ZIndex
         // so nothing is hidden behind the enlarged card — fixes overlay text vanishing / price + tags staying put).
+        var theModel = display;   // hover tips + right-click inspect show the OFFERED version (upgraded if 강화판)
         buy.MouseEntered += () =>
         {
             HoverOffer(theCard, theTag, theSold, theOver, theSale, center, tagPos, soldPos, overPos, salePos, true);
             _shop?.MerchantHand?.PointAtTarget(buy, Vector2.Zero);   // the merchant's hand points at the hovered offer (shop feel)
+            ShowOfferTips(buy, theModel);
         };
         buy.MouseExited += () =>
         {
             HoverOffer(theCard, theTag, theSold, theOver, theSale, center, tagPos, soldPos, overPos, salePos, false);
             _shop?.MerchantHand?.StopPointing(0.15f);
+            NHoverTipSet.Remove(buy);
+        };
+        // Right-click → the game's card INSPECT screen (huge render + the 강화 미리보기 tickbox), exactly what the
+        // real shop does (NMerchantSlot.OnMouseReleased → OnPreview). Fired on RELEASE like the vanilla slot, and
+        // only for a click that also STARTED on this button, so a drag ending here can't pop the screen open.
+        bool rightDownHere = false;
+        buy.GuiInput += (InputEvent e) =>
+        {
+            if (e is not InputEventMouseButton { ButtonIndex: MouseButton.Right } mb) return;
+            if (mb.Pressed) { rightDownHere = true; return; }
+            if (!rightDownHere) return;
+            rightDownHere = false;
+            OpenInspect(buy, theModel);
         };
         _grid.AddChild(buy);
 
@@ -397,7 +433,48 @@ internal sealed partial class NDebtCardShopPanel : Control
 
     public override void _UnhandledKeyInput(InputEvent ev)
     {
-        if (ev is InputEventKey { Pressed: true, Keycode: Key.Escape }) SlideOutAndClose();
+        if (ev is not InputEventKey { Pressed: true, Keycode: Key.Escape }) return;
+        // The inspect screen (right-click preview) binds Escape to its OWN close via NHotkeyManager and does not
+        // mark the key handled, so without this guard one Escape would close BOTH it and the debt shop underneath.
+        if (IsInspectOpen()) return;
+        SlideOutAndClose();
+    }
+
+    /// <summary>Is the game's card inspect screen currently up? (Opened by right-clicking an offer.)</summary>
+    private static bool IsInspectOpen()
+    {
+        var insp = NGame.Instance?.InspectCardScreen;
+        return insp != null && GodotObject.IsInstanceValid(insp) && insp.Visible;
+    }
+
+    /// <summary>Show the offered card's OWN hover tips (keywords, 납부/빚 etc.) while the mouse is over its buy
+    /// button. The button covers the <see cref="NCard"/> and eats its mouse events, so the card can never surface
+    /// them itself — we raise them on the button instead, side-picked like the merchant's own slots
+    /// (<c>NMerchantCard.CreateHoverTip</c>).</summary>
+    private void ShowOfferTips(Control owner, CardModel? model)
+    {
+        if (model == null) return;
+        try
+        {
+            NHoverTipSet.Remove(owner);   // never stack two sets on one owner (CreateAndShow would throw on re-add)
+            NHoverTipSet.CreateAndShow(owner, model.HoverTips, HoverTip.GetHoverTipAlignment(owner));
+        }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] offer hover tips skipped: {e.Message}"); }
+    }
+
+    /// <summary>Open the game's inspect screen on this offer — the big card render with the 강화 미리보기 tickbox,
+    /// same as right-clicking a card in the real shop. The hover tip is dropped first (the screen covers us, so
+    /// MouseExited may never fire and the tip would hang over the overlay).</summary>
+    private void OpenInspect(Control owner, CardModel? model)
+    {
+        if (model == null) return;
+        try
+        {
+            NHoverTipSet.Remove(owner);
+            NGame.Instance?.GetInspectCardScreen()?.Open(new List<CardModel> { model }, 0);
+            GetViewport()?.SetInputAsHandled();
+        }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] card inspect failed: {e.Message}"); }
     }
 
     /// <summary>Clone the game's MegaLabel (a Label → Korean-capable game font) and set its text. The clone inherits

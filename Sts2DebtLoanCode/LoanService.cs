@@ -474,7 +474,7 @@ internal static class LoanService
     internal static int CardDebtPrice(System.Type t)
     {
         if (t == typeof(InvoiceCard) || t == typeof(GarnishmentCard) || t == typeof(BankruptcyCard) || t == typeof(RefinanceCard)) return 65;   // 고급: scaling attack / AoE / debt payoff
-        if (t == typeof(JobPlacementCard)) return 55;   // 취업알선: income skill
+        if (t == typeof(JobPlacementCard) || t == typeof(KitingCard)) return 55;   // 취업알선 / 돌려막기: income skills
         if (t == typeof(RefundCard) || t == typeof(CounterclaimCard)
             || t == typeof(StatementCard) || t == typeof(InterestSupportCard)
             || t == typeof(PaymentBenefitCard)
@@ -495,6 +495,20 @@ internal static class LoanService
         return Math.Clamp(CardDebtPrice(t) + variance, PriceMin, PriceMax);
     }
 
+    /// <summary>Is this a 빚 (Debt) card — the ONE card type 차환 / 돌려막기 may consume? ONLY the game's native
+    /// <see cref="MegaCrit.Sts2.Core.Models.Cards.Debt"/>, matching what 파산 선언 already eats. Deliberately
+    /// EXCLUDES:
+    /// <list type="bullet">
+    /// <item>our tier curses (연체 / 차압 / 신용 불량 / 강제 징수) — those are the loan's escalating pressure and
+    /// must not be cashable away; they are re-injected every combat anyway, which would make them an infinite
+    /// fuel supply for 돌려막기.</item>
+    /// <item>납부 (<see cref="DebtCurseCard"/>) — the repayment card, not a debt.</item>
+    /// <item>every OTHER curse in the game (후회, 부상, …).</item>
+    /// </list>
+    /// Single source of truth so the consumers can never drift apart. Native Debt enters the deck only from a
+    /// debt-shop visit or from 차환 itself, so this is a CLOSED loop: 차환 mints the fuel that 차환/돌려막기 burn.</summary>
+    internal static bool IsDebtCurseCard(CardModel c) => c is MegaCrit.Sts2.Core.Models.Cards.Debt;
+
     /// <summary>Which of this visit's offers is ON SALE — a deterministic pick from the revealed set (per LoanFloor
     /// + visit), like the merchant's discounted card. Its <see cref="ShopPriceFor"/> is knocked down ~30%.</summary>
     internal static System.Type? SaleCardFor(LoanRecord rec)
@@ -505,12 +519,45 @@ internal static class LoanService
         return offers[rng.Next(offers.Length)];
     }
 
+    /// <summary>Which of this visit's offers is stocked ALREADY UPGRADED (강화판) — a deterministic pick (per
+    /// LoanFloor + visit) from the revealed set, restricted to cards that can actually be upgraded and, when there
+    /// is a choice, never the sale card so the two shop perks land on different offers. Its
+    /// <see cref="ShopPriceFor"/> carries a <see cref="UpgradePremiumPct"/> surcharge. Deterministic → co-op peers
+    /// and a reload agree on which offer is the enhanced one.</summary>
+    internal static System.Type? UpgradedCardFor(LoanRecord rec)
+    {
+        var offers = RevealedPurchasable(rec);
+        if (offers.Length == 0) return null;
+        var sale = SaleCardFor(rec);
+        var pool = new List<System.Type>();
+        foreach (var t in offers) if (t != sale && IsUpgradable(t)) pool.Add(t);
+        if (pool.Count == 0)   // the sale card is the only upgradable offer → let it be both
+            foreach (var t in offers) if (IsUpgradable(t)) pool.Add(t);
+        if (pool.Count == 0) return null;
+        var rng = new System.Random(unchecked(rec.LoanFloor * 617 + rec.DebtShopVisits * 149 + 11));
+        return pool[rng.Next(pool.Count)];
+    }
+
+    /// <summary>Surcharge on the visit's upgraded offer (percent of its base price, rounded to 5). The band tops
+    /// out at <see cref="PriceMax"/> 70, so +30% stays under the per-visit credit line (100).</summary>
+    private const int UpgradePremiumPct = 30;
+
+    /// <summary>Can this card type be upgraded at all? (Curse-ish / fixed cards have MaxUpgradeLevel 0 and must
+    /// never be picked as the visit's 강화판 — the buy would silently grant a normal copy at a premium price.)</summary>
+    private static bool IsUpgradable(System.Type t)
+    {
+        var m = ModelDb.GetByIdOrNull<CardModel>(ModelDb.GetId(t));
+        return m != null && m.MaxUpgradeLevel > 0;
+    }
+
     /// <summary>The actual debt price of a card at the shop THIS visit: its tier base ± a deterministic variance
-    /// (−10%..+15%, rounded to 5), then ~30% off if it's the visit's sale card. Deterministic per (LoanFloor,
-    /// visit, card) → co-op peers + a reload agree; the shown price == the charged price (BuyCardOnDebt uses this).</summary>
+    /// (−10%..+15%, rounded to 5), +30% if it's the visit's UPGRADED offer, then ~30% off if it's the visit's sale
+    /// card. Deterministic per (LoanFloor, visit, card) → co-op peers + a reload agree; the shown price == the
+    /// charged price (BuyCardOnDebt uses this).</summary>
     internal static int ShopPriceFor(LoanRecord rec, System.Type t)
     {
         int price = ShopBasePrice(rec, t);
+        if (UpgradedCardFor(rec) == t) price = (int)Math.Round(price * (100 + UpgradePremiumPct) / 500.0) * 5;   // 강화판 프리미엄
         if (SaleCardFor(rec) == t) price = Math.Max(5, (int)Math.Round(price * 0.7 / 5.0) * 5);   // sale card ~30% off
         return price;
     }
@@ -559,7 +606,8 @@ internal static class LoanService
         var rec = For(player);
         if (rec == null || !IsPurchasable(rec, type)) return false;
         if (!CanAffordCredit(rec, type)) return false;   // over this shop's credit line → refuse (panel already greys it)
-        int price = ShopPriceFor(rec, type);          // the shown price (tier ± variance, sale applied)
+        int price = ShopPriceFor(rec, type);          // the shown price (tier ± variance, upgrade premium / sale applied)
+        bool upgraded = UpgradedCardFor(rec) == type; // this visit's 강화판 offer → grant the card already upgraded
 
         // Only the shopper's OWN peer initiates the buy (the panel is local to the player who opened it). Then:
         // SP → apply here; co-op → broadcast so the deck-add + owed-increase replay identically on BOTH peers
@@ -569,9 +617,11 @@ internal static class LoanService
         bool sp = run?.IsSingleplayerOrFakeMultiplayer ?? true;
         if (!(sp || LocalContext.IsMe(player))) return false;
 
-        if (sp) await ApplyBuyCard(player, type.Name, price);
-        else    DebtLoanNet.BroadcastBuy(player, type.Name, price);
-        MainFile.Logger.Info($"[{MainFile.ModId}] buy {type.Name} on debt for {price} ({(sp ? "SP local" : "co-op broadcast")}).");
+        // The upgraded flag rides the wire next to the price for the same reason: the remote peer's offer cache may
+        // not have been built (it never opened the panel), so it must NOT re-derive which offer was the 강화판.
+        if (sp) await ApplyBuyCard(player, type.Name, price, upgraded);
+        else    DebtLoanNet.BroadcastBuy(player, type.Name, price, upgraded);
+        MainFile.Logger.Info($"[{MainFile.ModId}] buy {type.Name}{(upgraded ? "+" : "")} on debt for {price} ({(sp ? "SP local" : "co-op broadcast")}).");
         return true;
     }
 
@@ -579,7 +629,7 @@ internal static class LoanService
     /// the card into the deck. Runs directly in SP, or once per peer via the networked <c>dl_sync buy</c> replay
     /// in co-op. Idempotent — the sold-mark guards a double-apply on the initiator's own replay / any re-delivery,
     /// so each peer charges the price and grants the card exactly once.</summary>
-    internal static async Task ApplyBuyCard(Player player, string typeName, int price)
+    internal static async Task ApplyBuyCard(Player player, string typeName, int price, bool upgraded = false)
     {
         var rec = For(player);
         if (rec == null || !rec.Active) return;
@@ -591,7 +641,7 @@ internal static class LoanService
         rec.CardDebt += price;                                  // card debt = principal that also accrues node interest
         rec.ShopSpentThisVisit += price;                        // count against this shop's per-visit credit line
         rec.PurchasedCards.Add(typeName);
-        await DebtLoanGrants.GrantCard(player, type);   // fly-in shows again now the panel sits at the shop's layer depth
+        await DebtLoanGrants.GrantCard(player, type, upgraded: upgraded);   // fly-in shows again now the panel sits at the shop's layer depth
         // Every debt-shop VISIT leaves a native Debt curse in your deck — the price of leaning on the credit line.
         // Once per floor (= per shop visit), no matter how many cards you buy that visit; swept on repay. Runs in the
         // same per-peer networked buy replay as the card grant, and reads shared floor state → co-op consistent.
@@ -703,7 +753,7 @@ internal static class LoanService
         typeof(RefundCard), typeof(CounterclaimCard), typeof(StatementCard), typeof(InterestSupportCard),  // power engines
         typeof(PaymentBenefitCard),                                                                         // 납부혜택: payment → block (moved from free grants)
         typeof(CollectionCard),                                                                             // 추심: 공격판 환급 (scaling attack gen)
-        typeof(SettlementCard), typeof(InvoiceCard), typeof(GarnishmentCard),                              // receipt spenders
+        typeof(SettlementCard), typeof(InvoiceCard), typeof(GarnishmentCard), typeof(KitingCard),          // receipt spenders (돌려막기: 빚 저주 → 골드)
         typeof(LoanStrikeCard), typeof(MortgageCard), typeof(BloodPaymentCard),                            // borrow / HP
         typeof(JobPlacementCard),                                                                          // 취업알선: income skill (moved from free grants)
         typeof(BankruptcyCard), typeof(RefinanceCard),                                                     // debt payoff: Bankruptcy(→Strength) / Refinance(→Payment cards)

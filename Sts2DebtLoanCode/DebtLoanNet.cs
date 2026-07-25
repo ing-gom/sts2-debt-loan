@@ -29,7 +29,7 @@ public sealed class DebtLoanNetCmd : AbstractConsoleCmd
     public const string Verb = "dl_sync";
 
     public override string CmdName => Verb;
-    public override string Args => "<active <borrowed> <principal> <totalPaid> <loanFloor> | buy <cardType> <price> | repaid>";
+    public override string Args => "<active <borrowed> <principal> <totalPaid> <loanFloor> | buy <cardType> <price> [upgraded] | repaid>";
     public override string Description =>
         "Internal (networked): replicate a player's merchant loan (Ledger relic + state) to every co-op peer.";
     public override bool IsNetworked => true;   // routes through the synchronized action queue
@@ -59,8 +59,11 @@ public sealed class DebtLoanNetCmd : AbstractConsoleCmd
             if (args.Length < 3) return new CmdResult(success: false, "dl_sync buy: expected <cardType> <price>.");
             string typeName = args[1];
             int.TryParse(args[2], NumberStyles.Integer, inv, out int buyPrice);
-            TaskHelper.RunSafely(LoanService.ApplyBuyCard(issuingPlayer, typeName, buyPrice));
-            return new CmdResult(success: true, $"dl_sync buy {typeName} price={buyPrice}.");
+            // Optional 4th arg: 1 = this was the visit's 강화판 offer, so grant the card already upgraded. Sent
+            // rather than re-derived, because the remote peer never opened the panel and may hold no offer cache.
+            bool buyUpgraded = args.Length > 3 && args[3] == "1";
+            TaskHelper.RunSafely(LoanService.ApplyBuyCard(issuingPlayer, typeName, buyPrice, buyUpgraded));
+            return new CmdResult(success: true, $"dl_sync buy {typeName}{(buyUpgraded ? "+" : "")} price={buyPrice}.");
         }
 
         if (args.Length < 5) return new CmdResult(success: false, "dl_sync active: expected 5 args.");
@@ -80,8 +83,8 @@ internal static class DebtLoanNet
     internal static void BroadcastLoan(Player owner, int borrowed, int principal, int totalPaid, int loanFloor)
         => Dispatch(owner, $"{DebtLoanNetCmd.Verb} active {borrowed} {principal} {totalPaid} {loanFloor}");
 
-    internal static void BroadcastBuy(Player owner, string cardTypeName, int price)
-        => Dispatch(owner, $"{DebtLoanNetCmd.Verb} buy {cardTypeName} {price}");
+    internal static void BroadcastBuy(Player owner, string cardTypeName, int price, bool upgraded = false)
+        => Dispatch(owner, $"{DebtLoanNetCmd.Verb} buy {cardTypeName} {price} {(upgraded ? 1 : 0)}");
 
     internal static void BroadcastRepay(Player owner)
         => Dispatch(owner, $"{DebtLoanNetCmd.Verb} repaid 0 0 0");

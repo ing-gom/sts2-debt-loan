@@ -536,6 +536,16 @@ internal static class SoloTest
                     bool dlOk = dlUFace.Contains(payment + "+");
                     W($"  [강화명칭] 정기 납부+ -> '{payment}+' {(dlOk ? "OK" : "MISSING")}");
 
+                    // 차환+: 되돌려주는 카드가 납부+ 로 표기되고(‘{card}’ 인자), 카드 자체 비용은 1 그대로여야 한다
+                    // (강화 = 돌려받는 카드의 품질이지 스왑 가격이 아님).
+                    var rfnBase = player.RunState.CreateCard<RefinanceCard>(player);
+                    var rfnU = player.RunState.CreateCard<RefinanceCard>(player);
+                    rfnU.UpgradeInternal(); rfnU.FinalizeUpgradeInternal();
+                    string rfnUFace = rfnU.GetDescriptionForPile(PileType.Hand).Replace("\n", " | ");
+                    bool rfnNameOk = rfnUFace.Contains(payment + "+");
+                    bool rfnCostOk = rfnU.EnergyCost.GetResolved() == rfnBase.EnergyCost.GetResolved() && rfnU.EnergyCost.GetResolved() == 1;
+                    W($"  [강화명칭] 차환+ FACE='{rfnUFace}' -> '{payment}+' {(rfnNameOk ? "OK" : "MISSING")} / cost {rfnBase.EnergyCost.GetResolved()}->{rfnU.EnergyCost.GetResolved()} {(rfnCostOk ? "OK" : "CHANGED")}");
+
                     // 추심(집행 지급 파워): FACE 가 지급 토큰(집행)을 참조하는지 + 집행 등록 확인. 추심+는 1코(에너지).
                     string shakedown = LocName("SHAKEDOWN_CARD.title");
                     string coFace = player.RunState.CreateCard<CollectionCard>(player).GetDescriptionForPile(PileType.Hand).Replace("\n", " | ");
@@ -894,6 +904,71 @@ internal static class SoloTest
                     W($"  assert debt-shop native-Debt: buy1={d1}(={d0}+1) buy2/sameVisit={d2}(=buy1) buy3/newVisit={d3}(=+1) afterRepay={d4}(=0) -> {tP7b}");
                 }
 
+                // tP7c) DEBT-SHOP 강화판: exactly ONE of the visit's offers is stocked already upgraded, it's an
+                //       upgradable card, it isn't the sale card (when there's a choice), it carries the +30% price
+                //       premium, and BUYING it puts an UPGRADED copy in the deck.
+                bool tP7c;
+                {
+                    LoanService.ResetFor(player);
+                    await LoanService.GrantLoanDirect(player, 100);
+                    var recU = LoanService.For(player)!;
+                    recU.DebtShopVisits = 1;
+                    var offersU = LoanService.RevealedPurchasable(recU);
+                    var upType = LoanService.UpgradedCardFor(recU);
+                    var saleType = LoanService.SaleCardFor(recU);
+                    bool picked = upType != null && System.Array.IndexOf(offersU, upType) >= 0;
+                    // Deterministic: the same record must name the same 강화판 every time it's asked.
+                    bool stable = LoanService.UpgradedCardFor(recU) == upType;
+                    bool notSale = upType != saleType;
+                    int basePrice = picked ? LoanService.ShopBasePrice(recU, upType!) : 0;
+                    int shownPrice = picked ? LoanService.ShopPriceFor(recU, upType!) : 0;
+                    bool premium = picked && shownPrice > basePrice;
+                    int savedCap = DebtLoanConfig.ShopCreditLimit;
+                    DebtLoanConfig.ShopCreditLimit = 9999;                      // the premium price must not be the thing under test
+                    bool boughtU = picked && await LoanService.BuyCardOnDebt(player, upType!);
+                    await Task.Delay(120);
+                    DebtLoanConfig.ShopCreditLimit = savedCap;
+                    var inDeckU = PileType.Deck.GetPile(player)?.Cards?.FirstOrDefault(c => c.GetType() == upType);
+                    bool grantedUpgraded = inDeckU != null && inDeckU.IsUpgraded;
+                    tP7c = picked && stable && notSale && premium && boughtU && grantedUpgraded;
+                    W($"  assert debt-shop 강화판: pick={upType?.Name}(inOffers={picked} stable={stable} notSale={notSale}) price={basePrice}->{shownPrice}({premium}) bought={boughtU} deckUpgraded={grantedUpgraded} -> {tP7c}");
+                }
+
+                // tP7d) 빚 카드 판정 단일화: 차환·돌려막기가 먹는 대상은 native Debt "한 종류"뿐이어야 한다.
+                //       티어 저주(연체/차압/신용불량/강제징수)·납부·게임의 다른 저주는 전부 제외 — 티어 저주는 매
+                //       전투 재주입되므로 허용하면 돌려막기가 무한 골드 수도꼭지가 된다.
+                bool tP7d;
+                {
+                    var nativeDebt = player.RunState.CreateCard<MegaCrit.Sts2.Core.Models.Cards.Debt>(player);
+                    bool takesNative = LoanService.IsDebtCurseCard(nativeDebt);
+                    bool skipsTier =
+                        !LoanService.IsDebtCurseCard(player.RunState.CreateCard<DelinquencyCard>(player)) &&
+                        !LoanService.IsDebtCurseCard(player.RunState.CreateCard<SeizureCard>(player)) &&
+                        !LoanService.IsDebtCurseCard(player.RunState.CreateCard<BadCreditCard>(player)) &&
+                        !LoanService.IsDebtCurseCard(player.RunState.CreateCard<DebtorCard>(player));
+                    bool skipsPayment = !LoanService.IsDebtCurseCard(player.RunState.CreateCard<DebtCurseCard>(player));
+                    tP7d = takesNative && skipsTier && skipsPayment;
+                    W($"  assert 빚카드 판정: native={takesNative} 티어저주제외={skipsTier} 납부제외={skipsPayment} -> {tP7d}");
+                }
+
+                // tP7e) 돌려막기: 0코 / 2영수증 / 골드 30→40 / 게이트(영수증+손의 빚 카드 둘 다 있어야 플레이 가능).
+                bool tP7e;
+                {
+                    var kit = player.RunState.CreateCard<KitingCard>(player);
+                    var kitU = player.RunState.CreateCard<KitingCard>(player);
+                    kitU.UpgradeInternal(); kitU.FinalizeUpgradeInternal();
+                    bool cost0 = kit.EnergyCost.GetResolved() == 0 && kitU.EnergyCost.GetResolved() == 0;
+                    bool tally2 = kit.TallyCost == 2;
+                    bool gold30 = kit.DynamicVars["gold"].IntValue == 30;
+                    bool gold40 = kitU.DynamicVars["gold"].IntValue == 40;
+                    string kitFace = kit.GetDescriptionForPile(PileType.Hand).Replace("\n", " | ");
+                    string kitUFace = kitU.GetDescriptionForPile(PileType.Hand).Replace("\n", " | ");
+                    bool faceOk = kitFace.Contains("30") && kitUFace.Contains("40");
+                    tP7e = cost0 && tally2 && gold30 && gold40 && faceOk;
+                    W($"  assert 돌려막기: cost0={cost0} 영수증={kit.TallyCost}(2) gold {kit.DynamicVars["gold"].IntValue}->{kitU.DynamicVars["gold"].IntValue}(30->40) face={faceOk} -> {tP7e}");
+                    W($"    FACE='{kitFace}'  FACE+='{kitUFace}'");
+                }
+
                 // tP8) BORROW cards (대출 강타 / 저당): upgrade DROPS Exhaust (repeatable), base keeps it.
                 bool tP8;
                 {
@@ -909,7 +984,7 @@ internal static class SoloTest
                     W($"  assert borrow-upgrade: base Exhaust={baseHas} 대출강타+Exhaust={lsUpHas} 저당+Exhaust={mgUpHas} -> {tP8}");
                 }
 
-                bool tP = tP1 && tP2 && tP3 && tP4 && tP5 && tP7 && tP7b && tP8;
+                bool tP = tP1 && tP2 && tP3 && tP4 && tP5 && tP7 && tP7b && tP7c && tP7d && tP7e && tP8;
                 W($"  == payment-set mechanics: {(tP ? "PASS" : "FAIL")} ==");
                 all &= tP;
 

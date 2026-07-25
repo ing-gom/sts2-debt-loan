@@ -240,16 +240,18 @@ internal static class DebtLoanGrants
     /// 혈납). <paramref name="preview"/> plays the fly-in animation; pass false when granting from the debt-shop
     /// panel (its CanvasLayer sits ABOVE the fly-in, so the animation would render hidden under the rug — the buy is
     /// fed back by the offer greying to 품절 instead).</summary>
-    internal static async Task GrantCard(Player player, System.Type cardType, bool preview = true)
+    internal static async Task GrantCard(Player player, System.Type cardType, bool preview = true, bool upgraded = false)
     {
         try
         {
             var model = ModelDb.GetByIdOrNull<CardModel>(ModelDb.GetId(cardType));
             if (model == null) { MainFile.Logger.Warn($"[{MainFile.ModId}] card model not found: {cardType.Name}."); return; }
             var card = player.RunState.CreateCard(model, player);
+            // 강화판 offer (the debt shop stocks one upgraded card per visit) → upgrade before it enters the deck.
+            if (upgraded && card.MaxUpgradeLevel > 0) { card.UpgradeInternal(); card.FinalizeUpgradeInternal(); }
             var results = await CardPileCmd.Add(card, PileType.Deck);
             if (preview) CardCmd.PreviewCardPileAdd(results);
-            MainFile.Logger.Info($"[{MainFile.ModId}] granted {cardType.Name} to the deck.");
+            MainFile.Logger.Info($"[{MainFile.ModId}] granted {cardType.Name}{(upgraded ? "+" : "")} to the deck.");
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] card grant failed ({cardType.Name}): {e.Message}"); }
     }
@@ -258,14 +260,14 @@ internal static class DebtLoanGrants
     /// line) — dropped once per visit by <see cref="LoanService.ApplyBuyCard"/>. Uses the game's own Debt card, so
     /// it Unplayable-clogs the deck and bleeds 10 gold/turn if held (compounding the debt). Swept on repay by
     /// <see cref="RemoveAllDebtLoanCards"/>. Same deck-pile path as GrantCard.</summary>
-    internal static async Task GrantNativeDebt(Player player)
+    internal static async Task GrantNativeDebt(Player player, string reason = "debt-shop visit")
     {
         try
         {
             if (player?.RunState == null) return;
             var card = player.RunState.CreateCard<MegaCrit.Sts2.Core.Models.Cards.Debt>(player);
             if (card != null) CardCmd.PreviewCardPileAdd(await CardPileCmd.Add(card, PileType.Deck));
-            MainFile.Logger.Info($"[{MainFile.ModId}] debt-shop visit → +1 native Debt to the deck.");
+            MainFile.Logger.Info($"[{MainFile.ModId}] {reason} → +1 native Debt to the deck.");
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] native Debt grant failed: {e.Message}"); }
     }
