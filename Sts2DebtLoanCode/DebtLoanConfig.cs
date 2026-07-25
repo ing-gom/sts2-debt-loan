@@ -24,10 +24,10 @@ internal static class DebtLoanConfig
     /// <summary>Absolute hard cap on lifetime borrowing = soft cap + over-cap allowance.</summary>
     internal static int HardCap => MaxLoan + OverCapAllowance;
 
-    /// <summary>Max % of GOLD INCOME the creditor garnishes (withholds → applied straight to your debt as forced
-    /// repayment) while a loan is active. The garnish rate SCALES with the node interest accrued (so a fresh loan
-    /// isn't taxed and it bites harder the longer you carry the debt), clamped to this cap. 0 disables garnishment.
-    /// The player receives income minus the garnished share; the garnished gold pays down the principal.</summary>
+    /// <summary>% of GOLD INCOME the creditor garnishes (withholds → applied straight to your debt as forced
+    /// repayment) — but ONLY once the loan's interest has reached its MAXIMUM (node interest at the cap). Below max
+    /// interest there is no garnishment; at max it kicks in at this flat rate. 0 disables garnishment. The player
+    /// receives income minus the garnished share; the garnished gold pays down the principal.</summary>
     internal static int GarnishMaxPct = 40;
 
     /// <summary>Per-shop-VISIT credit limit for buying cards on debt at the debt shop — SEPARATE from the initial

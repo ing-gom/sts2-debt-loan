@@ -608,9 +608,7 @@ internal static class LoanService
 
         int n = Math.Max(1, BorrowerCount(player.RunState));              // this player is active → at least 1
         int perRoomPct = DebtLoanConfig.NodeInterestPct * n;             // 5% × N — faster accrual with more debtors
-        int baseCapPct = DebtLoanConfig.NodeInterestPct * DebtLoanConfig.MaxNodeInterestRooms;   // 40% (unchanged SP cap)
-        int capPct = baseCapPct + Math.Min(DebtLoanConfig.MpInterestExtraCapMaxPct,
-                                           DebtLoanConfig.MpInterestExtraCapPerBorrowerPct * (n - 1));
+        int capPct = NodeInterestCapPct(player);                         // 40% SP (grows with borrower count in co-op)
         int targetPct = Math.Min(capPct, perRoomPct * roomsCarried);     // total node-interest % that should be baked by now
         if (targetPct <= rec.InterestPctApplied) return;                 // nothing new (or N dropped — never refund)
         int addPct = targetPct - rec.InterestPctApplied;
@@ -906,17 +904,29 @@ internal static class LoanService
     // Set only while the loan disbursement's GainGold runs, so garnishment doesn't skim the borrowed gold itself.
     private static Player? _grantingFor;
 
-    /// <summary>Creditor garnishment: while a loan is active, withhold a share of GOLD INCOME (rate = node interest
-    /// accrued so far, capped by <see cref="DebtLoanConfig.GarnishMaxPct"/>) and apply it straight to the debt as
-    /// forced repayment. Returns the gold garnished (≤ income, ≤ remaining principal); the caller hands the player
-    /// income − garnished. So the deeper in interest you are, the less of your income you keep. Deterministic
-    /// per-player record math (ForceRepayPrincipal) → co-op mirrors it as each peer replays the gold gain.</summary>
+    /// <summary>The node-interest ceiling (%) for this player — base 40% (NodeInterestPct × MaxNodeInterestRooms),
+    /// grown by borrower count in co-op. When <see cref="LoanRecord.InterestPctApplied"/> reaches this, interest is
+    /// MAXED. Shared by the interest accrual and the garnishment trigger so they can't drift.</summary>
+    internal static int NodeInterestCapPct(Player? player)
+    {
+        int n = Math.Max(1, player?.RunState != null ? BorrowerCount(player.RunState) : 1);
+        int baseCap = DebtLoanConfig.NodeInterestPct * DebtLoanConfig.MaxNodeInterestRooms;   // 40% SP
+        return baseCap + Math.Min(DebtLoanConfig.MpInterestExtraCapMaxPct,
+                                  DebtLoanConfig.MpInterestExtraCapPerBorrowerPct * (n - 1));
+    }
+
+    /// <summary>Creditor garnishment: ONLY once the loan's interest has hit its MAXIMUM (node interest at the cap)
+    /// does the creditor start withholding a share (<see cref="DebtLoanConfig.GarnishMaxPct"/>) of GOLD INCOME and
+    /// applying it straight to the debt as forced repayment. Below max interest → nothing. Returns the gold garnished
+    /// (≤ income, ≤ remaining principal); the caller hands the player income − garnished. Deterministic per-player
+    /// record math (ForceRepayPrincipal) → co-op mirrors it as each peer replays the gold gain.</summary>
     internal static int GarnishIncome(Player player, int income)
     {
         if (ReferenceEquals(_grantingFor, player)) return 0;   // don't garnish the loan disbursement itself
         var rec = For(player);
         if (rec == null || !rec.Active || rec.Principal <= 0 || income <= 0) return 0;
-        int ratePct = Math.Min(DebtLoanConfig.GarnishMaxPct, rec.InterestPctApplied);
+        if (rec.InterestPctApplied < NodeInterestCapPct(player)) return 0;   // only when interest is MAXED
+        int ratePct = DebtLoanConfig.GarnishMaxPct;
         if (ratePct <= 0) return 0;
         int garnish = Math.Min(rec.Principal, (int)Math.Floor(income * (ratePct / 100.0)));
         if (garnish <= 0) return 0;
