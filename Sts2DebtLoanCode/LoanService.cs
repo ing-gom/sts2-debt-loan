@@ -362,7 +362,11 @@ internal static class LoanService
         bool sp = run?.IsSingleplayerOrFakeMultiplayer ?? true;
         if (!(sp || LocalContext.IsMe(player))) return;
 
-        await PlayerCmd.GainGold(amount, player, false);
+        // The loan disbursement itself must NOT be garnished (that would short the borrowed amount on a top-up when
+        // interest has already accrued). The guard is read synchronously by the GainGold garnish prefix.
+        _grantingFor = player;
+        try { await PlayerCmd.GainGold(amount, player, false); }
+        finally { _grantingFor = null; }
         run?.RewardSynchronizer?.SyncLocalObtainedGold(amount);
 
         var existing = For(player);
@@ -897,6 +901,27 @@ internal static class LoanService
         rec.TotalPaid += cut;
         if (rec.Principal <= 0) rec.Active = false;   // spiral self-terminates; relic removed at next shop
         SyncToRelic(player);
+    }
+
+    // Set only while the loan disbursement's GainGold runs, so garnishment doesn't skim the borrowed gold itself.
+    private static Player? _grantingFor;
+
+    /// <summary>Creditor garnishment: while a loan is active, withhold a share of GOLD INCOME (rate = node interest
+    /// accrued so far, capped by <see cref="DebtLoanConfig.GarnishMaxPct"/>) and apply it straight to the debt as
+    /// forced repayment. Returns the gold garnished (≤ income, ≤ remaining principal); the caller hands the player
+    /// income − garnished. So the deeper in interest you are, the less of your income you keep. Deterministic
+    /// per-player record math (ForceRepayPrincipal) → co-op mirrors it as each peer replays the gold gain.</summary>
+    internal static int GarnishIncome(Player player, int income)
+    {
+        if (ReferenceEquals(_grantingFor, player)) return 0;   // don't garnish the loan disbursement itself
+        var rec = For(player);
+        if (rec == null || !rec.Active || rec.Principal <= 0 || income <= 0) return 0;
+        int ratePct = Math.Min(DebtLoanConfig.GarnishMaxPct, rec.InterestPctApplied);
+        if (ratePct <= 0) return 0;
+        int garnish = Math.Min(rec.Principal, (int)Math.Floor(income * (ratePct / 100.0)));
+        if (garnish <= 0) return 0;
+        ForceRepayPrincipal(player, garnish);
+        return garnish;
     }
 
     // ── MP 대납 (Bailout) — help a teammate pay down their debt ────────────────────────────────────────

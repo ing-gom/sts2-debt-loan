@@ -18,12 +18,20 @@ namespace Sts2DebtLoan;
 [HarmonyPatch(typeof(PlayerCmd), nameof(PlayerCmd.GainGold))]
 internal static class BankruptGoldBlockPatch
 {
-    private static bool Prefix(Player player, ref Task __result)
+    private static bool Prefix(ref decimal amount, Player player, ref Task __result)
     {
         if (LoanService.IsBankrupt(player))
         {
             __result = Task.CompletedTask;   // bankrupt → gain nothing
             return false;                    // skip the original GainGold
+        }
+        // Garnishment: while a high-interest loan is active, the creditor withholds a share of this income and
+        // applies it straight to the debt (forced repayment). The player receives the remainder. Rate scales with
+        // interest (LoanService.GarnishIncome), so the deeper you are, the less you keep.
+        if (amount > 0m)
+        {
+            int garnished = LoanService.GarnishIncome(player, (int)amount);
+            if (garnished > 0) amount -= garnished;
         }
         return true;
     }

@@ -20,6 +20,7 @@ public class MainFile
     private const string KeyMaxLoan = "maxLoan";
     private const string KeyMaxAct = "maxLoanAct";
     private const string KeyShopCredit = "shopCreditLimit";
+    private const string KeyGarnish = "garnishMaxPct";
 
     private static readonly string[] ActOptions = { "Act 1", "Act 2", "Act 3" };
     private static int ActIndexOf(string s) => s switch { "Act 2" => 1, "Act 3" => 2, _ => 0 };
@@ -74,13 +75,20 @@ public class MainFile
                 .Description("The most debt you may take on CARD purchases at the debt shop per shop visit (cards cost 50–80). Resets each new shop. Separate from the loan cap above.");
             Loc(b, "상점당 외상 한도 (골드)", "빚 상점에서 카드 구매로 한 상점 방문당 질 수 있는 빚 상한 (카드 50~80골드). 새 상점마다 초기화. 위 대출 한도와는 별개.");
 
+            b.Slider(KeyGarnish, "Income garnishment cap (%)", defaultValue: 40.0,
+                    onChanged: v => DebtLoanConfig.GarnishMaxPct = (int)v)
+                .Range(0f, 60f, 5f, format: "F0")
+                .Description("The most of your gold INCOME the creditor withholds (applied to your debt) at high interest. The rate scales with accrued interest up to this cap. 0 disables garnishment.");
+            Loc(b, "이자 원천징수 상한 (%)", "이자가 높을 때 채권자가 획득 골드에서 떼어(빚 상환에 충당) 가는 최대 비율. 실제 비율은 누적 이자에 비례해 이 상한까지 오릅니다. 0이면 원천징수 없음.");
+
             b.Register();
 
             DebtLoanConfig.MaxLoan = (int)ModConfigBridge.GetValue<double>(ModId, KeyMaxLoan, 300.0);
             DebtLoanConfig.MaxLoanActIndex = ActIndexOf(ModConfigBridge.GetValue<string>(ModId, KeyMaxAct, "Act 1"));
             DebtLoanConfig.ShopCreditLimit = (int)ModConfigBridge.GetValue<double>(ModId, KeyShopCredit, 150.0);
+            DebtLoanConfig.GarnishMaxPct = (int)ModConfigBridge.GetValue<double>(ModId, KeyGarnish, 40.0);
 
-            Logger.Info($"[{ModId}] config: maxLoan {DebtLoanConfig.MaxLoan}g, loans through act {DebtLoanConfig.MaxLoanActIndex + 1}, shop credit {DebtLoanConfig.ShopCreditLimit}g/visit.");
+            Logger.Info($"[{ModId}] config: maxLoan {DebtLoanConfig.MaxLoan}g, loans through act {DebtLoanConfig.MaxLoanActIndex + 1}, shop credit {DebtLoanConfig.ShopCreditLimit}g/visit, garnish cap {DebtLoanConfig.GarnishMaxPct}%.");
         }
         catch (Exception e) { Logger.Warn($"[{ModId}] config registration failed: {e.Message}"); }
     }
