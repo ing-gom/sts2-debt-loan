@@ -27,7 +27,7 @@ public sealed class JobPlacementCard : CardModel, IUsesPaymentTally
     private static CardPoolModel? _pool;
     public override CardPoolModel Pool => _pool ??= ModelDb.CardPool<ColorlessCardPool>();
 
-    public int TallyCost => ReceiptCost;   // shows the 영수증 cost badge (2) — the "성실 납부" gate, same as 자본 타격
+    public int TallyCost => ReceiptCost;   // shows the 영수증 cost badge (1) — the "성실 납부" gate, same as 자본 타격
 
     public override int MaxUpgradeLevel => 1;   // 취업알선 vs 취업알선+ (feeds 품삯 vs 품삯+)
 
@@ -37,7 +37,7 @@ public sealed class JobPlacementCard : CardModel, IUsesPaymentTally
     public override string BetaPortraitPath => PortraitPath;
 
     private const int Fee = 20;          // placement fee added onto what you OWE when played (no gold gained)
-    private const int ReceiptCost = 2;   // 영수증 (Payment tally) required AND spent to play — the "성실 납부" gate
+    private const int ReceiptCost = 1;   // 영수증 (Payment tally) required AND spent to play — the "성실 납부" gate
     private const int DrawWages = 2;      // 품삯 shuffled into the DRAW pile (plus 1 handed straight to you)
 
     protected override IEnumerable<DynamicVar> CanonicalVars => new[] { new DynamicVar("fee", Fee) };

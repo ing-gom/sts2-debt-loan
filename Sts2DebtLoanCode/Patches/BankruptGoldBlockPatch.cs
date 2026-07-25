@@ -1,7 +1,9 @@
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Commands;                // PlayerCmd
 using MegaCrit.Sts2.Core.Entities.Players;        // Player
+using MegaCrit.Sts2.Core.Rewards;                 // Reward, GoldReward, RewardsSet
 
 namespace Sts2DebtLoan;
 
@@ -24,5 +26,21 @@ internal static class BankruptGoldBlockPatch
             return false;                    // skip the original GainGold
         }
         return true;
+    }
+}
+
+/// <summary>
+/// Also REMOVE the gold entry from the combat-victory rewards screen when bankrupt — otherwise a gold reward is
+/// still listed (it just adds nothing when collected, which looks broken). Postfix on
+/// <c>RewardsSet.GenerateRewardsFor</c> strips every <see cref="GoldReward"/> from the generated list for a
+/// bankrupt player, so the screen shows no gold at all. Deterministic per-player flag → co-op safe.
+/// </summary>
+[HarmonyPatch(typeof(RewardsSet), "GenerateRewardsFor")]
+internal static class BankruptRewardGoldRemovePatch
+{
+    private static void Postfix(Player player, List<Reward> __result)
+    {
+        if (__result == null || !LoanService.IsBankrupt(player)) return;
+        __result.RemoveAll(r => r is GoldReward);
     }
 }
