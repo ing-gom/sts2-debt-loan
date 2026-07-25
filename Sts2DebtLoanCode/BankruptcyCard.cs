@@ -13,11 +13,11 @@ using NativeDebt = MegaCrit.Sts2.Core.Models.Cards.Debt;   // the game's Unplaya
 namespace Sts2DebtLoan;
 
 /// <summary>
-/// 파산 선언 (Declare Bankruptcy) — a Skill. Exhaust EVERY 빚(native <see cref="NativeDebt"/>) card you're
-/// holding — permanently (gone from the run deck, not just this fight) — then, with nothing left to lose, gain
-/// [b]Strength[/b] equal to how many you wiped, and gain 파산 (Bankruptcy): you can't earn Gold for the rest of
-/// combat. Turns the debt clog the debt shop leaves you into an all-in aggression pivot — the more debt you
-/// piled up, the bigger the swing. Upgraded (파산 선언+): 0 energy. Colorless/Event; auto-registered.
+/// 파산 선언 (Declare Bankruptcy) — a Skill. EXHAUST every 빚(native <see cref="NativeDebt"/>) card you're
+/// holding THIS COMBAT (they return next fight — this is Exhaust, not deck removal), then, with nothing left to
+/// lose, gain [b]Strength[/b] equal to how many you exhausted, and gain 파산 (Bankruptcy): you can't earn Gold for
+/// the rest of combat. Turns the debt clog the debt shop leaves you into an all-in aggression pivot — the more debt
+/// you piled up, the bigger the swing. Upgraded (파산 선언+): 0 energy. Colorless/Event; auto-registered.
 /// </summary>
 public sealed class BankruptcyCard : CardModel
 {
@@ -45,8 +45,9 @@ public sealed class BankruptcyCard : CardModel
     {
         if (Owner?.Creature == null) return;
 
-        // Wipe every native Debt card in play (draw/hand/discard hold the deck's Debt during combat), counting them,
-        // then permanently from the run deck. Guarded so a pile hiccup can't abort the card before Bankruptcy applies.
+        // EXHAUST every native Debt card in play THIS COMBAT only (draw/hand/discard hold the deck's Debt during
+        // combat), counting them. We do NOT remove them from the run deck — the description says "Exhaust", so they
+        // return next combat. Guarded so a pile hiccup can't abort the card before Bankruptcy applies.
         int wiped = 0;
         try
         {
@@ -59,9 +60,6 @@ public sealed class BankruptcyCard : CardModel
                     foreach (var c in new List<CardModel>(pile.Cards))
                         if (c is NativeDebt) { await CardPileCmd.RemoveFromCombat(c); wiped++; }
                 }
-            if (Owner.Deck != null)
-                foreach (var c in new List<CardModel>(Owner.Deck.Cards))
-                    if (c is NativeDebt) await CardPileCmd.RemoveFromDeck(c);
         }
         catch (System.Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] bankruptcy debt-wipe failed: {e.Message}"); }
 
