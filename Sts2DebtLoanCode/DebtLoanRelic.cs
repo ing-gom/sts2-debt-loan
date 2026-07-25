@@ -119,7 +119,21 @@ public sealed class DebtLoanRelic : RelicModel
     // amortized down by payments), NOT the raw borrowed amount — this is what you'd pay at a shop right now.
     // RelicModel.DynamicDescription applies DynamicVars per-instance, so two players' Ledgers each show their own.
     protected override IEnumerable<DynamicVar> CanonicalVars =>
-        new[] { new DynamicVar("owed", _principal), new DynamicVar("paid", _totalPaid), new DynamicVar("cards", _cards) };
+        new[]
+        {
+            new DynamicVar("borrowed", _borrowed),   // raw amount borrowed (doesn't shrink)
+            new DynamicVar("ipct", InterestPct),     // total interest rate charged so far (origination + node)
+            new DynamicVar("igold", InterestGold),   // that interest in gold (= borrowed × ipct%)
+            new DynamicVar("owed", _principal),      // what you'd repay right now (borrowed + interest + card-buys − payments)
+            new DynamicVar("paid", _totalPaid),
+            new DynamicVar("cards", _cards),
+        };
+
+    /// <summary>Total interest rate charged on the borrowed amount so far = origination (charged at borrow) + the
+    /// node interest accrued per room. This is the "how much has interest grown" figure the hover surfaces.</summary>
+    private int InterestPct => DebtLoanConfig.BorrowOriginationPct + _interestPctApplied;
+    /// <summary>That interest expressed in gold (of the borrowed principal).</summary>
+    private int InterestGold => (int)System.Math.Round(_borrowed * (InterestPct / 100.0));
 
     /// <summary>Show a preview of the Debt curse cards (plus their keyword tips) in the relic's hover tooltip
     /// — the same mechanism vanilla Soot uses. The set MATCHES the live escalation tier, so hovering the
@@ -152,6 +166,9 @@ public sealed class DebtLoanRelic : RelicModel
         try
         {
             var vars = DynamicVars;
+            if (vars.TryGetValue("borrowed", out var bo)) bo.BaseValue = _borrowed;
+            if (vars.TryGetValue("ipct", out var ip)) ip.BaseValue = InterestPct;
+            if (vars.TryGetValue("igold", out var ig)) ig.BaseValue = InterestGold;
             if (vars.TryGetValue("owed", out var b)) b.BaseValue = _principal;   // remaining repayable (principal)
             if (vars.TryGetValue("paid", out var p)) p.BaseValue = _totalPaid;
             if (vars.TryGetValue("cards", out var c)) c.BaseValue = _cards;
