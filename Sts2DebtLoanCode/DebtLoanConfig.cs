@@ -32,9 +32,9 @@ internal static class DebtLoanConfig
 
     /// <summary>Per-shop-VISIT credit limit for buying cards on debt at the debt shop — SEPARATE from the initial
     /// loan's <see cref="HardCap"/>. Each shop visit gives a fresh line; card purchases that visit may total at most
-    /// this. Cards are 50–80 gold, so 150 ≈ 2 cards per shop — you can't sweep the whole 5-card offer. Resets on
+    /// this. Cards are 40–70 gold, so 100 ≈ 2 cards per shop — you can't sweep the whole 5-card offer. Resets on
     /// entering a new shop. Spec: 150.</summary>
-    internal static int ShopCreditLimit = 150;
+    internal static int ShopCreditLimit = 100;
 
 
     /// <summary>Share of every Debt-card payment that goes toward paying DOWN the principal (the rest is

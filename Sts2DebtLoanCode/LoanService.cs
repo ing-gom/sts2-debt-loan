@@ -450,19 +450,20 @@ internal static class LoanService
     /// <summary>Debt price of a purchasable card, by strength tier. owed is a SOFT cost (it only raises the repay
     /// total — not shop inflation, node interest, or curse tiers), so the real limiter is the per-visit reveal
     /// count × how many shops a run has; the price is the relative signal + a repay-build tax.</summary>
-    private const int PriceMin = 50, PriceMax = 80;   // shop price band (before sale)
+    private const int PriceMin = 40, PriceMax = 70;   // shop price band (before sale) — lowered from 50/80
 
-    /// <summary>Base tier price (centre of the band; the shown base is this ± variance, clamped to [50,80]).</summary>
+    /// <summary>Base tier price (centre of the band; the shown base is this ± variance, clamped to [40,70]).
+    /// Tiers lowered ~10 so card debt piles up more slowly (paired with the tighter per-shop credit limit).</summary>
     internal static int CardDebtPrice(System.Type t)
     {
-        if (t == typeof(InvoiceCard) || t == typeof(GarnishmentCard) || t == typeof(BankruptcyCard)) return 75;   // 고급: scaling attack / AoE / debt payoff
+        if (t == typeof(InvoiceCard) || t == typeof(GarnishmentCard) || t == typeof(BankruptcyCard)) return 65;   // 고급: scaling attack / AoE / debt payoff
         if (t == typeof(RefundCard) || t == typeof(CounterclaimCard)
             || t == typeof(StatementCard) || t == typeof(InterestSupportCard)
             || t == typeof(PaymentBenefitCard)
-            || t == typeof(CollectionCard)) return 70;   // 파워 엔진(영구 가치)
-        if (t == typeof(SettlementCard) || t == typeof(LoanStrikeCard) || t == typeof(MortgageCard)) return 65;   // 중급
-        if (t == typeof(BloodPaymentCard)) return 55;   // 기본: HP-payment utility
-        return 65;
+            || t == typeof(CollectionCard)) return 60;   // 파워 엔진(영구 가치)
+        if (t == typeof(SettlementCard) || t == typeof(LoanStrikeCard) || t == typeof(MortgageCard)) return 55;   // 중급
+        if (t == typeof(BloodPaymentCard)) return 45;   // 기본: HP-payment utility
+        return 55;
     }
 
     /// <summary>The pre-sale shown price: tier base ± a deterministic variance (−10..+10 in 5s), clamped to the
