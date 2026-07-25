@@ -19,9 +19,10 @@ namespace Sts2DebtLoan;
 /// Unlike a plain unplayable curse, it gives the player AGENCY, with NO passive drain:
 ///   • It is ETHEREAL — if you leave it in hand it simply exhausts at end of turn, costing nothing.
 ///     There is no automatic collection any more (the old end-of-turn 10-gold drain was removed).
-///   • You may PLAY it (energy cost 1) to pay UP TO 20 gold (whatever you have), split 50/50 principal/interest —
-///     VOLUNTARY repayment, and it's gone (Exhaust). No gold gate: even broke you can play it to bank a 영수증
-///     (receipt) and run the payment engine; you just retire no principal that turn.
+///   • You may PLAY it (energy cost 1). If you can afford the full 20 gold it pays that (all-or-nothing — never a
+///     partial drain), split 50/50 principal/interest; if you can't, it pays 0. Either way it plays and banks a
+///     영수증 (receipt) — paying the full amount banks a 2nd. No gold gate: even broke you run the payment engine,
+///     you just retire no principal that turn. It's gone after (Exhaust).
 ///     While the 독촉장 (Dunning Letter) power is active, playing it also grants Plating (판금) — the power is
 ///     what makes dumping your debt cards worthwhile (a defensive/repayment engine, no offense).
 /// The UPGRADED form (빚 독촉+, fed by the 독촉장+ power) is identical but 0-energy. Auto-registered;
@@ -89,7 +90,9 @@ public sealed class DebtCurseCard : CardModel
     protected override async Task OnPlay(PlayerChoiceContext choiceContext, CardPlay cardPlay)
     {
         if (Owner?.Creature == null) return;
-        int drain = Mathf.Min(PlayCost, (int)Owner.Gold);   // pay what you can — may be 0 when broke
+        // All-or-nothing: pay the FULL cost if you can afford it, otherwise pay 0 (no partial drain). Either way the
+        // card still plays and banks the base 영수증; paying the full amount grants the bonus receipt below.
+        int drain = (int)Owner.Gold >= PlayCost ? PlayCost : 0;
         if (drain > 0) await PlayerCmd.LoseGold(drain, Owner);
         // Payment: 50/50 split + counter + fire the payment-reactive powers (납부 혜택 → Plating, 환급 → card…).
         // RecordPayment banks a 영수증 and fires the reactive powers EVEN at drain 0 (engine runs on energy); it just
