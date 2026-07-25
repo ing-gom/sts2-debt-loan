@@ -11,6 +11,7 @@ using MegaCrit.Sts2.Core.HoverTips;            // HoverTip, IHoverTip, HoverTipA
 using MegaCrit.Sts2.Core.Models;               // CardModel, ModelDb
 using MegaCrit.Sts2.Core.Nodes.Cards;          // NCard
 using MegaCrit.Sts2.Core.Nodes.HoverTips;      // NHoverTipSet
+using System.Reflection;                        // read the shop's native back button rect
 using MegaCrit.Sts2.Core.Nodes.Screens.Shops;  // NMerchantInventory
 
 namespace Sts2DebtLoan;
@@ -39,26 +40,44 @@ internal sealed partial class NDebtCardShopPanel : Control
 
     private static NDebtCardShopPanel? _open;
 
+    private static readonly Color PriceGreen = new(0.42f, 0.86f, 0.38f);   // debt price number (green; red when over credit)
+
     private NMerchantInventory _shop = null!;
     private Player _player = null!;
     private MegaLabel? _labelTemplate;
     private Control _grid = null!;
     private readonly List<Action> _refreshers = new();
-    private CanvasLayer _layer = null!;
     private Vector2 _screen;
     private bool _closing;
     private Control? _shopContainer;   // the merchant's own rug container — panned left so the shop "extends" sideways
     private float _shopOrigX;
+    private Node2D? _handSprite;       // the merchant hand's VISUAL node (NMerchantHand's Node2D parent) — z-lifted above us
+    private int _handOrigZ;            // its ZIndex before we raised it (restored on close)
 
     public static void Show(NMerchantInventory shop, Player player)
     {
         if (Engine.GetMainLoop() is not SceneTree tree) return;
         _open?.Close();   // never two at once
         var panel = new NDebtCardShopPanel { _shop = shop, _player = player };
-        var layer = new CanvasLayer { Layer = 128 };
-        panel._layer = layer;
-        layer.AddChild(panel);
-        tree.Root.AddChild(layer);
+        // Add into the SHOP's OWN parent — the SAME 2D context/depth as the merchant rug — NOT a separate CanvasLayer.
+        // A CanvasLayer renders ABOVE the default 2D canvas regardless of its layer index, so ANY CanvasLayer put the
+        // whole panel over everything (settings menu, tooltips, buy fly-in). The shop has no CanvasLayer (it's default
+        // 2D), so we sit as its SIBLING → the shop's higher-layer overlays draw over us normally.
+        var host = shop.GetParent() ?? tree.Root;
+        host.AddChild(panel);
+
+        // Lift the merchant's hand ABOVE this panel so it stays visible while pointing at offers. The hand belongs to
+        // the shop (below us — we're the shop's later sibling), so the rug covered it. NMerchantHand is a non-visual
+        // Node; the actual hand GRAPHIC is its Node2D PARENT (it does `new MegaSprite(GetParent<Node2D>())`), so we
+        // raise THAT node's ZIndex above our panel (default z 0) — reparenting the Node would break its _parent/_rug
+        // caches. Restored on close.
+        if (shop.MerchantHand is Node handNode && GodotObject.IsInstanceValid(handNode)
+            && handNode.GetParent() is Node2D handSprite && GodotObject.IsInstanceValid(handSprite))
+        {
+            panel._handSprite = handSprite;
+            panel._handOrigZ = handSprite.ZIndex;
+            handSprite.ZIndex = 4000;   // above the debt panel/board (ZIndex max is 4096)
+        }
         _open = panel;
     }
 
@@ -69,10 +88,7 @@ internal sealed partial class NDebtCardShopPanel : Control
         if (Engine.GetMainLoop() is not SceneTree tree) return;
         _open?.Close();
         var panel = new NDebtCardShopPanel { _player = player };   // _shop left null → font from scene tree
-        var layer = new CanvasLayer { Layer = 128 };
-        panel._layer = layer;
-        layer.AddChild(panel);
-        tree.Root.AddChild(layer);
+        tree.Root.AddChild(panel);
         _open = panel;
     }
 
@@ -100,7 +116,7 @@ internal sealed partial class NDebtCardShopPanel : Control
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
             StretchMode = TextureRect.StretchModeEnum.KeepAspectCovered,
             ClipContents = false,
-            MouseFilter = MouseFilterEnum.Stop,
+            MouseFilter = MouseFilterEnum.Ignore,   // board is VISUAL only now; a separate blocker eats clicks (below)
         };
         Rect2 rug = _shopContainer != null && _shopContainer.GetGlobalRect().Size.X > 100f
                     ? _shopContainer.GetGlobalRect()
@@ -110,6 +126,30 @@ internal sealed partial class NDebtCardShopPanel : Control
         board.SetAnchorsAndOffsetsPreset(LayoutPreset.TopLeft);
         board.Size = rug.Size;
         board.Position = rug.Position;
+
+        // Input blocker: swallow clicks on the rug so the shop BEHIND isn't mis-clicked — but ONLY below the top
+        // HUD line, so relic/gold/potion hovers up top still work while the shop is open (issue 8: the rug used to
+        // eat them). Added BEFORE the board, so the board's card buttons (added after → above in the tree) still win
+        // their clicks; this blocker only catches the empty rug area under the HUD. The board itself is Ignore now,
+        // so back/repay/grid (its children) keep their exact positions and their own Stop hitboxes.
+        const float hudBottom = 100f;
+        float blockTop = Math.Max(rug.Position.Y, hudBottom);
+        // Keep the blocker BELOW the merchant's native back button so it stays clickable (the native back now closes
+        // the debt shop — see ShopBackClosesDebtShopPatch). Without this the blocker ate clicks on the inner part of
+        // that button (only its far-left edge, outside the rug, worked).
+        if (_shop != null)
+        {
+            var bbF = typeof(NMerchantInventory).GetField("_backButton", BindingFlags.NonPublic | BindingFlags.Instance);
+            if (bbF?.GetValue(_shop) is Control bb && GodotObject.IsInstanceValid(bb))
+                blockTop = Math.Max(blockTop, bb.GetGlobalRect().End.Y + 12f);
+        }
+        var blocker = new Control
+        {
+            MouseFilter = MouseFilterEnum.Stop,
+            Position = new Vector2(rug.Position.X, blockTop),
+            Size = new Vector2(rug.Size.X, Math.Max(0f, rug.Size.Y - (blockTop - rug.Position.Y))),
+        };
+        AddChild(blocker);
         AddChild(board);
 
         // Grid metrics: PerRow columns across the width; the card row(s) are VERTICALLY CENTERED in the band between
@@ -127,45 +167,21 @@ internal sealed partial class NDebtCardShopPanel : Control
         float band = _bh - topArea - bottomArea;                   // vertical space available for the card block
         _gridTop = topArea + MathF.Max(0f, (band - rowCount * cellH) / 2f);   // center the block in that band
 
-        // No title text — the merchant (back) icon + the card grid carry the screen.
         // Offers sit directly on the rug in a shop-style grid (no scroll — the grid holds the whole pool).
-        _grid = new Control();
+        // ★ MouseFilter.Ignore: the grid spans the WHOLE rug, so if it kept the Control default (Stop) it would
+        // eat every click over the rug — including the shop's native back button (only the button's far-left edge,
+        // outside the rug, still worked). Ignore lets clicks pass through the grid to its own buy buttons (Stop) and,
+        // where there's no button, on through to the back button / blocker beneath.
+        _grid = new Control { MouseFilter = MouseFilterEnum.Ignore };
         _grid.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         board.AddChild(_grid);
 
         BuildOffers();
+        BuildCreditHeader(board);
 
-        // MERCHANT icon in the TOP-LEFT CORNER — click it to scroll back to the shop (reads as "return to the
-        // merchant"). No caption. Falls back to a ◀ text button if the merchant texture can't be loaded.
-        const float backSize = 88f;
-        var merchantTex = LoadMerchantIcon();
-        Control back;
-        if (merchantTex != null)
-        {
-            back = new TextureButton
-            {
-                TextureNormal = merchantTex,
-                IgnoreTextureSize = true,
-                StretchMode = TextureButton.StretchModeEnum.KeepAspectCentered,
-                CustomMinimumSize = new Vector2(backSize, backSize),
-                Size = new Vector2(backSize, backSize),
-            };
-            ((TextureButton)back).Pressed += SlideOutAndClose;
-        }
-        else
-        {
-            var b = new Button { Text = "◀", Flat = false };
-            if (_labelTemplate?.GetThemeDefaultFont() is Font f) b.AddThemeFontOverride("font", f);
-            b.AddThemeFontSizeOverride("font_size", 40);
-            b.Size = new Vector2(backSize, backSize);
-            b.Pressed += SlideOutAndClose;
-            back = b;
-        }
-        back.Position = new Vector2(126f, 60f);   // higher + deeper inside the rug body
-        back.PivotOffset = new Vector2(backSize / 2f, backSize / 2f);
-        back.MouseEntered += () => HoverScale(back, 1.18f);   // slight grow on hover (like the entry button)
-        back.MouseExited += () => HoverScale(back, 1f);
-        board.AddChild(back);
+        // NO custom back icon: the merchant's OWN native back button now closes the debt shop (see
+        // ShopBackClosesDebtShopPatch — it hooks NMerchantInventory.Close so the native back returns you to the shop
+        // instead of leaving the room while the debt shop is open). Esc also closes (see _UnhandledKeyInput).
 
         // 원금 상환 (repay loan) — MOVED here from the main merchant shop, so settling the loan lives in the same
         // 빚 상점 where you take cards on debt.
@@ -182,14 +198,21 @@ internal sealed partial class NDebtCardShopPanel : Control
     /// <summary>Scroll back: the loan canvas slides out to the right and the merchant's rug pans back into place.</summary>
     private void SlideOutAndClose()
     {
-        if (_closing) return;
+        if (_closing) { RestoreHand(); QueueFree(); return; }   // a 2nd press force-closes (never get stuck open)
         _closing = true;
         if (_open == this) _open = null;   // stop _Process refreshers from re-touching freed nodes late
-        var tw = CreateTween().SetParallel(true);
-        tw.TweenProperty(this, "position:x", _screen.X, 0.34).SetEase(Tween.EaseType.InOut).SetTrans(Tween.TransitionType.Sine);
+        RestoreHand();                     // give the merchant's hand back to the shop before we slide/free
+        // Restore the merchant rug now (not in a chained callback) so the shop is back in place regardless.
         if (_shopContainer != null && GodotObject.IsInstanceValid(_shopContainer))
-            tw.TweenProperty(_shopContainer, "position:x", _shopOrigX, 0.34).SetEase(Tween.EaseType.InOut).SetTrans(Tween.TransitionType.Sine);
-        tw.Chain().TweenCallback(Callable.From(() => _layer?.QueueFree()));
+        {
+            var twShop = CreateTween();
+            twShop.TweenProperty(_shopContainer, "position:x", _shopOrigX, 0.34).SetEase(Tween.EaseType.InOut).SetTrans(Tween.TransitionType.Sine);
+        }
+        // Slide the loan canvas out, then free THIS panel on the tween's Finished signal (more reliable than a
+        // Chain().TweenCallback after SetParallel, which could skip the free and leave the panel stuck open).
+        var tw = CreateTween();
+        tw.TweenProperty(this, "position:x", _screen.X, 0.34).SetEase(Tween.EaseType.InOut).SetTrans(Tween.TransitionType.Sine);
+        tw.Finished += QueueFree;
     }
 
     private void BuildOffers()
@@ -235,12 +258,13 @@ internal sealed partial class NDebtCardShopPanel : Control
         // card the struck-through original just extends to the RIGHT — it never shifts the coin.
         costTag.Position = new Vector2(cx - 42f, cardCy + 124f);
         _grid.AddChild(costTag);
+        Control? saleTag = null;
         if (isSale)
         {
             var tagTex = LoadSaleTag();
             if (tagTex != null)
             {
-                var tag = new TextureRect
+                saleTag = new TextureRect
                 {
                     Texture = tagTex,
                     ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
@@ -248,7 +272,7 @@ internal sealed partial class NDebtCardShopPanel : Control
                     Size = new Vector2(60f, 60f),
                     Position = new Vector2(cx + 44f, cardCy - 150f),   // card top-right corner
                 };
-                _grid.AddChild(tag);
+                _grid.AddChild(saleTag);
             }
         }
 
@@ -257,27 +281,61 @@ internal sealed partial class NDebtCardShopPanel : Control
         var soldLabel = MakeLabel(ui.Sold, 30, StsColors.red);
         if (soldLabel != null) { soldLabel.Position = new Vector2(cx - 36f, cardCy - 16f); soldLabel.Visible = false; _grid.AddChild(soldLabel); }
 
+        // "한도 초과" overlay label (hidden unless this offer's price exceeds the remaining per-visit credit).
+        var overLabel = MakeLabel(ui.OverLimit, 26, StsColors.red);
+        if (overLabel != null) { overLabel.Position = new Vector2(cx - 58f, cardCy - 14f); overLabel.Visible = false; _grid.AddChild(overLabel); }
+
         // Click hitbox over the card — also ENLARGES the card on hover (like previewing a card in the shop). The
         // hitbox is a bit larger than the enlarged card so hovering its edge doesn't flip-flop.
         var theCard = card;
-        var buy = new Button { Flat = true, Text = "" };
+        var theTag = costTag;
+        var theSold = (Control?)soldLabel;
+        var theOver = (Control?)overLabel;
+        var theSale = saleTag;
+        var center = new Vector2(cx, cardCy);
+        var tagPos = costTag.Position;                       // grid-local origin of the price tag
+        var soldPos = soldLabel != null ? soldLabel.Position : center;
+        var overPos = overLabel != null ? overLabel.Position : center;
+        var salePos = saleTag != null ? saleTag.Position : center;
+        // FocusMode None = no white focus/click outline on the button.
+        var buy = new Button { Flat = true, Text = "", FocusMode = FocusModeEnum.None };
         buy.Position = new Vector2(cx - 104f, cardCy - 145f);
         buy.Size = new Vector2(208f, 300f);
         buy.Pressed += () => OnBuy(type);
-        buy.MouseEntered += () => HoverCard(theCard, CardScale * 1.16f, 5);
-        buy.MouseExited += () => HoverCard(theCard, CardScale, 0);
+        // Hover enlarges the card AND its price tag + 품절/한도 초과 labels + sale mark together (all raised in ZIndex
+        // so nothing is hidden behind the enlarged card — fixes overlay text vanishing / price + tags staying put).
+        buy.MouseEntered += () =>
+        {
+            HoverOffer(theCard, theTag, theSold, theOver, theSale, center, tagPos, soldPos, overPos, salePos, true);
+            _shop?.MerchantHand?.PointAtTarget(buy, Vector2.Zero);   // the merchant's hand points at the hovered offer (shop feel)
+        };
+        buy.MouseExited += () =>
+        {
+            HoverOffer(theCard, theTag, theSold, theOver, theSale, center, tagPos, soldPos, overPos, salePos, false);
+            _shop?.MerchantHand?.StopPointing(0.15f);
+        };
         _grid.AddChild(buy);
 
-        // Local refresher: grey out + show 품절 + disable once bought.
+        // Local refresher: grey out + show 품절 once bought, or dim + show 한도 초과 when this shop's credit line
+        // can't cover the price, and disable the buy in either case.
         void Refresh()
         {
             var r = LoanService.For(_player);
             bool sold = r == null || r.PurchasedCards.Contains(type.Name);
             bool active = r != null && r.Active;
-            buy.Disabled = sold || !active;
-            if (card != null) card.Modulate = sold ? new Color(0.45f, 0.45f, 0.45f) : Colors.White;
+            bool overCredit = !sold && active && r != null && !LoanService.CanAffordCredit(r, type);
+            buy.Disabled = sold || !active || overCredit;
+            if (card != null)
+                card.Modulate = sold ? new Color(0.45f, 0.45f, 0.45f)
+                              : overCredit ? new Color(0.62f, 0.58f, 0.52f)   // dimmed = unaffordable on this visit's credit
+                              : Colors.White;
             costTag.Visible = !sold;
             if (soldLabel != null) soldLabel.Visible = sold;
+            if (overLabel != null) overLabel.Visible = overCredit;
+            // Price number turns RED when it's over this visit's remaining credit (unbuyable here), else stays green.
+            // font_color override (not SelfModulate — that would multiply the green and muddy it).
+            if (costTag.GetNodeOrNull<MegaLabel>("priceNum") is { } priceNum)
+                priceNum.AddThemeColorOverride("font_color", overCredit ? StsColors.red : PriceGreen);
         }
         _refreshers.Add(Refresh);
         Refresh();
@@ -309,14 +367,33 @@ internal sealed partial class NDebtCardShopPanel : Control
     private void Close()
     {
         if (_open == this) _open = null;
+        RestoreHand();
         // Restore the merchant rug to where the game left it (instant close path, e.g. leaving the room in a test).
         if (_shopContainer != null && GodotObject.IsInstanceValid(_shopContainer))
             _shopContainer.Position = new Vector2(_shopOrigX, _shopContainer.Position.Y);
-        _layer?.QueueFree();
+        QueueFree();
+    }
+
+    /// <summary>Restore the merchant hand's original ZIndex — we raised it in Show so it drew above this panel.</summary>
+    private void RestoreHand()
+    {
+        if (_handSprite != null && GodotObject.IsInstanceValid(_handSprite))
+            _handSprite.ZIndex = _handOrigZ;
+        _handSprite = null;
     }
 
     /// <summary>Close whatever panel is open (solo-verify uses this before leaving the shop room).</summary>
     internal static void CloseOpen() => _open?.Close();
+
+    /// <summary>If the debt shop is open, slide it closed and return true (the caller should then NOT proceed with
+    /// its own action). Used by ShopBackClosesDebtShopPatch so the merchant's native back button returns you to the
+    /// shop (closing the debt panel) instead of leaving the room. Returns false when no debt panel is open.</summary>
+    internal static bool SlideCloseIfOpen()
+    {
+        if (_open == null) return false;
+        _open.SlideOutAndClose();
+        return true;
+    }
 
     public override void _UnhandledKeyInput(InputEvent ev)
     {
@@ -368,10 +445,12 @@ internal sealed partial class NDebtCardShopPanel : Control
             };
             root.AddChild(icon);
         }
-        // GREEN price = the amount charged (goes onto your debt), size-matched to the coin.
-        var num = MakeLabel(price.ToString(), 34, new Color(0.42f, 0.86f, 0.38f));
+        // GREEN price = the amount charged (goes onto your debt), size-matched to the coin. Named so the offer's
+        // Refresh can recolour it RED when the price is over the remaining per-visit credit (unaffordable here).
+        var num = MakeLabel(price.ToString(), 34, PriceGreen);
         if (num != null)
         {
+            num.Name = "priceNum";
             num.VerticalAlignment = VerticalAlignment.Center;
             num.Size = new Vector2(60f, coinSize);
             num.Position = new Vector2(coinSize + 8f, 0f);
@@ -408,20 +487,63 @@ internal sealed partial class NDebtCardShopPanel : Control
                      .SetEase(Tween.EaseType.Out).SetTrans(Tween.TransitionType.Back);
     }
 
-    /// <summary>Enlarge (or restore) an offer card on hover — a shop-style card preview. Raises its ZIndex so it
-    /// pops above its neighbours while enlarged.</summary>
-    private void HoverCard(NCard? card, float scale, int z)
+    /// <summary>Enlarge (or restore) an offer on hover — the card AND its price tag + 품절 label together, all
+    /// raised in ZIndex so nothing is hidden behind the enlarged card. Shop-style card preview.</summary>
+    private void HoverOffer(NCard? card, Control? tag, Control? sold, Control? over, Control? sale, Vector2 center, Vector2 tagPos, Vector2 soldPos, Vector2 overPos, Vector2 salePos, bool on)
     {
-        if (card == null || !GodotObject.IsInstanceValid(card)) return;
-        card.ZIndex = z;
-        CreateTween().TweenProperty(card, "scale", new Vector2(scale, scale), 0.10)
-                     .SetEase(Tween.EaseType.Out).SetTrans(Tween.TransitionType.Back);
+        float f = on ? 1.16f : 1f;
+        int z = on ? 5 : 0;
+        if (card != null && GodotObject.IsInstanceValid(card))
+        {
+            card.ZIndex = z;
+            CreateTween().TweenProperty(card, "scale", new Vector2(CardScale * f, CardScale * f), 0.10)
+                         .SetEase(Tween.EaseType.Out).SetTrans(Tween.TransitionType.Back);
+        }
+        ScaleAround(tag, center, tagPos, f, z);
+        ScaleAround(sold, center, soldPos, f, z);
+        ScaleAround(over, center, overPos, f, z);
+        ScaleAround(sale, center, salePos, f, z);
+    }
+
+    /// <summary>Scale a Control by <paramref name="f"/> about <paramref name="center"/> (its grid-local origin is
+    /// <paramref name="orig"/>) and raise its ZIndex, so it grows in step with the hovered card.</summary>
+    private static void ScaleAround(Control? node, Vector2 center, Vector2 orig, float f, int z)
+    {
+        if (node == null || !GodotObject.IsInstanceValid(node)) return;
+        node.ZIndex = z;
+        node.Scale = new Vector2(f, f);
+        node.Position = center + (orig - center) * f;
     }
 
     /// <summary>The "원금 상환" (repay loan) control — MOVED here from the main merchant shop so settling the loan
     /// lives in the same 빚 상점 where you take cards on debt. Bottom-center action row: caption + ledger icon +
     /// the outstanding principal as a real GOLD price (cream if affordable, red if not — distinct from the
     /// debt-green offer prices). Click → <see cref="LoanService.Repay"/>. Hidden while there's no active loan.</summary>
+    /// <summary>Top-center header showing this shop's remaining / limit debt-shop credit line, so the player can see
+    /// how much more they may borrow on cards HERE before the offers grey out. Refreshes as they buy.</summary>
+    private void BuildCreditHeader(Control board)
+    {
+        var ui = DebtLoanLoc.DebtShopUiFor(MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng");
+        var label = MakeLabel("", 34, StsColors.cream);
+        if (label == null) return;
+        label.HorizontalAlignment = HorizontalAlignment.Center;
+        label.VerticalAlignment = VerticalAlignment.Center;
+        label.Size = new Vector2(420f, 48f);
+        label.Position = new Vector2(_bw / 2f - 210f, 58f);   // top-center, under the HUD line
+        board.AddChild(label);
+
+        void Refresh()
+        {
+            var r = LoanService.For(_player);
+            int remaining = r != null ? LoanService.RemainingShopCredit(r) : DebtLoanConfig.ShopCreditLimit;
+            label.Text = string.Format(ui.Credit, remaining, DebtLoanConfig.ShopCreditLimit);
+            // Warn-tint when the line is used up (nothing more can be bought here this visit).
+            label.SelfModulate = remaining <= 0 ? StsColors.red : StsColors.cream;
+        }
+        _refreshers.Add(Refresh);
+        Refresh();
+    }
+
     private void BuildRepayControl(Control board)
     {
         const float iconSize = 92f;   // enlarged repay button (was 60) — the primary action on this screen
@@ -486,8 +608,9 @@ internal sealed partial class NDebtCardShopPanel : Control
             bool usable = hasLoan && (int)_player.Gold >= cost;
             string body = !hasLoan ? ui.NoLoan : usable ? string.Format(ui.PayBack, cost) : string.Format(ui.NotEnough, cost);
             NHoverTipSet.CreateAndShow(icon, MakeRepayTip(ui.Title, body), HoverTipAlignment.Left);
+            _shop?.MerchantHand?.PointAtTarget(icon, Vector2.Zero);   // merchant points at the repay action too
         };
-        icon.MouseExited += () => { HoverScale(icon, 1f); NHoverTipSet.Remove(icon); };
+        icon.MouseExited += () => { HoverScale(icon, 1f); NHoverTipSet.Remove(icon); _shop?.MerchantHand?.StopPointing(0.15f); };
         icon.Pressed += () => TaskHelper.RunSafely(RepayFlow());
 
         void Refresh()

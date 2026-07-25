@@ -307,7 +307,12 @@ internal static class SoloTest
                 await Shot("3b_shop_buttons");                       // real shop: 외상 구매 button (원금 상환은 빚 상점 패널로 이동)
                 if (shopNode != null)
                 {
+                    // [diag] the shop's own CanvasLayer depth vs the debt-shop panel's — they should MATCH now, so
+                    // tooltips/menus/fly-in (higher layers) draw over the panel instead of being hidden (issue: depth).
+                    int shopCl = -999; for (Node? n = shopNode; n != null; n = n.GetParent()) if (n is CanvasLayer cl) { shopCl = cl.Layer; break; }
                     NDebtCardShopPanel.Show(shopNode, player);
+                    int panelCl = -999; if (Engine.GetMainLoop() is SceneTree pst) { var p = FindNode<NDebtCardShopPanel>(pst.Root); for (Node? n = p; n != null; n = n.GetParent()) if (n is CanvasLayer cl) { panelCl = cl.Layer; break; } }
+                    W($"  [diag] canvas depth: shop={shopCl} debtPanel={panelCl} (should match)");
                     await Shot("3c0_slidein");                       // MID-slide: loan canvas scrolling in from the right (Shot's own ~120ms lands mid-tween)
                     await Task.Delay(1000);
                     await Shot("3c_shop_panel");                     // the debt-card screen fully opened FROM the real shop
@@ -565,6 +570,30 @@ internal static class SoloTest
                     W("  rendered 독촉장 NCard (frame-color check)");
                     nCard.QueueFree();
                 }
+
+                // N2) NEW dedicated card art — render 대납/추심/집행 side by side so we can eyeball that the
+                //     new portraits load (no "?" fallback). These three shipped placeholder art until now.
+                if (Engine.GetMainLoop() is SceneTree t3)
+                {
+                    var gallery = new List<NCard>();
+                    int gx = 320;
+                    foreach (var t in new[] { typeof(BailoutCard), typeof(CollectionCard), typeof(ShakedownCard) })
+                    {
+                        var gm = ModelDb.GetByIdOrNull<CardModel>(ModelDb.GetId(t));
+                        if (gm == null) { W($"  [newart] {t.Name}: NOT REGISTERED"); continue; }
+                        var gc = NCard.Create(player.RunState.CreateCard(gm, player));
+                        if (gc == null) continue;
+                        t3.Root.AddChild(gc);
+                        gc.Position = new Vector2(gx, 300);
+                        gc.Scale = new Vector2(1.5f, 1.5f);
+                        gallery.Add(gc);
+                        gx += 430;
+                    }
+                    await Task.Delay(500);
+                    await Shot("9_newart");
+                    W($"  rendered {gallery.Count} new-art cards (대납/추심/집행 portraits)");
+                    foreach (var gc in gallery) gc.QueueFree();
+                }
             }
             catch (Exception e) { W("  card render failed: " + e.Message); }
 
@@ -687,9 +716,9 @@ internal static class SoloTest
                 await Task.Delay(150);
                 int blkGain = player.Creature.Block - blk0;
                 int stackAfterSettle = LoanService.PaymentsThisCombat(player);                    // consumed → 0
-                int expSettle = (pays + 1) * 4;   // base 4 + 4 per 납부 실적
+                int expSettle = pays * 4;   // pure X-cost: 4 × 영수증 (no base)
                 bool tP2 = settlePlayed && blkGain == expSettle && stackAfterSettle == 0;
-                W($"  assert settlement scale+consume: blockGain={blkGain} (exp ({pays}+1)×4={expSettle}) tallyAfter={stackAfterSettle}(=0) -> {tP2}");
+                W($"  assert settlement scale+consume: blockGain={blkGain} (exp {pays}×4={expSettle}) tallyAfter={stackAfterSettle}(=0) -> {tP2}");
 
                 // 청구서 (Invoice): settlement just spent the tally, so REBUILD it (pay ×3), then Invoice deals
                 // damage × 납부 실적 and CONSUMES it too (stack → 0).
@@ -947,6 +976,17 @@ internal static class SoloTest
                     int debtAfter = countDebt(player);
                     int strAfter = (int)(player.Creature!.GetPower<MegaCrit.Sts2.Core.Models.Powers.StrengthPower>()?.Amount ?? 0);
                     bool bankPow = player.Creature!.GetPower<BankruptcyPower>() != null;
+                    // [hover] verify the 파산 power's tooltip loc resolves to real text (not a raw key / empty) — the
+                    // reported "no power tooltip" issue. If this prints the localized sentence, the loc is injected fine.
+                    var bp = player.Creature!.GetPower<BankruptcyPower>();
+                    if (bp != null)
+                    {
+                        string bpTitle = "", bpDesc = ""; bool bpEx = false;
+                        try { bpEx = bp.Description.Exists(); } catch { }
+                        try { bpTitle = bp.Title.GetFormattedText(); } catch { }
+                        try { bpDesc = bp.Description.GetFormattedText(); } catch { }
+                        W($"  [hover] Bankruptcy power: exists={bpEx} title='{bpTitle}' desc='{bpDesc}'");
+                    }
                     int goldBefore = (int)player.Gold;
                     await PlayerCmd.GainGold(50, player, false);   // bankrupt → blocked (BankruptcyPower.ModifyGoldGained → 0)
                     await Task.Delay(100);
@@ -957,9 +997,120 @@ internal static class SoloTest
                     all &= tBank;
                     await Shot("12_bankruptcy");
                     if (bankPow) await PowerCmd.Remove<BankruptcyPower>(player.Creature!);
+                    // POST-COMBAT sim: the power is gone (removed above), but the 파산 FLAG must still block reward
+                    // gold via BankruptGoldBlockPatch. Then clear the flag so later tests' GainGold setups still work.
+                    int gpPost = (int)player.Gold;
+                    await PlayerCmd.GainGold(50, player, false);
+                    await Task.Delay(80);
+                    bool postBlock = (int)player.Gold == gpPost;
+                    W($"  assert bankruptcy post-combat gold: {gpPost}->{(int)player.Gold} blocked={postBlock}(flag, power gone) -> {postBlock}");
+                    all &= postBlock;
+                    await LoanService.ResetPaymentsThisCombat(player);   // clear 파산 flag (next-fight reset) so later tests can gain gold
                 }
             }
             catch (Exception e) { W("  bankruptcy section failed: " + e); all = false; }
+
+            // 연체 (Delinquency) DAMAGE MEASURE: drive the enemy's REAL attack path (DamageCmd.FromMonster → the same
+            // ModifyDamage pipeline a real enemy turn uses) at the player, once WITHOUT the 연체 card in hand and once
+            // WITH it. If the card's ModifyDamageMultiplicative(×1.5) actually fires, withCurse == baseline×1.5.
+            // Diagnosis via decompile: RunState.IterateHookListeners only walks player.Deck.Cards, so a COMBAT-injected
+            // card is never a damage-hook listener → we EXPECT withCurse == baseline (no boost). This proves it live.
+            Step("delinquency damage measure (연체 실측)");
+            try
+            {
+                if (Engine.GetMainLoop() is SceneTree)
+                {
+                    await RunManager.Instance.EnterRoomDebug(RoomType.Monster);
+                    await Task.Delay(4000);
+                    var dcc = new MegaCrit.Sts2.Core.GameActions.Multiplayer.BlockingPlayerChoiceContext();
+                    var dstate = player.Creature?.CombatState;
+                    var foe = dstate?.Enemies?.FirstOrDefault(e => e != null && e.IsAlive && e.Monster != null);
+                    if (foe?.Monster != null && player.Creature != null)
+                    {
+                        // Fresh combat → Block 0, HP full. baseline: enemy hits player for 10, no 연체 in hand.
+                        int hpA = player.Creature.CurrentHp;
+                        await MegaCrit.Sts2.Core.Commands.DamageCmd.Attack(10m).FromMonster(foe.Monster).Execute(dcc);
+                        await Task.Delay(200);
+                        int baseline = hpA - player.Creature.CurrentHp;
+                        // Inject 연체 and simulate it being DRAWN into hand (InvokeDrawn = the draw event that fires
+                        // ApplyVulnerableOnDraw). It must apply native Vulnerable, so the SAME enemy attack now hits ×1.5.
+                        // Inject 연체 and simulate it being DRAWN (InvokeDrawn = the on-draw path the Harmony patch
+                        // hooks). It must apply native Vulnerable via the clone-safe patch, so the SAME enemy attack ×1.5.
+                        var del = dstate!.CreateCard<DelinquencyCard>(player) as DelinquencyCard;
+                        if (del != null)
+                        {
+                            await CardPileCmd.AddGeneratedCardsToCombat(new List<CardModel> { del }, PileType.Hand, player, CardPilePosition.Random);
+                            await Task.Delay(120);
+                            del.InvokeDrawn();          // ← drawn into hand → DelinquencyDrawPatch applies Vulnerable 1
+                            await Task.Delay(250);
+                        }
+                        int vuln = (int)(player.Creature.GetPower<MegaCrit.Sts2.Core.Models.Powers.VulnerablePower>()?.Amount ?? 0);
+                        int hpB = player.Creature.CurrentHp;
+                        await MegaCrit.Sts2.Core.Commands.DamageCmd.Attack(10m).FromMonster(foe.Monster).Execute(dcc);
+                        await Task.Delay(200);
+                        int withCurse = hpB - player.Creature.CurrentHp;
+                        bool tDel = baseline == 10 && withCurse == 15 && vuln >= 1;   // Vulnerable applied ON DRAW → ×1.5 on the real attack
+                        W($"  assert delinquency→vulnerable(on draw): baseline={baseline}(=10) vulnStacks={vuln}(>=1) withCurse={withCurse}(=15,×1.5) -> {tDel}");
+                        all &= tDel;
+                    }
+                    else W("  delinquency measure: no live monster with a model — skipped");
+                }
+            }
+            catch (Exception e) { W("  delinquency measure failed: " + e.Message); }
+
+            // 성실 납부 (Diligent Payment) MEASURE: block == the number of 납부 (DebtCurseCard) CARDS played-and-
+            // exhausted this combat (NOT every payment path). Give 환급, actually PLAY 3 납부 cards (each 20 gold →
+            // exhausts + 환급 hands a 성실 납부), then play one 성실 납부 and read Block (expect == exhausted count 3).
+            Step("diligent payment measure (성실납부 실측)");
+            try
+            {
+                if (Engine.GetMainLoop() is SceneTree)
+                {
+                    if (!(MegaCrit.Sts2.Core.Combat.CombatManager.Instance?.IsInProgress ?? false))
+                    {
+                        await RunManager.Instance.EnterRoomDebug(RoomType.Monster);
+                        await Task.Delay(4000);
+                    }
+                    var rcc = new MegaCrit.Sts2.Core.GameActions.Multiplayer.BlockingPlayerChoiceContext();
+                    var rstate = player.Creature?.CombatState;
+                    if (rstate != null && player.Creature != null)
+                    {
+                        await LoanService.ResetPaymentsThisCombat(player);
+                        if ((int)player.Gold < 80) await PlayerCmd.GainGold(80 - (int)player.Gold, player, false);   // fund 3× 20-gold plays
+                        if (LoanService.For(player) is null || !(LoanService.For(player)?.Active ?? false)) await LoanService.GrantLoanDirect(player, 200);
+                        await PowerCmd.Apply<RefundPower>(rcc, player.Creature, 1, player.Creature, null);   // 환급 → hands 성실 납부 per payment
+                        await Task.Delay(120);
+                        bool refundPow = player.Creature.GetPower<RefundPower>() != null;
+                        int dpBefore = PileType.Hand.GetPile(player)?.Cards.Count(c => c is DiligentPaymentCard) ?? 0;
+                        // PLAY 3 real 납부 cards (each exhausts → RecordExhaustedPaymentCard + 환급 hands a 성실 납부)
+                        for (int i = 0; i < 3; i++)
+                        {
+                            var pay = rstate.CreateCard<DebtCurseCard>(player);
+                            await CardPileCmd.AddGeneratedCardsToCombat(new List<CardModel> { pay }, PileType.Hand, player, CardPilePosition.Top);
+                            await Task.Delay(80);
+                            try { await CardCmd.AutoPlay(rcc, pay, null); } catch (Exception e) { W("  납부 play failed: " + e.Message); }
+                            await Task.Delay(120);
+                        }
+                        int exhausted = LoanService.PaymentCountThisCombat(player);                     // exhausted 납부 cards = 3
+                        int dpAfter = PileType.Hand.GetPile(player)?.Cards.Count(c => c is DiligentPaymentCard) ?? 0;
+                        int dpHanded = dpAfter - dpBefore;                                             // 환급 handed 3 성실 납부
+                        // play ONE 성실 납부 and read the Block it grants (== exhausted count)
+                        int blk0 = player.Creature.Block;
+                        var dp = PileType.Hand.GetPile(player)?.Cards.FirstOrDefault(c => c is DiligentPaymentCard) as CardModel;
+                        int blkGain = -1;
+                        if (dp != null)
+                        {
+                            try { await CardCmd.AutoPlay(rcc, dp, null); } catch (Exception e) { W("  diligent play failed: " + e.Message); }
+                            await Task.Delay(150);
+                            blkGain = player.Creature.Block - blk0;
+                        }
+                        bool tDil = refundPow && exhausted == 3 && dpHanded >= 3 && blkGain == exhausted && dp != null;
+                        W($"  assert diligent payment: refundPow={refundPow} exhaustedPaymentCards={exhausted}(=3) cardsHanded={dpHanded}(>=3) blockGained={blkGain}(={exhausted}) played={dp != null} -> {tDil}");
+                        all &= tDil;
+                    }
+                }
+            }
+            catch (Exception e) { W("  diligent payment measure failed: " + e.Message); }
 
             // Q) FRAME HUE SWEEP (item 6): render the 독촉장 NCard at a range of slate-lavender hues so the frame
             //    colour can be compared and the best h picked. Only the frame material's h changes per shot; the

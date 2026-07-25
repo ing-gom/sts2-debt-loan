@@ -81,6 +81,12 @@ public sealed class DebtLoanRelic : RelicModel
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public int LastShopVisitFloor { get => _lastShopVisitFloor; set { AssertMutable(); _lastShopVisitFloor = value; } }
 
+    private int _shopSpentThisVisit;
+    /// <summary>Gold of debt spent on cards at the debt shop THIS visit (per-visit credit line). Persisted so a
+    /// reload mid-shop keeps the spent total; reset on entering a new shop.</summary>
+    [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
+    public int ShopSpentThisVisit { get => _shopSpentThisVisit; set { AssertMutable(); _shopSpentThisVisit = value; } }
+
     private string _purchasedCardsCsv = "";
     /// <summary>CSV of non-power card type-names BOUGHT on debt at the shop this loan (so it shows them sold-out and
     /// won't re-sell). Persisted; cleared on repay.</summary>
@@ -124,11 +130,11 @@ public sealed class DebtLoanRelic : RelicModel
     {
         get
         {
-            // Live tier 1..4 (0 only when Owner/RunState isn't wired yet — fall through to the base card so
-            // the preview is never empty).
+            // Live tier 1..4. The hover previews ONLY the DEBT CURSES this ledger injects into combat — 연체(2) /
+            // 차압(3) / 신용 불량(4). The 납부 (DebtCurseCard) is NOT shown: it's the voluntary repay card fed by the
+            // 정기 납부 power, not something the ledger injects, so previewing it here was misleading (user request).
             int tier = CurrentTier;
             var tips = new List<IHoverTip>();
-            tips.AddRange(HoverTipFactory.FromCardWithCardHoverTips<DebtCurseCard>());
             if (tier >= 2) tips.AddRange(HoverTipFactory.FromCardWithCardHoverTips<DelinquencyCard>());
             if (tier >= 3) tips.AddRange(HoverTipFactory.FromCardWithCardHoverTips<SeizureCard>());
             if (tier >= 4) tips.AddRange(HoverTipFactory.FromCardWithCardHoverTips<BadCreditCard>());
@@ -201,15 +207,18 @@ internal static class DebtLoanGrants
     }
 
     /// <summary>Add a debt event card to the deck by canonical type (품삯 / 납부 혜택 / 환급 / 정산 / 청구서 /
-    /// 혈납), with the fly-in animation. Same deck-pile path as the 독촉장 grant.</summary>
-    internal static async Task GrantCard(Player player, System.Type cardType)
+    /// 혈납). <paramref name="preview"/> plays the fly-in animation; pass false when granting from the debt-shop
+    /// panel (its CanvasLayer sits ABOVE the fly-in, so the animation would render hidden under the rug — the buy is
+    /// fed back by the offer greying to 품절 instead).</summary>
+    internal static async Task GrantCard(Player player, System.Type cardType, bool preview = true)
     {
         try
         {
             var model = ModelDb.GetByIdOrNull<CardModel>(ModelDb.GetId(cardType));
             if (model == null) { MainFile.Logger.Warn($"[{MainFile.ModId}] card model not found: {cardType.Name}."); return; }
             var card = player.RunState.CreateCard(model, player);
-            CardCmd.PreviewCardPileAdd(await CardPileCmd.Add(card, PileType.Deck));
+            var results = await CardPileCmd.Add(card, PileType.Deck);
+            if (preview) CardCmd.PreviewCardPileAdd(results);
             MainFile.Logger.Info($"[{MainFile.ModId}] granted {cardType.Name} to the deck.");
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] card grant failed ({cardType.Name}): {e.Message}"); }

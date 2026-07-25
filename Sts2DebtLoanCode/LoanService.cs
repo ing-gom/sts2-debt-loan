@@ -67,6 +67,11 @@ internal sealed class LoanRecord
     /// double-counting the same shop on re-entry/reload. Persisted.</summary>
     internal int LastShopVisitFloor = -1;
 
+    /// <summary>Gold of debt taken on CARD PURCHASES at the debt shop THIS visit. Gated against
+    /// <see cref="DebtLoanConfig.ShopCreditLimit"/> so you can't sweep the whole offer; resets when you enter a new
+    /// shop (see the visit-tracking in NoteShopVisit). Persisted so a reload mid-shop keeps the spent total.</summary>
+    internal int ShopSpentThisVisit;
+
     /// <summary>Type-names of the cards BOUGHT on debt at the shop this loan (so they drop out of the offer pool and
     /// show sold if still displayed). Persisted as a CSV on the relic. Cleared on repay/reset.</summary>
     internal readonly HashSet<string> PurchasedCards = new();
@@ -217,6 +222,7 @@ internal static class LoanService
             relic.LifetimePayments = rec.LifetimePayments;
             relic.DebtShopVisits = rec.DebtShopVisits;
             relic.LastShopVisitFloor = rec.LastShopVisitFloor;
+            relic.ShopSpentThisVisit = rec.ShopSpentThisVisit;
             relic.PurchasedCardsCsv = string.Join(",", rec.PurchasedCards);
             relic.RefreshVars(DebtCardCountFor(player));   // borrowed/paid/cards into the relic's own DynamicVars (per-relic hover)
         }
@@ -246,6 +252,7 @@ internal static class LoanService
         rec.LifetimePayments = relic.LifetimePayments;
         rec.DebtShopVisits = relic.DebtShopVisits;
         rec.LastShopVisitFloor = relic.LastShopVisitFloor;
+        rec.ShopSpentThisVisit = relic.ShopSpentThisVisit;
         rec.PurchasedCards.Clear();
         foreach (var s in (relic.PurchasedCardsCsv ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)) rec.PurchasedCards.Add(s);
         rec.RelicGranted = true;
@@ -503,6 +510,16 @@ internal static class LoanService
     internal static bool IsPurchasable(LoanRecord rec, System.Type t)
         => rec.Active && !rec.PurchasedCards.Contains(t.Name) && System.Array.IndexOf(RevealedPurchasable(rec), t) >= 0;
 
+    /// <summary>Gold of debt-shop credit still available THIS visit (limit minus what's already been spent on cards
+    /// this visit). Separate from the initial loan's HardCap. Never negative.</summary>
+    internal static int RemainingShopCredit(LoanRecord rec)
+        => System.Math.Max(0, DebtLoanConfig.ShopCreditLimit - rec.ShopSpentThisVisit);
+
+    /// <summary>Can this offer be bought right now given the per-visit credit line? (Its price fits the remaining
+    /// credit.) The panel greys offers that fail this, and BuyCardOnDebt refuses them.</summary>
+    internal static bool CanAffordCredit(LoanRecord rec, System.Type t)
+        => ShopPriceFor(rec, t) <= RemainingShopCredit(rec);
+
     /// <summary>Buy a revealed non-power card on debt: adds its price onto what you owe and drops the card into the
     /// deck (like every other debt card — removed on full repay). Marks it sold so the shop won't re-sell it.
     /// internal so the self-test can invoke it directly (what clicking a shop offer does).</summary>
@@ -510,6 +527,7 @@ internal static class LoanService
     {
         var rec = For(player);
         if (rec == null || !IsPurchasable(rec, type)) return false;
+        if (!CanAffordCredit(rec, type)) return false;   // over this shop's credit line → refuse (panel already greys it)
         int price = ShopPriceFor(rec, type);          // the shown price (tier ± variance, sale applied)
 
         // Only the shopper's OWN peer initiates the buy (the panel is local to the player who opened it). Then:
@@ -539,8 +557,9 @@ internal static class LoanService
         if (type == null) { MainFile.Logger.Warn($"[{MainFile.ModId}] dl_sync buy: unknown card '{typeName}'."); return; }
 
         rec.Principal += price;                                 // owed goes up; no gold gained (bought on credit)
+        rec.ShopSpentThisVisit += price;                        // count against this shop's per-visit credit line
         rec.PurchasedCards.Add(typeName);
-        await DebtLoanGrants.GrantCard(player, type);
+        await DebtLoanGrants.GrantCard(player, type);   // fly-in shows again now the panel sits at the shop's layer depth
         // Every debt-shop VISIT leaves a native Debt curse in your deck — the price of leaning on the credit line.
         // Once per floor (= per shop visit), no matter how many cards you buy that visit; swept on repay. Runs in the
         // same per-peer networked buy replay as the card grant, and reads shared floor state → co-op consistent.
@@ -621,6 +640,7 @@ internal static class LoanService
         if (floor == rec.LoanFloor || floor == rec.LastShopVisitFloor) return;
         rec.LastShopVisitFloor = floor;
         rec.DebtShopVisits++;
+        rec.ShopSpentThisVisit = 0;   // fresh credit line at each new shop (see DebtLoanConfig.ShopCreditLimit)
         SyncToRelic(player);
     }
 
@@ -745,9 +765,20 @@ internal static class LoanService
     /// each combat by <see cref="ResetPaymentsThisCombat"/>. Deterministic (payments are lockstep) → co-op safe.</summary>
     private static readonly ConditionalWeakTable<Player, int[]> _paymentCount = new();
 
-    /// <summary>How many 납부 (Payment) have been made this combat (monotonic, not spent). Read by 성실 납부.</summary>
+    /// <summary>How many 납부 (DebtCurseCard) cards have been PLAYED-and-exhausted this combat. 성실 납부 (Diligent
+    /// Payment) scales its Block off this — one Block per Payment card you actually spent (bailouts/other RecordPayment
+    /// paths do NOT count; only a real 납부 card leaving via play). Monotonic, never consumed; reset each combat by
+    /// <see cref="ResetPaymentsThisCombat"/>. Bumped by <see cref="RecordExhaustedPaymentCard"/> from DebtCurseCard.OnPlay.
+    /// Deterministic (card plays are lockstep) → co-op safe.</summary>
     internal static int PaymentCountThisCombat(Player? p)
         => p != null && _paymentCount.TryGetValue(p, out var a) ? a[0] : 0;
+
+    /// <summary>Count one 납부 (DebtCurseCard) card played-and-exhausted this combat (drives 성실 납부's Block).
+    /// Called from DebtCurseCard.OnPlay so ONLY spent Payment cards count — not bailouts or other payment paths.</summary>
+    internal static void RecordExhaustedPaymentCard(Player? p)
+    {
+        if (p != null) _paymentCount.GetValue(p, _ => new int[1])[0]++;
+    }
 
     /// <summary>Fired whenever a player's 영수증 changes → the HUD counter re-renders. (player, newValue).</summary>
     internal static event Action<Player, int>? TallyChanged;
@@ -779,11 +810,23 @@ internal static class LoanService
         return Task.CompletedTask;
     }
 
+    // ── 파산 (Bankruptcy) — blocks ALL gold gain (in-combat AND the post-combat reward) until the next fight ──────
+    private static readonly ConditionalWeakTable<Player, bool[]> _bankrupt = new();
+
+    /// <summary>True while 파산 선언 (Declare Bankruptcy) has locked this player out of gold. The power's in-combat
+    /// ModifyGoldGained covers the fight; this flag is what BankruptGoldBlockPatch reads to ALSO block the
+    /// post-combat reward gold (the power is gone by then). Cleared at the next combat start (below).</summary>
+    internal static bool IsBankrupt(Player? p) => p != null && _bankrupt.TryGetValue(p, out var a) && a[0];
+
+    /// <summary>Set by 파산 선언 on play — no gold this fight, including the victory reward, until the next combat.</summary>
+    internal static void SetBankrupt(Player? p) { if (p != null) _bankrupt.GetValue(p, _ => new bool[1])[0] = true; }
+
     /// <summary>Clear the tally at combat start (fresh each fight).</summary>
     internal static Task ResetPaymentsThisCombat(Player p)
     {
         SetTally(p, 0);
         if (_paymentCount.TryGetValue(p, out var a)) a[0] = 0;   // reset the monotonic 납부 count too
+        if (_bankrupt.TryGetValue(p, out var bk)) bk[0] = false;  // 파산 clears at the next fight (reward of the PAST fight was already blocked)
         return Task.CompletedTask;
     }
 
@@ -800,7 +843,8 @@ internal static class LoanService
         await AccrueInterest(player, amount, principalShareOverride: 1.0);   // 100% to principal (interest = the surcharge)
         if (player?.Creature == null) return;
         SetTally(player, PaymentsThisCombat(player) + 1);   // 영수증 +1 → HUD counter updates
-        _paymentCount.GetValue(player, _ => new int[1])[0]++;   // monotonic 납부 count (never spent) — 성실 납부 block scales off this
+        // NOTE: 성실 납부's block counter (_paymentCount) is NOT bumped here — it counts only 납부 CARDS actually
+        // played-and-exhausted (RecordExhaustedPaymentCard from DebtCurseCard.OnPlay), not every payment path.
         if (rec0 != null && rec0.Active) { rec0.LifetimePayments++; SyncToRelic(player); }   // milestone counter (combat cards)
         var benefit = player.Creature.GetPower<PaymentBenefitPower>();
         if (benefit != null) await benefit.OnPayment(cc, player);

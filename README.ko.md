@@ -1,4 +1,4 @@
-# Sts2DebtLoan — 상점 대출 (Merchant Loans)
+# The Red Ledger (붉은 장부)
 
 [English](README.md) · **한국어** · [中文](README.zh.md)
 

@@ -24,6 +24,12 @@ internal static class DebtLoanConfig
     /// <summary>Absolute hard cap on lifetime borrowing = soft cap + over-cap allowance.</summary>
     internal static int HardCap => MaxLoan + OverCapAllowance;
 
+    /// <summary>Per-shop-VISIT credit limit for buying cards on debt at the debt shop — SEPARATE from the initial
+    /// loan's <see cref="HardCap"/>. Each shop visit gives a fresh line; card purchases that visit may total at most
+    /// this. Cards are 50–80 gold, so 150 ≈ 2 cards per shop — you can't sweep the whole 5-card offer. Resets on
+    /// entering a new shop. Spec: 150.</summary>
+    internal static int ShopCreditLimit = 150;
+
 
     /// <summary>Share of every Debt-card payment that goes toward paying DOWN the principal (the rest is
     /// interest). At 0.2, a 10-gold drain retires 2 gold of the loan and 8 counts as interest — so the debt

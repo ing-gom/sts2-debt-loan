@@ -1,4 +1,4 @@
-# Sts2DebtLoan — 商人借贷 (Merchant Loans)
+# The Red Ledger (红色账簿)
 
 [English](README.md) · [한국어](README.ko.md) · **中文**
 

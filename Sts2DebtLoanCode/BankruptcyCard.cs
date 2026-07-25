@@ -3,6 +3,8 @@ using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Commands;                    // CardPileCmd, PowerCmd
 using MegaCrit.Sts2.Core.Entities.Cards;              // CardType, CardRarity, TargetType, CardKeyword, PileType, CardPlay
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;     // PlayerChoiceContext
+using MegaCrit.Sts2.Core.HoverTips;                   // HoverTip, IHoverTip
+using MegaCrit.Sts2.Core.Localization;                // LocString
 using MegaCrit.Sts2.Core.Models;                      // CardModel, CardPoolModel, ModelDb
 using MegaCrit.Sts2.Core.Models.CardPools;            // ColorlessCardPool
 using MegaCrit.Sts2.Core.Models.Powers;               // StrengthPower
@@ -28,6 +30,14 @@ public sealed class BankruptcyCard : CardModel
     public override string BetaPortraitPath => PortraitPath;
 
     public override IEnumerable<CardKeyword> CanonicalKeywords => new[] { CardKeyword.Exhaust };
+
+    // Hover: explain the 파산 (Bankruptcy) power this card grants — its tooltip wasn't shown at all without this
+    // (the card had no ExtraHoverTips). Reads the same "powers" loc the power icon's tooltip uses.
+    protected override IEnumerable<IHoverTip> ExtraHoverTips => new IHoverTip[]
+    {
+        new HoverTip(new LocString("powers", "BANKRUPTCY_POWER.title"),
+                     new LocString("powers", "BANKRUPTCY_POWER.description")),
+    };
 
     public BankruptcyCard() : base(canonicalEnergyCost: 1, CardType.Skill, CardRarity.Event, TargetType.None) { }
 
@@ -55,10 +65,13 @@ public sealed class BankruptcyCard : CardModel
         }
         catch (System.Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] bankruptcy debt-wipe failed: {e.Message}"); }
 
-        // Nothing left to lose: Strength = how many Debt you wiped. Then default → no Gold income this combat.
+        // Nothing left to lose: Strength = how many Debt you wiped.
         if (wiped > 0)
             await PowerCmd.Apply<StrengthPower>(choiceContext, Owner.Creature, wiped, Owner.Creature, null);
+        // 파산: no gold this combat (power's ModifyGoldGained) AND no post-combat reward gold (the flag, read by
+        // BankruptGoldBlockPatch — the power is gone once combat ends). Cleared at the next fight's start.
         await PowerCmd.Apply<BankruptcyPower>(choiceContext, Owner.Creature, 1, Owner.Creature, null);
+        LoanService.SetBankrupt(Owner);
     }
 
     protected override void OnUpgrade()

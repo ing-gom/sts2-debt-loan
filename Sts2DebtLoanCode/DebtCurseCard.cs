@@ -28,10 +28,10 @@ namespace Sts2DebtLoan;
 /// </summary>
 public sealed class DebtCurseCard : CardModel
 {
-    private static CardPoolModel? _cursePool;
-    // Belongs to no pool → CardModel.Pool would hit the MockCardPool fallback ("You monster!"); borrow the
-    // shared curse pool, cached. (Same fix as before, needed here too for the card preview/EnergyIcon path.)
-    public override CardPoolModel Pool => _cursePool ??= ModelDb.CardPool<CurseCardPool>();
+    private static CardPoolModel? _pool;
+    // 납부 (Payment) is NOT a curse — it's the voluntary repay card the 정기 납부 power feeds you (like 성실 납부).
+    // Colorless pool so it isn't classed/collected as a Curse and doesn't hit the MockCardPool "You monster!" getter.
+    public override CardPoolModel Pool => _pool ??= ModelDb.CardPool<ColorlessCardPool>();
 
     public override int MaxUpgradeLevel => 1;   // base vs '+' (over-cap) form
 
@@ -59,7 +59,7 @@ public sealed class DebtCurseCard : CardModel
         new HoverTip(new LocString("relics", "DEBT_PAYMENT.title"), new LocString("relics", "DEBT_PAYMENT.description")),
     };
 
-    public DebtCurseCard() : base(canonicalEnergyCost: 1, CardType.Curse, CardRarity.Curse, TargetType.None) { }
+    public DebtCurseCard() : base(canonicalEnergyCost: 1, CardType.Skill, CardRarity.Event, TargetType.None) { }
 
     /// <summary>Gold gate: you can't play it unless you can actually pay the play cost (energy alone isn't
     /// enough). Grayed out when broke (BlockedByCardLogic), like Grand Finale's draw-pile check.</summary>
@@ -92,6 +92,10 @@ public sealed class DebtCurseCard : CardModel
         // Payment: 50/50 split + counter + fire the payment-reactive powers (납부 혜택 → Plating, 환급 → card…).
         // The 판금 reward no longer lives here — it moved to the 납부 혜택 power (fired via RecordPayment).
         await LoanService.RecordPayment(Owner, choiceContext, drain);
+        // This 납부 card is being played (Exhaust removes it) → count it for 성실 납부's block (soul: block per
+        // Payment card you actually spent). Bump AFTER RecordPayment so a 성실 납부 handed out this same play (환급)
+        // already reflects it. Bailouts/other payment paths don't call this → they don't inflate 성실 납부.
+        LoanService.RecordExhaustedPaymentCard(Owner);
     }
 
     /// <summary>빚 독촉+ (the upgraded form the 독촉장+ power injects): drop to 0 energy (vanilla cost-reduction

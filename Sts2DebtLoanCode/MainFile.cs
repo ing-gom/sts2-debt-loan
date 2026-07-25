@@ -19,6 +19,7 @@ public class MainFile
 
     private const string KeyMaxLoan = "maxLoan";
     private const string KeyMaxAct = "maxLoanAct";
+    private const string KeyShopCredit = "shopCreditLimit";
 
     private static readonly string[] ActOptions = { "Act 1", "Act 2", "Act 3" };
     private static int ActIndexOf(string s) => s switch { "Act 2" => 1, "Act 3" => 2, _ => 0 };
@@ -54,7 +55,7 @@ public class MainFile
     {
         try
         {
-            var b = ModConfigBridge.For(ModId, "Merchant Loans", Logger);
+            var b = ModConfigBridge.For(ModId, "The Red Ledger", Logger);
 
             b.Slider(KeyMaxLoan, "Max loan (gold)", defaultValue: 300.0,
                     onChanged: v => DebtLoanConfig.MaxLoan = (int)v)
@@ -67,12 +68,19 @@ public class MainFile
                 .Description("The furthest act where the merchant will extend credit. 'Act 2' allows loans in Acts 1–2, 'Act 3' in Acts 1–3.");
             Loc(b, "대출 허용 막", "상인이 대출해주는 최대 막. 'Act 2' = 1~2막, 'Act 3' = 1~3막에서 대출 가능. 기본값 'Act 1' = 1막에서만.");
 
+            b.Slider(KeyShopCredit, "Debt-shop credit per visit (gold)", defaultValue: 150.0,
+                    onChanged: v => DebtLoanConfig.ShopCreditLimit = (int)v)
+                .Range(50f, 400f, 25f, format: "F0")
+                .Description("The most debt you may take on CARD purchases at the debt shop per shop visit (cards cost 50–80). Resets each new shop. Separate from the loan cap above.");
+            Loc(b, "상점당 외상 한도 (골드)", "빚 상점에서 카드 구매로 한 상점 방문당 질 수 있는 빚 상한 (카드 50~80골드). 새 상점마다 초기화. 위 대출 한도와는 별개.");
+
             b.Register();
 
             DebtLoanConfig.MaxLoan = (int)ModConfigBridge.GetValue<double>(ModId, KeyMaxLoan, 300.0);
             DebtLoanConfig.MaxLoanActIndex = ActIndexOf(ModConfigBridge.GetValue<string>(ModId, KeyMaxAct, "Act 1"));
+            DebtLoanConfig.ShopCreditLimit = (int)ModConfigBridge.GetValue<double>(ModId, KeyShopCredit, 150.0);
 
-            Logger.Info($"[{ModId}] config: maxLoan {DebtLoanConfig.MaxLoan}g, loans through act {DebtLoanConfig.MaxLoanActIndex + 1}.");
+            Logger.Info($"[{ModId}] config: maxLoan {DebtLoanConfig.MaxLoan}g, loans through act {DebtLoanConfig.MaxLoanActIndex + 1}, shop credit {DebtLoanConfig.ShopCreditLimit}g/visit.");
         }
         catch (Exception e) { Logger.Warn($"[{ModId}] config registration failed: {e.Message}"); }
     }

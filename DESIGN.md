@@ -1,4 +1,4 @@
-# Sts2DebtLoan — 상점 대출 / Merchant Loans
+# The Red Ledger — Design (Sts2DebtLoan)
 
 상점에서 부족한 골드를 **대출**받아 아이템을 사고, 갚지 않으면 **빚(Debt) 저주 카드**가
 덱에 스며들어 이자를 뜯어가는 자매 모드. v0.1.0 골조.

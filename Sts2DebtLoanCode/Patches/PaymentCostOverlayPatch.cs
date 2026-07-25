@@ -75,7 +75,9 @@ internal static class PaymentCostOverlayPatch
             catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] tally badge icon load failed: {e.Message}"); }
         }
 
-        var badge = new Control { Name = BadgeName, MouseFilter = Control.MouseFilterEnum.Ignore, ZIndex = 5 };
+        // No ZIndex bump: the badge is a CHILD of the energy pip, so it already draws with it at the SAME depth
+        // (a +5 ZIndex lifted it above the pip's own layer, so it rendered on a different depth than the orb).
+        var badge = new Control { Name = BadgeName, MouseFilter = Control.MouseFilterEnum.Ignore };
 
         badge.AddChild(new TextureRect
         {
