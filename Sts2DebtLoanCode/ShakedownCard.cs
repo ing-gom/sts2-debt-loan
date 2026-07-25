@@ -25,8 +25,8 @@ public sealed class ShakedownCard : CardModel, IUsesPaymentTally
 
     public int TallyCost => 1;   // costs 1 영수증 (shown as a cost badge, like 가압류's 2)
 
-    // TODO(art): placeholder — reuses 자본 타격 art. Generate a dedicated 집행 sprite before release.
-    public override string PortraitPath => "res://Sts2DebtLoan/card_art/counterclaim.png";
+    // Dedicated 집행 art: a coin-knuckled gold gauntlet fist wreathed in a red vigor aura.
+    public override string PortraitPath => "res://Sts2DebtLoan/card_art/shakedown.png";
     public override string BetaPortraitPath => PortraitPath;
 
     public override IEnumerable<CardKeyword> CanonicalKeywords => new[] { CardKeyword.Exhaust };

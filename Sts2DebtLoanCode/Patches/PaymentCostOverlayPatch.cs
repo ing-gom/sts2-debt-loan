@@ -39,22 +39,35 @@ internal static class PaymentCostOverlayPatch
     {
         try
         {
-            var existing = __instance.GetNodeOrNull<Control>(BadgeName);
-            if (__instance.Model is not IUsesPaymentTally tally)
+            // The badge is parented to the ENERGY ICON (not the card), so it always tracks the energy pip's real
+            // position no matter the layout (hand / library / shop / reward) — no card-local math that goes stale.
+            var energy = EnergyIconF?.GetValue(__instance) as Control;
+            var existing = energy?.GetNodeOrNull<Control>(BadgeName)
+                           ?? __instance.GetNodeOrNull<Control>(BadgeName);   // also catch a legacy card-parented badge
+
+            if (__instance.Model is not IUsesPaymentTally tally || energy == null)
             {
-                existing?.QueueFree();     // pooled node reused by a non-tally card → strip our badge
+                existing?.QueueFree();     // pooled node reused by a non-tally card (or no energy pip) → strip our badge
                 return;
             }
 
+            // A pooled node can carry a badge left under the CARD by an older build — reparent by rebuilding cleanly.
+            if (existing != null && existing.GetParent() != energy) { existing.QueueFree(); existing = null; }
+
+            var badge = existing ?? BuildBadge(energy);
+            // ALWAYS re-place every Reload: pooled nodes + relayout mean the energy pip's size/anchor can differ per
+            // card, so a once-computed position drifts ("scattered"). Centre under the pip, in energy-local coords.
+            float ex = energy.Size.X > 0 ? energy.Size.X : Size;
+            float ey = energy.Size.Y > 0 ? energy.Size.Y : Size;
+            badge.Position = new Vector2((ex - Size) * 0.5f, ey - 6f);
+
             int cost = tally.TallyCost;
-            string text = cost < 0 ? "X" : cost.ToString();
-            var badge = existing ?? BuildBadge(__instance);
-            if (badge.GetNodeOrNull<Label>("txt") is { } label) label.Text = text;
+            if (badge.GetNodeOrNull<Label>("txt") is { } label) label.Text = cost < 0 ? "X" : cost.ToString();
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] tally badge skipped: {e.Message}"); }
     }
 
-    private static Control BuildBadge(NCard card)
+    private static Control BuildBadge(Control energyIcon)
     {
         if (_icon == null)
         {
@@ -63,11 +76,6 @@ internal static class PaymentCostOverlayPatch
         }
 
         var badge = new Control { Name = BadgeName, MouseFilter = Control.MouseFilterEnum.Ignore, ZIndex = 5 };
-
-        // sit just UNDER the energy pip (card-local coords: (0,0) = card centre). Fall back to a top-left slot.
-        Vector2 pos = new Vector2(-104f, -78f);
-        if (EnergyIconF?.GetValue(card) is Control energy) pos = energy.Position + new Vector2(0f, 74f);
-        badge.Position = pos;
 
         badge.AddChild(new TextureRect
         {
@@ -92,7 +100,7 @@ internal static class PaymentCostOverlayPatch
         txt.AddThemeConstantOverride("outline_size", 6);
         badge.AddChild(txt);
 
-        card.AddChild(badge);
+        energyIcon.AddChild(badge);   // parented to the pip → moves with it, survives relayout & node pooling
         return badge;
     }
 }

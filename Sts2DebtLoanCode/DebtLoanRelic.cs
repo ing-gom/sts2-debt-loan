@@ -215,6 +215,22 @@ internal static class DebtLoanGrants
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] card grant failed ({cardType.Name}): {e.Message}"); }
     }
 
+    /// <summary>Every debt-shop VISIT leaves ONE native Debt curse in the deck (the price of leaning on the credit
+    /// line) — dropped once per visit by <see cref="LoanService.ApplyBuyCard"/>. Uses the game's own Debt card, so
+    /// it Unplayable-clogs the deck and bleeds 10 gold/turn if held (compounding the debt). Swept on repay by
+    /// <see cref="RemoveAllDebtLoanCards"/>. Same deck-pile path as GrantCard.</summary>
+    internal static async Task GrantNativeDebt(Player player)
+    {
+        try
+        {
+            if (player?.RunState == null) return;
+            var card = player.RunState.CreateCard<MegaCrit.Sts2.Core.Models.Cards.Debt>(player);
+            if (card != null) CardCmd.PreviewCardPileAdd(await CardPileCmd.Add(card, PileType.Deck));
+            MainFile.Logger.Info($"[{MainFile.ModId}] debt-shop visit → +1 native Debt to the deck.");
+        }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] native Debt grant failed: {e.Message}"); }
+    }
+
     /// <summary>Reward for clearing a tier-3+ loan: add the 신용 회복 (Credit Restored) card PERMANENTLY to the
     /// deck (upgraded at tier 4). If this happens mid-combat, also drop a temporary copy into hand so it helps
     /// THIS fight too. The deck copy survives future debt-kit sweeps (it's exempt in RemoveAllDebtLoanCards).
@@ -262,8 +278,10 @@ internal static class DebtLoanGrants
             var own = typeof(DebtLoanGrants).Assembly;
             foreach (var card in new List<CardModel>(player.Deck.Cards))
                 // Sweep the whole debt kit — but NOT the 신용 회복 reward (a permanent keepsake; a later loan's
-                // repay must not strip a reward you already earned).
-                if (card.GetType().Assembly == own && card is not CreditRestoredCard) await CardPileCmd.RemoveFromDeck(card);
+                // repay must not strip a reward you already earned) — PLUS the native Debt curses the debt shop
+                // left in the deck (our consequence, cleared when the loan clears → clean slate).
+                if ((card.GetType().Assembly == own && card is not CreditRestoredCard)
+                    || card is MegaCrit.Sts2.Core.Models.Cards.Debt) await CardPileCmd.RemoveFromDeck(card);
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] DebtLoan card sweep failed: {e.Message}"); }
     }

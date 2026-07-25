@@ -34,7 +34,7 @@ public sealed class BailoutCard : CardModel
     /// <summary>Gold the caster pays out of pocket, knocked off the targeted ally's owed principal.</summary>
     public const int BailoutGold = 20;
 
-    public override string PortraitPath => "res://Sts2DebtLoan/card_art/diligent_payment.png";   // TODO: dedicated 대납 art
+    public override string PortraitPath => "res://Sts2DebtLoan/card_art/bailout.png";   // 대납: a winged gold coin — rescue arriving
     public override string BetaPortraitPath => PortraitPath;
 
     // Ethereal = vanishes if not used this turn (a fleeting chance to cover your ally); Exhaust = gone once played.

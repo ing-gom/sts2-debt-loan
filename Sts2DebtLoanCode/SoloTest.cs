@@ -192,15 +192,15 @@ internal static class SoloTest
             //    Check the exact boundaries incl. just-below (16→2, 21→3) to prove the thresholds.
             Step("debt-curse tier schedule (10/17/22)");
             int baseFloor = player.RunState.TotalFloor;
-            var recB = LoanService.For(player)!;
-            recB.LoanFloor = baseFloor;        int cnt0  = LoanService.DebtCardCountFor(player);   // rooms 0  → 1
-            recB.LoanFloor = baseFloor - 12;   int cnt12 = LoanService.DebtCardCountFor(player);   // rooms 12 → 1 (below 13)
-            recB.LoanFloor = baseFloor - 13;   int cnt13 = LoanService.DebtCardCountFor(player);   // rooms 13 → 2
-            recB.LoanFloor = baseFloor - 16;   int cnt16 = LoanService.DebtCardCountFor(player);   // rooms 16 → 2 (below 17)
-            recB.LoanFloor = baseFloor - 17;   int cnt17 = LoanService.DebtCardCountFor(player);   // rooms 17 → 3
-            recB.LoanFloor = baseFloor - 21;   int cnt21 = LoanService.DebtCardCountFor(player);   // rooms 21 → 3 (below 22)
-            recB.LoanFloor = baseFloor - 22;   int cnt22 = LoanService.DebtCardCountFor(player);   // rooms 22 → 4
-            recB.LoanFloor = baseFloor - 30;   int cnt30 = LoanService.DebtCardCountFor(player);   // rooms 30 → 4 (cap)
+            var recNd = LoanService.For(player)!;
+            recNd.LoanFloor = baseFloor;        int cnt0  = LoanService.DebtCardCountFor(player);   // rooms 0  → 1
+            recNd.LoanFloor = baseFloor - 12;   int cnt12 = LoanService.DebtCardCountFor(player);   // rooms 12 → 1 (below 13)
+            recNd.LoanFloor = baseFloor - 13;   int cnt13 = LoanService.DebtCardCountFor(player);   // rooms 13 → 2
+            recNd.LoanFloor = baseFloor - 16;   int cnt16 = LoanService.DebtCardCountFor(player);   // rooms 16 → 2 (below 17)
+            recNd.LoanFloor = baseFloor - 17;   int cnt17 = LoanService.DebtCardCountFor(player);   // rooms 17 → 3
+            recNd.LoanFloor = baseFloor - 21;   int cnt21 = LoanService.DebtCardCountFor(player);   // rooms 21 → 3 (below 22)
+            recNd.LoanFloor = baseFloor - 22;   int cnt22 = LoanService.DebtCardCountFor(player);   // rooms 22 → 4
+            recNd.LoanFloor = baseFloor - 30;   int cnt30 = LoanService.DebtCardCountFor(player);   // rooms 30 → 4 (cap)
             LoanService.SyncToRelic(player);         // persist LoanFloor=baseFloor-30 onto the relic for the C round-trip
             bool tB = cnt0 == 1 && cnt12 == 1 && cnt13 == 2 && cnt16 == 2 && cnt17 == 3 && cnt21 == 3 && cnt22 == 4 && cnt30 == 4;
             W($"  assert tier: r0={cnt0}(1) r12={cnt12}(1) r13={cnt13}(2) r16={cnt16}(2) r17={cnt17}(3) r21={cnt21}(3) r22={cnt22}(4) r30={cnt30}(4) -> {tB}");
@@ -841,6 +841,27 @@ internal static class SoloTest
                     W($"  assert debt-shop: offers v1/v2={offers1.Length}/{offers2.Length}(5/5) bought={bought} owed+{price}={owedUp} inDeck={inDeck} noRebuy={noRebuy} droppedBought={droppedBought} -> {tP7}");
                 }
 
+                // tP7b) DEBT-SHOP native-Debt penalty: every debt-shop VISIT (first buy) drops ONE native Debt into
+                //       the deck — once per visit no matter how many you buy; the whole lot is swept on repay.
+                bool tP7b;
+                {
+                    System.Func<int> deckDebt = () => PileType.Deck.GetPile(player)?.Cards?.Count(c => c is MegaCrit.Sts2.Core.Models.Cards.Debt) ?? 0;
+                    LoanService.ResetFor(player);
+                    await LoanService.GrantLoanDirect(player, 100);
+                    var recShop = LoanService.For(player)!;
+                    recShop.DebtShopVisits = 3;                                  // reveal all offers
+                    var off = LoanService.RevealedPurchasable(recShop);
+                    int d0 = deckDebt();
+                    await LoanService.BuyCardOnDebt(player, off[0]); await Task.Delay(80); int d1 = deckDebt();   // 1st buy → +1 Debt
+                    await LoanService.BuyCardOnDebt(player, off[1]); await Task.Delay(80); int d2 = deckDebt();   // same visit → no extra
+                    recShop.LastDebtGrantFloor = -999;                          // simulate a NEW shop visit
+                    await LoanService.BuyCardOnDebt(player, off[2]); await Task.Delay(80); int d3 = deckDebt();   // new visit → +1 Debt
+                    if ((int)player.Gold < recShop.Principal) await PlayerCmd.GainGold(recShop.Principal - (int)player.Gold, player, false);
+                    await LoanService.Repay(player); await Task.Delay(120); int d4 = deckDebt();                  // repay → all swept
+                    tP7b = d1 == d0 + 1 && d2 == d1 && d3 == d2 + 1 && d4 == 0;
+                    W($"  assert debt-shop native-Debt: buy1={d1}(={d0}+1) buy2/sameVisit={d2}(=buy1) buy3/newVisit={d3}(=+1) afterRepay={d4}(=0) -> {tP7b}");
+                }
+
                 // tP8) BORROW cards (대출 강타 / 저당): upgrade DROPS Exhaust (repeatable), base keeps it.
                 bool tP8;
                 {
@@ -856,7 +877,7 @@ internal static class SoloTest
                     W($"  assert borrow-upgrade: base Exhaust={baseHas} 대출강타+Exhaust={lsUpHas} 저당+Exhaust={mgUpHas} -> {tP8}");
                 }
 
-                bool tP = tP1 && tP2 && tP3 && tP4 && tP5 && tP7 && tP8;
+                bool tP = tP1 && tP2 && tP3 && tP4 && tP5 && tP7 && tP7b && tP8;
                 W($"  == payment-set mechanics: {(tP ? "PASS" : "FAIL")} ==");
                 all &= tP;
 
@@ -882,6 +903,63 @@ internal static class SoloTest
                 catch (Exception e) { W("  debt-shop panel render failed: " + e.Message); }
             }
             catch (Exception e) { W("  payment-set section failed: " + e); all = false; }
+
+            // 파산 선언 (Declare Bankruptcy) — in a FRESH live combat (the payment-set fight's enemy is dead by now,
+            // and powers/cards can't be applied once a combat is won): inject native Debt cards, then playing the card
+            // must exhaust them ALL, grant Strength = how many were wiped, and apply 파산 (blocks gold gain this combat).
+            Step("bankruptcy (파산 선언)");
+            try
+            {
+                if (Engine.GetMainLoop() is SceneTree)
+                {
+                    // Always enter a FRESH combat (like the payment-set step does): the prior fight's enemy is dead
+                    // but CombatManager can still read InProgress, and powers/cards no-op with no live enemy.
+                    await RunManager.Instance.EnterRoomDebug(RoomType.Monster);
+                    await Task.Delay(4000);
+                    var bcc = new MegaCrit.Sts2.Core.GameActions.Multiplayer.BlockingPlayerChoiceContext();
+                    var bstate = player.Creature?.CombatState;
+                    System.Func<Player, int> countDebt = p =>
+                    {
+                        int c = 0;
+                        foreach (var pt in new[] { PileType.Hand, PileType.Draw, PileType.Discard })
+                        {
+                            var pile = pt.GetPile(p);
+                            if (pile != null) foreach (var card in pile.Cards) if (card is MegaCrit.Sts2.Core.Models.Cards.Debt) c++;
+                        }
+                        return c;
+                    };
+                    if ((int)player.Gold < 50) await PlayerCmd.GainGold(50 - (int)player.Gold, player, false);
+
+                    const int debtN = 3;
+                    var injected = new List<CardModel>();
+                    for (int i = 0; i < debtN; i++)
+                        if (bstate!.CreateCard<MegaCrit.Sts2.Core.Models.Cards.Debt>(player) is CardModel d) injected.Add(d);
+                    if (injected.Count > 0)
+                        await CardPileCmd.AddGeneratedCardsToCombat(injected, PileType.Draw, player, CardPilePosition.Random);
+                    await Task.Delay(200);
+                    int debtBefore = countDebt(player);
+                    int strBefore = (int)(player.Creature!.GetPower<MegaCrit.Sts2.Core.Models.Powers.StrengthPower>()?.Amount ?? 0);
+
+                    var bank = bstate!.CreateCard<BankruptcyCard>(player);
+                    try { await CardCmd.AutoPlay(bcc, bank, null); } catch (Exception e) { W("  bankruptcy play failed: " + e.Message); }
+                    await Task.Delay(250);
+
+                    int debtAfter = countDebt(player);
+                    int strAfter = (int)(player.Creature!.GetPower<MegaCrit.Sts2.Core.Models.Powers.StrengthPower>()?.Amount ?? 0);
+                    bool bankPow = player.Creature!.GetPower<BankruptcyPower>() != null;
+                    int goldBefore = (int)player.Gold;
+                    await PlayerCmd.GainGold(50, player, false);   // bankrupt → blocked (BankruptcyPower.ModifyGoldGained → 0)
+                    await Task.Delay(100);
+                    bool goldBlocked = (int)player.Gold == goldBefore;
+
+                    bool tBank = debtBefore >= debtN && debtAfter == 0 && (strAfter - strBefore) == debtBefore && bankPow && goldBlocked;
+                    W($"  assert bankruptcy: debt {debtBefore}->{debtAfter}(=0) str+{strAfter - strBefore}(={debtBefore}) power={bankPow} goldBlock {goldBefore}->{(int)player.Gold}(blocked={goldBlocked}) -> {tBank}");
+                    all &= tBank;
+                    await Shot("12_bankruptcy");
+                    if (bankPow) await PowerCmd.Remove<BankruptcyPower>(player.Creature!);
+                }
+            }
+            catch (Exception e) { W("  bankruptcy section failed: " + e); all = false; }
 
             // Q) FRAME HUE SWEEP (item 6): render the 독촉장 NCard at a range of slate-lavender hues so the frame
             //    colour can be compared and the best h picked. Only the frame material's h changes per shot; the

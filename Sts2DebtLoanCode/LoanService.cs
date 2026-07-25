@@ -81,6 +81,12 @@ internal sealed class LoanRecord
     /// combat start (by the injector) and ratcheted up by BadCreditCard every turn it sits in hand. Not
     /// persisted (it's a within-combat spiral, and it's deterministic from lockstep turn starts).</summary>
     internal int CollectionLevel;
+
+    /// <summary>The last TotalFloor at which a debt-shop purchase dropped a native Debt curse into the deck — so
+    /// the "every visit leaves a Debt" grant fires only ONCE per shop visit (per floor), no matter how many cards
+    /// you buy that visit. Transient (a reload could re-grant on a re-buy in the same shop — a negligible edge);
+    /// set identically on both co-op peers off the networked buy replay.</summary>
+    internal int LastDebtGrantFloor = -1;
 }
 
 /// <summary>
@@ -431,7 +437,7 @@ internal static class LoanService
     /// <summary>Base tier price (centre of the band; the shown base is this ± variance, clamped to [50,80]).</summary>
     internal static int CardDebtPrice(System.Type t)
     {
-        if (t == typeof(InvoiceCard) || t == typeof(GarnishmentCard)) return 75;   // 고급: scaling attack / AoE
+        if (t == typeof(InvoiceCard) || t == typeof(GarnishmentCard) || t == typeof(BankruptcyCard)) return 75;   // 고급: scaling attack / AoE / debt payoff
         if (t == typeof(RefundCard) || t == typeof(CounterclaimCard)
             || t == typeof(StatementCard) || t == typeof(InterestSupportCard)
             || t == typeof(CollectionCard)) return 70;   // 파워 엔진(영구 가치)
@@ -535,6 +541,14 @@ internal static class LoanService
         rec.Principal += price;                                 // owed goes up; no gold gained (bought on credit)
         rec.PurchasedCards.Add(typeName);
         await DebtLoanGrants.GrantCard(player, type);
+        // Every debt-shop VISIT leaves a native Debt curse in your deck — the price of leaning on the credit line.
+        // Once per floor (= per shop visit), no matter how many cards you buy that visit; swept on repay. Runs in the
+        // same per-peer networked buy replay as the card grant, and reads shared floor state → co-op consistent.
+        if (player.RunState != null && rec.LastDebtGrantFloor != player.RunState.TotalFloor)
+        {
+            rec.LastDebtGrantFloor = player.RunState.TotalFloor;
+            await DebtLoanGrants.GrantNativeDebt(player);
+        }
         SyncToRelic(player);
         // No refresh event needed: NDebtCardShopPanel polls its refreshers every frame in _Process, so the sold
         // state greys out on the next frame once the (possibly deferred co-op replay) purchase lands here.
@@ -635,6 +649,7 @@ internal static class LoanService
         typeof(CollectionCard),                                                                             // 추심: 공격판 환급 (scaling attack gen)
         typeof(SettlementCard), typeof(InvoiceCard), typeof(GarnishmentCard),                              // receipt spenders
         typeof(LoanStrikeCard), typeof(MortgageCard), typeof(BloodPaymentCard),                            // borrow / HP
+        typeof(BankruptcyCard),                                                                            // debt payoff: wipe Debt cards → Strength
     };
     private const int ShopOfferCount = 5;   // cards displayed per shop visit (rotating), like the merchant's card row
 

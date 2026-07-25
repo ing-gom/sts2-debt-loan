@@ -24,10 +24,9 @@ public sealed class CollectionCard : CardModel
 
     public override int MaxUpgradeLevel => 1;   // 추심 (2 energy) vs 추심+ (1 energy)
 
-    // TODO(art): placeholder — reuses 자본 타격 art. Generate dedicated 추심 sprites before release.
-    public override string PortraitPath =>
-        IsUpgraded ? "res://Sts2DebtLoan/card_art/counterclaim_plus.png"
-                   : "res://Sts2DebtLoan/card_art/counterclaim.png";
+    // Dedicated 추심 art: a gold gauntlet fist grabbing a fistful of coins. Same art both levels
+    // (the upgrade is on energy cost, not the effect).
+    public override string PortraitPath => "res://Sts2DebtLoan/card_art/collection.png";
     public override string BetaPortraitPath => PortraitPath;
 
     /// <summary>Inject {card} = the localized 집행 (Shakedown) name this feeds. The fed token has no upgraded form

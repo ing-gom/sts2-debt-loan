@@ -39,12 +39,13 @@ public sealed class SettlementCard : CardModel, IUsesPaymentTally
 
     private const int BlockPerPayment = 4;
 
-    // {CalculationExtra} = block PER payment; {CalculatedBlock} = live total = 0 + {CalculationExtra} × payments.
-    // The multiplier is evaluated at render time (only in-combat; 0 in the library), so the block number on the
-    // face tracks payments automatically — same as Mirage scaling off enemy Poison.
+    // Pure X-cost scaling: block = {CalculationExtra}(4) × 영수증 held, NO base (base 0). The multiplier is
+    // evaluated at render (in-combat only; 0 in the library), so the face shows the live total that tracks
+    // payments — and matches the card text "Block 4 × X". At 0 영수증 it's 0, but it's X-cost so you just don't
+    // play it then (like 청구서). Mirror of 청구서's damage 4 × X.
     protected override IEnumerable<DynamicVar> CanonicalVars => new DynamicVar[]
     {
-        new CalculationBaseVar(BlockPerPayment),   // guaranteed base block → never a dead card at 0 영수증
+        new CalculationBaseVar(0),
         new CalculationExtraVar(BlockPerPayment),
         new CalculatedBlockVar(ValueProp.Move).WithMultiplier((CardModel card, Creature? _) => LoanService.PaymentsThisCombat(card.Owner)),
     };

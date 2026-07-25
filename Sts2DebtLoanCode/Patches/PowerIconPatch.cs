@@ -26,6 +26,7 @@ internal static class PowerIconAssets
         [typeof(DunningLetterPower)]  = "dunning_letter_power",
         [typeof(PaymentBenefitPower)] = "payment_benefit_power",
         [typeof(RefundPower)]         = "refund_power",
+        [typeof(BankruptcyPower)]     = "bankruptcy_power",
         [typeof(BadCreditPower)]      = "bad_credit_power",
         [typeof(CounterclaimPower)]   = "money_attack_power",
         [typeof(StatementPower)]      = "statement_power",
