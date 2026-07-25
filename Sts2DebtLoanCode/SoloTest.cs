@@ -712,25 +712,32 @@ internal static class SoloTest
                 }
                 else W("  invoice: no live enemy to target — skipped");
 
-                // 취업알선 (Job Placement): play → add Fee(50) onto OWED (no gold to player) + apply JobPlacementPower
-                // + hand ONE 품삯(Wages) IMMEDIATELY; a turn-start then slips ANOTHER 품삯 into hand.
+                // 취업알선 (Job Placement): a one-shot SKILL gated behind 영수증(2). Bank 2 payments → play SPENDS the
+                // 2 영수증, adds Fee(20) onto OWED (no gold to player), and hands 3 품삯 (1 into hand + 2 into draw).
+                // No power any more, and no per-turn generation → can't be stalled for gold.
                 var recP = LoanService.For(player)!;
+                if (!recP.Active || recP.Principal <= 0) { await LoanService.GrantLoanDirect(player, 200); recP = LoanService.For(player)!; }
+                await LoanService.ConsumePaymentStack(player);                                         // tally → 0 (clean gate check)
+                bool jobGate0 = !cstate!.CreateCard<JobPlacementCard>(player).CanPlay();               // 0 < 2 → blocked
+                for (int i = 0; i < 2; i++) await LoanService.RecordPayment(player, pcc, 5);           // tally → 2 (each also pays 5 principal)
+                await Task.Delay(120);
                 int owed0 = recP.Principal;
-                int jobGold0 = (int)player.Gold;                     // must NOT rise (no gold handed to the player)
-                int wagesPre = PileType.Hand.GetPile(player)?.Cards.Count(c => c is WagesCard) ?? 0;
+                int jobGold0 = (int)player.Gold;                     // must NOT rise (fee is added to debt, not paid out)
+                int tally0 = LoanService.PaymentsThisCombat(player); // 2
+                int handPre = PileType.Hand.GetPile(player)?.Cards.Count(c => c is WagesCard) ?? 0;
+                int drawPre = PileType.Draw.GetPile(player)?.Cards.Count(c => c is WagesCard) ?? 0;
                 var job = cstate!.CreateCard<JobPlacementCard>(player);
+                bool jobGate2 = job.CanPlay();                       // 2 >= 2 → playable (informational; AutoPlay force-plays anyway)
                 try { await CardCmd.AutoPlay(pcc, job, null); } catch (Exception e) { W("  job-placement play failed: " + e.Message); }
                 await Task.Delay(150);
-                int owedGain = recP.Principal - owed0;
-                int jobGoldGain = (int)player.Gold - jobGold0;       // expect 0 (the fee is added to debt, not paid out)
-                int wagesImmediate = (PileType.Hand.GetPile(player)?.Cards.Count(c => c is WagesCard) ?? 0) - wagesPre;   // expect 1 on play
-                var jobPow = player.Creature.GetPower<JobPlacementPower>();
-                int w0 = PileType.Hand.GetPile(player)?.Cards.Count(c => c is WagesCard) ?? 0;
-                if (jobPow != null) await jobPow.AfterPlayerTurnStart(pcc, player);
-                await Task.Delay(150);
-                int wagesTurn = (PileType.Hand.GetPile(player)?.Cards.Count(c => c is WagesCard) ?? 0) - w0;   // expect 1 per turn
-                bool tP4 = owedGain == 50 && jobGoldGain == 0 && jobPow != null && wagesImmediate >= 1 && wagesTurn >= 1;
-                W($"  assert job-placement: owedGain={owedGain}(=50) goldGain={jobGoldGain}(=0) power={(jobPow != null)} wagesOnPlay={wagesImmediate}(>=1) wagesPerTurn={wagesTurn}(>=1) -> {tP4}");
+                int owedGain = recP.Principal - owed0;               // expect +20 (fee only; the play makes no payment)
+                int jobGoldGain = (int)player.Gold - jobGold0;       // expect 0
+                int tallyAfter = LoanService.PaymentsThisCombat(player);   // expect 0 (2 - 2 spent)
+                int handWages = (PileType.Hand.GetPile(player)?.Cards.Count(c => c is WagesCard) ?? 0) - handPre;   // expect 1
+                int drawWages = (PileType.Draw.GetPile(player)?.Cards.Count(c => c is WagesCard) ?? 0) - drawPre;   // expect 2
+                bool tP4 = jobGate0 && owedGain == 20 && jobGoldGain == 0 && tallyAfter == tally0 - 2
+                           && handWages >= 1 && drawWages >= 2;
+                W($"  assert job-placement(skill): gate0={jobGate0} gate2={jobGate2} owedGain={owedGain}(=20) goldGain={jobGoldGain}(=0) tally {tally0}->{tallyAfter}(spent2) hand+{handWages}(>=1) draw+{drawWages}(>=2) -> {tP4}");
 
                 // tP5) EMPIRICAL 골드 차감: play a real 빚 독촉 (Dunning) through the pipeline and assert the player's
                 //      ACTUAL held gold drops by the 20-gold play cost (bug report: "납부했을 때 실제 보유 골드가 안 줄어듦").
@@ -991,7 +998,6 @@ internal static class SoloTest
                         await PowerCmd.Apply<DunningLetterPower>(scc, cr, 1, cr, null);     // 정기 납부 (Standing Order)
                         await PowerCmd.Apply<PaymentBenefitPower>(scc, cr, 1, cr, null);    // 납부 혜택
                         await PowerCmd.Apply<RefundPower>(scc, cr, 1, cr, null);            // 환급
-                        await PowerCmd.Apply<JobPlacementPower>(scc, cr, 1, cr, null);      // 취업알선
                         await PowerCmd.Apply<BadCreditPower>(scc, cr, 1, cr, null);         // 신용 불량
                         await PowerCmd.Apply<CounterclaimPower>(scc, cr, 1, cr, null);      // 자본 타격 (Money Attack)
                         await PowerCmd.Apply<StatementPower>(scc, cr, 1, cr, null);         // 명세서 (Statement)
@@ -1001,12 +1007,11 @@ internal static class SoloTest
                         if (cr.GetPower<DunningLetterPower>() != null) active++;
                         if (cr.GetPower<PaymentBenefitPower>() != null) active++;
                         if (cr.GetPower<RefundPower>() != null) active++;
-                        if (cr.GetPower<JobPlacementPower>() != null) active++;
                         if (cr.GetPower<BadCreditPower>() != null) active++;
                         if (cr.GetPower<CounterclaimPower>() != null) active++;
                         if (cr.GetPower<StatementPower>() != null) active++;
                         if (cr.GetPower<InterestSupportPower>() != null) active++;
-                        W($"  power-icon gallery: {active}/8 custom powers active (see 9_power_icons.png)");
+                        W($"  power-icon gallery: {active}/7 custom powers active (see 9_power_icons.png)");
 
                         // ── HOVER TEXT: the character-hover tooltip shows each power's Title + Description
                         // (PowerModel.Description = LocString "powers/<ENTRY>.description"). Verify every custom
@@ -1015,7 +1020,7 @@ internal static class SoloTest
                         var hoverPowers = new MegaCrit.Sts2.Core.Models.PowerModel?[]
                         {
                             cr.GetPower<DunningLetterPower>(), cr.GetPower<PaymentBenefitPower>(), cr.GetPower<RefundPower>(),
-                            cr.GetPower<JobPlacementPower>(), cr.GetPower<BadCreditPower>(), cr.GetPower<CounterclaimPower>(),
+                            cr.GetPower<BadCreditPower>(), cr.GetPower<CounterclaimPower>(),
                             cr.GetPower<StatementPower>(), cr.GetPower<InterestSupportPower>(),
                         };
                         int descOk = 0, descTotal = 0;
@@ -1032,7 +1037,7 @@ internal static class SoloTest
                             if (ok) descOk++;
                             W($"    [hover] {pw.GetType().Name}: title='{title}' | desc='{desc}' -> {(ok ? "OK" : "MISSING")}");
                         }
-                        bool tHover = descTotal == 8 && descOk == 8;
+                        bool tHover = descTotal == 7 && descOk == 7;   // 취업알선 became a skill (no power) → 7 custom powers
                         W($"  power-hover descriptions: {descOk}/{descTotal} resolve to real text -> {tHover}");
                         all &= tHover;
                     }
@@ -1114,6 +1119,66 @@ internal static class SoloTest
                 await Shot("10_settled");
             }
             catch (Exception e) { W("  mid-combat settle failed: " + e); all = false; }
+
+            // U) CARD GALLERY (user request): render EVERY card this mod adds in a clean grid and screenshot it
+            //    page by page, so the full card list can be shown for a playtest intro. Display-only, not PASS/FAIL.
+            //    Uses the debt-shop's proven render recipe (NCard.Create(model) + UpdateVisuals) which shows real
+            //    localized titles/descriptions (a bare NCard.Create without UpdateVisuals mangles the face).
+            Step("card gallery");
+            try
+            {
+                if (Engine.GetMainLoop() is SceneTree gtree)
+                {
+                    NDebtCardShopPanel.CloseOpen();   // in case a panel lingers
+                    var galleryTypes = new System.Type[]
+                    {
+                        // acquirable powers/skills (payment engine)
+                        typeof(DunningLetterCard), typeof(JobPlacementCard), typeof(PaymentBenefitCard), typeof(RefundCard),
+                        typeof(StatementCard), typeof(InterestSupportCard), typeof(CounterclaimCard), typeof(CollectionCard),
+                        // 영수증-spending attacks/skills
+                        typeof(SettlementCard), typeof(InvoiceCard), typeof(GarnishmentCard), typeof(BloodPaymentCard),
+                        // borrow + reward
+                        typeof(LoanStrikeCard), typeof(MortgageCard), typeof(CreditRestoredCard),
+                        // generated tokens + co-op
+                        typeof(WagesCard), typeof(DiligentPaymentCard), typeof(ShakedownCard), typeof(BailoutCard),
+                        // curses (ForcedCollectionCard omitted: orphan/미스폰 — never granted, unlocalized; 강제 징수 = DebtorCard)
+                        typeof(DebtCurseCard), typeof(DelinquencyCard), typeof(SeizureCard), typeof(BadCreditCard),
+                        typeof(DebtorCard),
+                    };
+                    const int cols = 5, rowsPerPage = 3, perPage = cols * rowsPerPage;
+                    const float gscale = 0.58f, colPitch = 340f, rowPitch = 352f, gx0 = 195f, gy0 = 210f;
+                    var vp = gtree.Root.GetVisibleRect().Size;
+                    int pages = (galleryTypes.Length + perPage - 1) / perPage;
+                    for (int page = 0; page < pages; page++)
+                    {
+                        var layer = new CanvasLayer { Layer = 200 };
+                        gtree.Root.AddChild(layer);
+                        var bg = new ColorRect { Color = new Color(0.10f, 0.09f, 0.13f), Position = Vector2.Zero, Size = vp };
+                        layer.AddChild(bg);
+                        int start = page * perPage, end = Math.Min(start + perPage, galleryTypes.Length), rendered = 0;
+                        for (int i = start; i < end; i++)
+                        {
+                            var model = ModelDb.GetByIdOrNull<CardModel>(ModelDb.GetId(galleryTypes[i]));
+                            if (model == null) { W($"  gallery: model missing for {galleryTypes[i].Name}"); continue; }
+                            NCard? nc = null;
+                            try { nc = NCard.Create(model); } catch (Exception e) { W($"  gallery card failed {galleryTypes[i].Name}: {e.Message}"); }
+                            if (nc == null) continue;
+                            int slot = i - start, col = slot % cols, row = slot / cols;
+                            layer.AddChild(nc);
+                            nc.Position = new Vector2(gx0 + col * colPitch, gy0 + row * rowPitch);
+                            nc.Scale = new Vector2(gscale, gscale);
+                            try { nc.UpdateVisuals(PileType.None, CardPreviewMode.Normal); } catch { }
+                            rendered++;
+                        }
+                        await Task.Delay(600);
+                        await Shot($"11_gallery_p{page + 1}");
+                        W($"  card gallery page {page + 1}/{pages}: {rendered} cards (see 11_gallery_p{page + 1}.png)");
+                        layer.QueueFree();
+                        await Task.Delay(150);
+                    }
+                }
+            }
+            catch (Exception e) { W("  card gallery failed: " + e.Message); }
 
             await Shot("2_final");
             W($"=== solo test done: {(all ? "ALL PASS" : "FAIL")} ===");

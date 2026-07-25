@@ -10,17 +10,16 @@ using MegaCrit.Sts2.Core.Models.CardPools;            // ColorlessCardPool
 namespace Sts2DebtLoan;
 
 /// <summary>
-/// 품삯 (Wages) — a "work for gold" card the 취업알선 (Job Placement) power slips into your hand each turn (like
-/// 빚 독촉 from 독촉장 / 성실 납부 from 환급). Spend the energy — you're putting in a shift mid-fight — and gain
-/// gold. Base: 1 energy → 15 gold. Upgraded (품삯+, fed by 취업알선+): 0 energy → 20 gold. Exhausts.
-/// Colorless/Event; auto-registered.
+/// 품삯 (Wages) — a "work for gold" card the 취업알선 (Job Placement) skill hands out (1 into hand + 2 into the draw
+/// pile per play). Play it for free to gain gold — a shift's pay. Base: 0 energy → 15 gold. Upgraded (품삯+, fed by
+/// 취업알선+): 0 energy → 25 gold. Exhausts, so the earned wages don't clog the deck. Colorless/Event; auto-registered.
 /// </summary>
 public sealed class WagesCard : CardModel
 {
     private static CardPoolModel? _pool;
     public override CardPoolModel Pool => _pool ??= ModelDb.CardPool<ColorlessCardPool>();
 
-    public override int MaxUpgradeLevel => 1;   // 15 → 20 gold (and 1 → 0 energy)
+    public override int MaxUpgradeLevel => 1;   // 15 → 25 gold (already 0-cost both)
 
     public override string PortraitPath =>
         IsUpgraded ? "res://Sts2DebtLoan/card_art/wages_plus.png"
@@ -29,11 +28,11 @@ public sealed class WagesCard : CardModel
 
     public override IEnumerable<CardKeyword> CanonicalKeywords => new[] { CardKeyword.Exhaust };
 
-    private int Gold => IsUpgraded ? 20 : 15;
+    private int Gold => IsUpgraded ? 25 : 15;
 
     protected override IEnumerable<DynamicVar> CanonicalVars => new[] { new DynamicVar("gold", Gold) };
 
-    public WagesCard() : base(canonicalEnergyCost: 1, CardType.Skill, CardRarity.Event, TargetType.None) { }
+    public WagesCard() : base(canonicalEnergyCost: 0, CardType.Skill, CardRarity.Event, TargetType.None) { }
 
     protected override async Task OnPlay(PlayerChoiceContext choiceContext, CardPlay cardPlay)
     {
@@ -44,7 +43,6 @@ public sealed class WagesCard : CardModel
     protected override void OnUpgrade()
     {
         base.OnUpgrade();
-        EnergyCost.UpgradeBy(-1);                  // 1 → 0
-        DynamicVars["gold"].BaseValue = Gold;      // 15 → 20
+        DynamicVars["gold"].BaseValue = Gold;      // 15 → 30 (energy stays 0)
     }
 }

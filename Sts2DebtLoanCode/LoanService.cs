@@ -707,8 +707,8 @@ internal static class LoanService
 
     /// <summary>취업알선 (Job Placement) placement fee: add <paramref name="amount"/> gold straight onto what you
     /// OWE (the shop repay cost / relic badge). You do NOT receive the gold — it's a fee, not a loan, so no gold
-    /// enters your pocket and there is no surcharge. The payoff is the 품삯 (Wages) the power feeds you each turn.
-    /// Needs an active loan. Pure record math off a lockstep card play → co-op safe.</summary>
+    /// enters your pocket and there is no surcharge. The payoff is the lump of 품삯 (Wages) the skill hands you on
+    /// play. Needs an active loan. Pure record math off a lockstep card play → co-op safe.</summary>
     internal static void AddCombatDebt(Player player, int amount)
     {
         var rec = For(player);

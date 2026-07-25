@@ -1,3 +1,4 @@
+#if DEBTLOAN_SELFTEST
 // LOCAL TEST ONLY — dormant unless `selftest.coop.flag` is next to the mod DLL, and only compiled when
 // DEBTLOAN_SELFTEST is defined. Drives the co-op lobby, then on the HOST's local player runs the mod's real
 // out-of-combat paths: takes a loan (GrantLoanDirect → networked dl_sync) and BUYS A CARD ON DEBT
@@ -569,7 +570,6 @@ internal static class CoopTest
     }
 }
 
-#if DEBTLOAN_SELFTEST
 /// <summary>TEST-ONLY networked command (Debug builds only — stripped from Release): inject a 납부 (DebtCurseCard)
 /// into the issuing player's combat HAND on BOTH peers, so the co-op self-test can MISS it (end the turn without
 /// playing it) and drive the REAL trigger — the 납부's OnTurnEndInHand → GrantBailoutForMissedPayment. Networked
