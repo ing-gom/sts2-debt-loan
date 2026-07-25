@@ -24,8 +24,7 @@ public sealed class RefinanceCard : CardModel
 
     public override int MaxUpgradeLevel => 1;   // 차환 vs 차환+ (0 energy)
 
-    // TODO(art): placeholder portrait (reuses the payment/dunning art) — swap for a bespoke "refinance" portrait.
-    public override string PortraitPath => "res://Sts2DebtLoan/card_art/debt_dunning.png";
+    public override string PortraitPath => "res://Sts2DebtLoan/card_art/refinance.png";
     public override string BetaPortraitPath => PortraitPath;
 
     public override IEnumerable<CardKeyword> CanonicalKeywords => new[] { CardKeyword.Exhaust };
