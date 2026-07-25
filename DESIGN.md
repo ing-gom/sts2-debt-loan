@@ -1,57 +1,129 @@
 # The Red Ledger — Design (Sts2DebtLoan)
 
-상점에서 부족한 골드를 **대출**받아 아이템을 사고, 갚지 않으면 **빚(Debt) 저주 카드**가
-덱에 스며들어 이자를 뜯어가는 자매 모드. v0.1.0 골조.
+상점에서 부족한 골드를 **대출**받아 아이템을 사고, 그 빚을 **영수증 기반 결제 카드 세트**로 갚아
+나가는 자매 모드. 갚지 못하면 저주가 덱에 스며들고, 막판엔 **파산**으로 판을 뒤집을 수도 있다.
+
+> ⚠️ 플레이테스트 단계 — 카드 밸런스·수치는 언제든 바뀔 수 있음. 이 문서는 현재 구조를 기술한다.
 
 ---
 
 ## 컨셉 한 줄
 
-> 1막 상점에서 살 돈이 조금 모자란 아이템에 대해 **부족분만큼** 대출 → 대출 유물 획득 →
-> 안 갚으면 방문 노드 수에 따라 빚 카드가 늘고(14/17/20방=1/3/5장), 각 빚 카드가 골드를
-> 이자로 뜯어감 → **원금 상환** 또는 **이자 200% 도달** 시 유물 비활성화 + 빚 카드 전부 제거.
+> 상점에서 **부족분만큼 대출**(총 원금 ≤ 300, 하드캡 400) → **빚 장부**(Debt Ledger) 유물 →
+> 방을 지날수록 이자가 붙고 티어에 따라 **저주 카드**가 스며듦 → **정기 납부**가 주는 **납부** 카드로
+> 원금을 깎고, 매 납부가 **영수증**을 적립해 결제셋 카드를 굴림 → **원금 완납 시** 장부·빚 카드 전부
+> 제거 + 신용 회복(재대출 가능). 막다른 길이면 **파산 선언**으로 빚을 힘으로 환산.
 
 ---
 
-## 확정된 설계 결정 (사용자 Q&A)
+## 대출 규칙
 
-| 항목 | 결정 |
-|---|---|
-| 노드 카운트 기준 | **모든 맵 노드** (전투/상점/휴식/이벤트/보물 전부 +1) |
-| 비활성화 시 빚 카드 | **항상 제거** (원금 상환·이자 200% 무관) |
-| 이자 크기 (질문 답 미수신) | **기본 고정 10골드/발동** (바닐라 Debt 패리티), config 조절 가능 |
-| 빚 카드 발동 | 바닐라 Debt 그대로 — **손패에 있을 때 턴 종료 시** `min(10, 보유골드)` 차감 |
-| 0골드 이하 | 뜯을 골드 없음 → 그 발동은 이자 미납 (바닐라 `min` 로 자동 처리) |
+- **최초 1회** 대출 시 **빚 장부** 유물 획득 → 이때부터 이자/티어 카운터 시작(`LoanFloor`).
+- 대출액 = `구매가 − 보유골드`(부족분). **소프트캡 `MaxLoan`=300**, 구매를 위해 그 위로
+  **`OverCapAllowance`=100**까지 허용 → **하드캡 400**. 소프트캡 초과 시 전투당 빚 카드 수가 1 높게 시작.
+- **`MaxLoanActIndex`** 막까지만 대출(기본 Act 1). 상환은 어느 막/상점에서든 가능.
+- **추가 대출**은 유물 보유 + 원금 여유가 있을 때. 상점 아이템 중 대출로 살 수 있는 것은 가격표가
+  **초록**(`MerchantPriceColorPatch`).
 
-### 대출 규칙
-- **최초 1회** 대출 시 유물 획득 → 이때부터 노드 카운터 시작.
-- 대출액 = `구매가 − 보유골드` (부족분), **총 원금 ≤ 300** (config `maxLoan`).
-- **1막에서만** 대출 (config `allowOtherActs` 로 전 막 허용 가능).
-- **추가 대출**: 유물 보유 중 + 원금 < 300 + **처음 대출한 그 상점(같은 TotalFloor)에서만**. 다음
-  상점부터는 추가 대출 불가 (상환은 어느 상점에서든 가능). `LoanRecord.LoanFloor`에 기록·persist.
-- 로더블 아이템 가격표는 빨강 대신 **노랑** — *미구현, 아래 TODO*.
+### 이자
+
+- **대출 즉시 origination fee**(원금에 즉시 가산) + **방 이동마다 node interest**(`NodeInterestPct`,
+  상한까지 누적)가 전부 **`Principal`(갚을 금액)에 baked-in**. 상점 상환 비용/유물 배지/호버가 모두 이 값.
+- co-op에선 빚진 인원 수에 따라 node-interest 상한이 상승(아래 co-op 참조).
 
 ---
 
-## 상태 머신
+## 빚 카드 티어(연체 페널티)
 
-```
-[1막 상점] 구매 시도, 보유골드 < 구매가
-   └ CanLoanCover? (부족분 ≤ 300−원금, 1막, 최초이거나 노드<14)
-        └ GrantLoanFor: 부족분 골드 지급(GainGold+sync) → 원금 += 부족분
-                        └ 최초면 유물 지급 + 노드 카운터=0
-   → 구매 재실행(이제 EnoughGold) → 정상 결제
+대출 후 방이 지날수록(`RoomsUntilNextTier` / `TargetDebtCards`) 덱에 빚 부담이 늘어난다.
 
-[EnterRoom 마다]  OnRoomEntered: 노드++ →
-   14방:1장 / 17방:3장 / 20방:5장(상한)  빚 카드를 Deck 에 주입
+- **네이티브 Debt**: 빚 상점을 이용(방문당 첫 구매)하면 게임 기본 `Debt` 저주 1장이 덱에 추가.
+- **티어 저주(커스텀)**: 시간이 지나며 **연체(Delinquency) → 차압(Seizure) → 신용 불량(Bad Credit)**
+  +끈질긴 **강제 징수(Forced Collection/DebtorCard)**.
+  - **연체(DelinquencyCard)**: Unplayable 저주. **손에 들어올(draw) 때 취약 1 부여**
+    (`DelinquencyDrawPatch` = `CardModel.InvokeDrawn` postfix; ctor `Drawn` 이벤트는 clone 비호환이라 회피).
+- **완납/은퇴 시** 네이티브 Debt + 커스텀 빚 카드 전부 `RemoveAllDebtLoanCards`로 제거.
 
-[전투: 빚 카드가 손패서 턴종료]  min(이자,보유골드) 차감 → AccrueInterest
-   이자누적 ≥ 원금×200% → Retire
+---
 
-[상점 재방문 원금 상환]  Repay: LoseGold(원금)+sync → Retire
+## 결제 시스템 (영수증)
 
-Retire: 유물 비활성(Active=false) + 빚 카드 전부 RemoveFromDeck
-```
+- **영수증(Receipt)** = 커스텀 전투 자원. `LoanService._tally`(ConditionalWeakTable + `TallyChanged`),
+  에너지 옆 커스텀 HUD 카운터(`NPaymentTallyCounter`). 카드 코스트 배지 = `IUsesPaymentTally`
+  (`PaymentCostOverlayPatch`, `_energyIcon` 자식으로 부착).
+- **정기 납부(DunningLetterCard/Power = Standing Order)**: 대출 시 지급되는 파워. 매턴 **납부(DebtCurseCard
+  = Payment)** 카드를 손에 공급. 납부 카드를 내면 골드로 원금을 깎고(`PrincipalRepayShare`=0.2 만큼
+  원금 상환, 나머지는 이자), **영수증 +1**.
+- **결제셋 카드**(빚 상점 구매 또는 지급):
+  - *반응 파워* — 납부혜택/환급/이자지원/상계(Counterclaim)/명세서(Statement): 납부 때마다 방어도·카드·골드 등 환급.
+  - *영수증 소비* — **정산(Settlement)** = 방어도 4×X, **청구서(Invoice)** = 다단 히트(둘 다 보유 영수증 전량 소비).
+  - **추심(Collection)→집행(Shakedown)** — 매턴 토큰이 영수증 1을 써 **활력(Vigor)**.
+  - **성실 납부(DiligentPayment)** — **소멸된 납부 카드 수**만큼 방어도.
+  - **취업알선(JobPlacement)** — 스킬. 영수증 2 + 빚 20을 지고 **품삯(Wages)** 카드를 손+더미에 공급
+    (구 파워형은 스톨링 골드 파밍 가능해 스킬로 재설계).
+
+---
+
+## 빚 상점 (NDebtCardShopPanel)
+
+빚이 있으면 상인 방에서 **빚 상점**으로 진입해 결제셋 카드를 **외상**으로 구매(가격이 원금에 가산).
+
+- **진열**: `RevealedPurchasable` = `(LoanFloor, DebtShopVisits)` 결정적 셔플, 방문 수에 따라 3/5/전체,
+  매 방문 1장 세일(~30%).
+- **★상점당 외상 한도(`ShopCreditLimit`=150)**: 한 상점 방문에서 카드로 질 수 있는 빚 상한(대출 하드캡과
+  별개). `ShopSpentThisVisit`가 누적, 새 상점 진입 시 리셋(`CountShopVisit`), 유물에 영속화. 초과 오퍼는
+  회색+빨간 가격+"한도 초과" 라벨+구매 비활성. 상단에 "대출 가능 {잔액}/{한도}" 헤더.
+- **UI**: 상점 돗자리와 같은 2D 뎁스(CanvasLayer 아님, 상점 부모의 형제)에 슬라이드 인. 입력 blocker가
+  뒤 상점 오조작 차단(단 상단 HUD·네이티브 back 버튼은 통과). **네이티브 뒤로가기**로 상점 복귀
+  (`ShopBackClosesDebtShopPatch`). **상인 손**이 오퍼/상환을 가리킴(NMerchantHand 부모 Node2D를 z-리프트).
+
+---
+
+## 파산 선언 (BankruptcyCard)
+
+스킬. 보유한 **네이티브 Debt 카드 전부 소멸**(전투 파일 + 런덱=영구) → 소멸 수만큼 **힘(Strength)** +
+**파산(BankruptcyPower)** 부여.
+
+- **파산 = 이번 전투 + 전투 후 보상까지 골드 획득 0.** 전투 중은 `ModifyGoldGained`(소유자 0), 전투 후
+  보상 골드는 `BankruptGoldBlockPatch`(`PlayerCmd.GainGold` prefix, `IsBankrupt` 플래그) — 파워가 사라진
+  뒤에도 차단. 플래그는 다음 전투 시작 시 리셋.
+- "과소비로 쌓은 빚 = 파산 시 탄약"의 올인 피벗.
+
+---
+
+## 시각/로컬라이제이션
+
+- **커스텀 카드 프레임**: 결제셋 카드에 보라+금 프레임(`NCardFramePatch`, `NCard.Reload` postfix로
+  frame/banner/portraitBorder/typePlaque 텍스처 교체). 저주·생성 토큰(품삯/성실납부)은 제외.
+- **에너지 오브 캐릭터색 상속**(`EnergyIconPatch`): Colorless 회색 오브를 소유 캐릭터 pool의 에너지
+  아이콘으로 교체. canonical(프리뷰)은 현재 런 로컬 플레이어로 fallback, 커스텀 캐릭터/타 모드 postfix
+  되돌림까지 대응(CallDeferred 재적용).
+- **로컬라이제이션**: 카드·파워·유물 14언어(`DebtLoanLoc.cs` + `LocInjectionPatch`).
+
+---
+
+## Co-op (검증 완료)
+
+빚은 공유된 짐 — coop-verify(2-인스턴스) 실측으로 수렴 확인:
+
+- **빚 상점 구매 네트워크화**(`dl_sync buy`): 구매 복제 + 원금/덱/sold-set가 양 피어 일치.
+- **MP 이자**: 빚진 인원 N에 따라 node-interest 상한 = 40 + `min(40, 10·(N−1))`%.
+- **대납(Bailout, AnyAlly 네이티브 아군 타겟)**: 동료 빚 대신 상환. 미납 시 돈 있는 아군에 대납 카드 지급.
+- **★기술**: `TargetType.AnyAlly` = 네이티브 co-op 아군타겟 자동 lockstep. co-op 턴종료 =
+  `EndPlayerTurnAction` enqueue(`SetReadyToEndTurn`은 로컬 1of2). 골드 변경은 로컬+RewardSynchronizer.
+
+---
+
+## 설정 (ModConfig / RitsuLib)
+
+| 키 | 의미 | 기본 |
+|---|---|---|
+| `maxLoan` | 런당 총 대출 상한(골드) | 300 |
+| `maxLoanAct` | 대출 허용 최대 막 | Act 1 |
+| `shopCreditLimit` | 상점 방문당 외상(카드 구매) 한도 | 150 |
+
+`ModConfig` 또는 `RitsuLib` 중 어느 것으로도 조절(둘 다 선택; 없으면 기본값). 등록 전 `GetValue` 금지
+(타입 기본값 반환), 신 API는 리플렉션+폴백으로 first-wins 버전 스큐 대비.
 
 ---
 
@@ -59,70 +131,30 @@ Retire: 유물 비활성(Active=false) + 빚 카드 전부 RemoveFromDeck
 
 | 파일 | 역할 |
 |---|---|
-| `MainFile.cs` | 부트스트랩 + ModConfig (maxLoan/interest/capPct/otherActs) |
-| `AssemblyResolverBootstrap.cs` | ModKit DLL 사이드로드 (표준 패턴) |
-| `DebtLoanConfig.cs` | 런타임 조절 값 + 빚 카드 스케줄 |
-| `LoanService.cs` | **핵심 상태 머신** — 자격/금액/원금/이자/노드/상환/Retire |
-| `DebtCurseCard.cs` | 커스텀 Debt 저주 카드 (바닐라 Debt 복제 + 이자 적립) |
-| `DebtLoanRelic.cs` | "상인의 장부" 유물 + 지급 헬퍼 |
-| `Patches/RelicInjectionPatches.cs` | 유물 풀 등록 (자동 스캔) |
-| `Patches/LocInjectionPatch.cs` | 유물+카드 로컬라이제이션 (relics/cards 테이블) |
-| `Patches/RoomEnterPatch.cs` | `RunManager.EnterRoom` 체인 → 노드 카운트+빚 카드 주입 |
-| `Patches/MerchantLoanPurchasePatch.cs` | `OnTryPurchaseWrapper` 인터셉트 → 대출 결제 |
+| `MainFile.cs` | 부트스트랩 + ModConfig(maxLoan/maxLoanAct/shopCreditLimit) |
+| `DebtLoanConfig.cs` | 런타임 조절 값(캡/이자/티어/외상 한도) |
+| `LoanService.cs` | **핵심 상태 머신** — 대출/이자/티어/상환/빚상점/영수증/외상한도/co-op |
+| `DebtLoanRelic.cs` | 빚 장부 유물 + `[SavedProperty]` 영속화 |
+| `DunningLetterCard/Power.cs` | 정기 납부(Standing Order) — 납부 카드 공급 엔진 |
+| `DebtCurseCard.cs` | 납부(Payment) — 원금 상환 + 영수증 적립 |
+| `DelinquencyCard.cs` / `SeizureCard.cs` / `BadCreditCard.cs` / `DebtorCard.cs` | 티어 저주 |
+| `Settlement/Invoice/Refund/PaymentBenefit/InterestSupport/Counterclaim/Statement/Collection/BloodPayment/Garnishment/LoanStrike/Mortgage/JobPlacement/Wages/DiligentPayment*.cs` | 결제셋 카드/파워 |
+| `BankruptcyCard.cs` / `BankruptcyPower.cs` | 파산 선언 + 파산 파워 |
+| `NDebtCardShopPanel.cs` | 빚 상점 UI(그리드/상환/외상 한도/상인 손) |
+| `Patches/MerchantLoanPurchasePatch.cs` | 상점 구매 인터셉트 → 대출 결제 |
+| `Patches/ShopBackClosesDebtShopPatch.cs` | 네이티브 뒤로가기 → 빚 상점 닫기 |
+| `Patches/EnergyIconPatch.cs` / `NCardFramePatch.cs` / `PaymentCostOverlayPatch.cs` | 카드 시각(에너지/프레임/영수증 배지) |
+| `Patches/BankruptGoldBlockPatch.cs` / `DelinquencyDrawPatch.cs` | 파산 골드 차단 / 연체 취약 |
+| `Patches/RelicInjectionPatches.cs` / `LocInjectionPatch.cs` | 유물 등록 / 14언어 로컬라이제이션 |
 
 ---
 
-## Co-op 노트
+## 검증
 
-- 골드 변경은 전부 **로컬 플레이어 한정 + RewardSynchronizer** (RelicForge 패턴).
-- 노드 카운트/카드 주입도 로컬 플레이어만 (각 피어가 자기 덱 소유).
-- 빚 카드 이자 차감은 카드 자체의 `OnTurnEndInHand` (결정론적 전투 sim) → 바닐라 Debt 처럼
-  명시 sync 없이 양쪽 수렴 (검증 필요).
-- 배포 전 **coop-guard**(정적) → **coop-verify**(2인스턴스 실측) 필수.
+- **solo-verify**(1-인스턴스): 대출→유물, 티어 에스컬레이션, 상환→제거, 영수증/결제셋, 파산(빚→0·힘·
+  골드차단), 연체→취약(draw), 빚 상점 렌더 — ALL PASS.
+- **coop-verify**(2-인스턴스): 빚 상점 구매 복제·대납 지급·대납 사용 수렴, desync 없음.
+- 배포 전 게이트: Release DLL UTF-16 `selftest` 프로브 0 + mods 폴더 `selftest.*` 잔여물 제거.
 
----
-
-## 검증 상태 (solo-verify 2026-07-20)
-
-`solo-verify` 1-인스턴스 실측 **RESULT: OK (5/5 PASS)**:
-- ✅ 대출→유물 지급 (ledger, 원금100, active)
-- ✅ 노드 에스컬레이션 정확 (r13=0, r14=1, r17=3, r20=5)
-- ✅ 원금 상환 → 비활성+빚카드0
-- ✅ 이자 200%(100/100) → 비활성+빚카드0
-- ✅ **유물 아이콘 인게임 렌더** (gem 스프라이트, 유물 트레이 확인)
-- ✅ **빚 카드 덱 주입 + "Debt" 타이틀 렌더** 확인
-
-핵심 상태머신은 실엔진에서 검증됨. 주의: 테스트는 `LoanService.GrantLoanDirect` 직접 호출로
-로직을 검증 — **실제 상점 구매 인터셉트/상환 버튼 UI 경로는 아직 인게임 미실측** (상점 진입 필요).
-
-## TODO / 검증 체크리스트
-
-우선순위 순:
-
-1. **[확인 필요] 빚 카드 페이스 설명** — `.description`/`.smartDescription`을 vanilla Debt 포맷
-   (`{Gold:diff()}` + `[gold]` 마크업)으로 주입 완료. solo-verify 스크린샷의 "If you can read this,
-   there is a bug." 플레이스홀더는 **이벤트 화면 fallback**(decomp 196923 = EVENT 코드)이지 카드
-   페이스가 아님 — pump가 들어간 이벤트 캡처. 카드 페이스 설명(NCard `_descriptionLabel`)은 손패/덱뷰
-   UiTest로 별도 확인 필요.
-2. ✅ **[완료] 상점 결제 인터셉트 + 상환 버튼** — solo-verify 상점 페이즈로 실측: 살 수 없는
-   유물을 대출로 구매(cost=201→대출 충당→유물 획득), `NMerchantRepayButton`이 실제 shop 노드에
-   attach + cost=원금 표시 확인. (버튼 아이콘=loose png 배선, 멀티모드 상점서 육안 확정만 남음)
-3. ✅ **[완료] 초록 가격표** — 대출 가능(살 수 없지만 loan-coverable) 아이템 가격 라벨을 초록으로.
-   `MerchantPriceColorPatch` = 각 슬롯 subtype `UpdateVisual` 포스트픽스, `CanLoanCover` 시
-   `_costLabel.Modulate=StsColors.green` (EnoughGold 불변). solo-verify 육안 확인.
-4. ✅ **[완료] 유물 라이브 배지** — 장부 유물 아이콘에 현재 빚 원금 배지. `DisplayAmount`=원금 +
-   `ShowCounter`=활성, `[SavedProperty]` 세터가 `InvokeDisplayAmountChanged` 호출. per-relic라 co-op-safe.
-   (전체 이자/노드 breakdown 호버는 per-relic DynamicVars 필요 — 추후 확장.)
-5. ✅ **[완료] grant-only 유물** — Ledger를 `RelicRarity.Event`로 (보상/상점 풀은 Common/Uncommon/
-   Rare/Shop만 롤 → 랜덤 드롭 불가, 대출로만 획득). solo-verify 지급 정상 확인.
-6. ✅ **[완료] 세이브/로드 지속성** — DebtLoanRelic `[SavedProperty]` 4개(자동 왕복) +
-   LoanService write-through/RestoreFromRelic + `NGame.LoadRun` 훅. solo-verify save/load PASS.
-7. ✅ **[완료] 유물 아이콘** — gem 스프라이트 pck 빌드+인게임 렌더 확인.
-8. ✅ **[완료] 상환 버튼** — `NMerchantRepayButton` (RelicForge cleanse 패턴). UI 실측은 #2.
-9. **[정책] 이자 크기 기본값** — 고정 10. 원금 비례(5%) 원하면 변경.
-10. ⚠️ **[SP 게이트] co-op** — coop-guard 결과 desync 위험(유물 지급 `SyncLocalObtainedRelic` 누락 +
-    빚카드 add/remove 복제 미확인). 안전을 위해 `CanLoanCover`에서 **co-op은 대출 OFF**로 게이트
-    (desync 원천 차단). 골드 경로는 이미 로컬+Sync로 안전. **완전 co-op 지원(future)** = 유물/카드
-    RewardSynchronizer 배선 + `coop-verify` 2-인스턴스 실측 필요.
-
-빌드: `dotnet build Sts2DebtLoan/Sts2DebtLoan.csproj -c Debug` → 게임 mods 폴더 자동 복사.
+빌드: `dotnet build Sts2DebtLoan.csproj -c Release` → 게임 mods 폴더. 리소스 팩(.pck)은 `pck_src/`에서
+Godot 4.5.1 `--export-pack`.
