@@ -447,6 +447,7 @@ internal static class LoanService
         if (t == typeof(InvoiceCard) || t == typeof(GarnishmentCard) || t == typeof(BankruptcyCard)) return 75;   // 고급: scaling attack / AoE / debt payoff
         if (t == typeof(RefundCard) || t == typeof(CounterclaimCard)
             || t == typeof(StatementCard) || t == typeof(InterestSupportCard)
+            || t == typeof(PaymentBenefitCard)
             || t == typeof(CollectionCard)) return 70;   // 파워 엔진(영구 가치)
         if (t == typeof(SettlementCard) || t == typeof(LoanStrikeCard) || t == typeof(MortgageCard)) return 65;   // 중급
         if (t == typeof(BloodPaymentCard)) return 55;   // 기본: HP-payment utility
@@ -646,19 +647,18 @@ internal static class LoanService
 
     /// <summary>Grant the 정기 납부 once per loan, when the debtor enters a shop that isn't the one they borrowed
     /// at (TotalFloor != LoanFloor). Deck mutation is local + deterministic → the same card lands on each peer.</summary>
-    // SHOP AUTO-GRANT channel = only 3 POWER cards handed out for free: 정기 납부 (the repay engine) at LOAN TIME,
-    // then 취업알선 (income) + 납부혜택 (survival) across the next two shop revisits. Everything else is BOUGHT at
-    // the debt shop (see PurchasablePool) so the free loop is a lean self-sufficient starter and the rest is choice.
+    // SHOP AUTO-GRANT channel = only 2 cards handed out for free: 정기 납부 (the repay engine) at LOAN TIME,
+    // then 취업알선 (income) on the FIRST shop revisit (the definite 2nd free card). 납부혜택 is NOT free anymore —
+    // it moved to the debt shop (see PurchasablePool). Everything else is BOUGHT so the free loop is a lean starter.
     private static readonly System.Type[] FixedOrder =
     {
         typeof(DunningLetterCard),    // slot 0 — granted at loan time (정기 납부, the repay engine)
     };
     private static readonly System.Type[] RemainderPool =
     {
-        typeof(JobPlacementCard),     // 취업알선 — income
-        typeof(PaymentBenefitCard),   // 납부혜택 — plating on payment
+        typeof(JobPlacementCard),     // slot 1 — 취업알선 (income), granted on the first shop revisit
     };
-    private const int TotalEventCards = 3;   // FixedOrder(1) + RemainderPool(2) — the free starter set
+    private const int TotalEventCards = 2;   // FixedOrder(1) + RemainderPool(1) — the free starter set
 
     // PURCHASABLE pool = everything NOT auto-granted: the 4 remaining POWER engines + the 6 non-power cards. The
     // debtor BUYS these on debt at the shop (see BuyCardOnDebt); removed on repay like every other debt card. The
@@ -666,6 +666,7 @@ internal static class LoanService
     private static readonly System.Type[] PurchasablePool =
     {
         typeof(RefundCard), typeof(CounterclaimCard), typeof(StatementCard), typeof(InterestSupportCard),  // power engines
+        typeof(PaymentBenefitCard),                                                                         // 납부혜택: payment → block (moved from free grants)
         typeof(CollectionCard),                                                                             // 추심: 공격판 환급 (scaling attack gen)
         typeof(SettlementCard), typeof(InvoiceCard), typeof(GarnishmentCard),                              // receipt spenders
         typeof(LoanStrikeCard), typeof(MortgageCard), typeof(BloodPaymentCard),                            // borrow / HP
