@@ -27,7 +27,7 @@ public sealed class DebtLoanRelic : RelicModel
     protected override string PackedIconOutlinePath => "res://Sts2DebtLoan/icons/debt_loan_relic_outline.png";
     protected override string BigIconPath => "res://Sts2DebtLoan/icons/debt_loan_relic.png";
 
-    private int _borrowed, _principal, _totalPaid, _loanFloor, _interestPctApplied;
+    private int _borrowed, _principal, _totalPaid, _loanFloor, _interestPctApplied, _interestPaid;
     private bool _active;
     private int _cards;   // transient (not saved): current per-combat Debt-card count, for the hover {cards}
 
@@ -44,6 +44,10 @@ public sealed class DebtLoanRelic : RelicModel
     /// reload). Percent, not rooms, because the per-room rate now scales with the number of borrowers in co-op.</summary>
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public int InterestPctApplied { get => _interestPctApplied; set { AssertMutable(); _interestPctApplied = value; } }
+
+    /// <summary>Interest paid off so far (payments retire interest before principal). Persisted.</summary>
+    [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
+    public int InterestPaid { get => _interestPaid; set { AssertMutable(); _interestPaid = value; } }
 
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public int LoanFloor { get => _loanFloor; set { AssertMutable(); _loanFloor = value; } }
@@ -121,19 +125,20 @@ public sealed class DebtLoanRelic : RelicModel
     protected override IEnumerable<DynamicVar> CanonicalVars =>
         new[]
         {
-            new DynamicVar("borrowed", _borrowed),   // raw amount borrowed (doesn't shrink)
-            new DynamicVar("ipct", InterestPct),     // total interest rate charged so far (origination + node)
-            new DynamicVar("igold", InterestGold),   // that interest in gold (= borrowed × ipct%)
-            new DynamicVar("owed", _principal),      // what you'd repay right now (borrowed + interest + card-buys − payments)
+            new DynamicVar("borrowed", _borrowed),   // raw amount borrowed (reference; doesn't shrink)
+            new DynamicVar("igold", InterestRemaining),   // interest STILL owed (payments clear this first → shrinks)
+            new DynamicVar("prem", PrincipalRemaining),   // borrowed principal still owed (owed − remaining interest)
+            new DynamicVar("owed", _principal),      // total you'd repay right now
             new DynamicVar("paid", _totalPaid),
             new DynamicVar("cards", _cards),
         };
 
-    /// <summary>Total interest rate charged on the borrowed amount so far = origination (charged at borrow) + the
-    /// node interest accrued per room. This is the "how much has interest grown" figure the hover surfaces.</summary>
-    private int InterestPct => DebtLoanConfig.BorrowOriginationPct + _interestPctApplied;
-    /// <summary>That interest expressed in gold (of the borrowed principal).</summary>
-    private int InterestGold => (int)System.Math.Round(_borrowed * (InterestPct / 100.0));
+    /// <summary>Total interest CHARGED so far in gold = borrowed × (origination + node interest %).</summary>
+    private int InterestCharged => (int)System.Math.Round(_borrowed * ((DebtLoanConfig.BorrowOriginationPct + _interestPctApplied) / 100.0));
+    /// <summary>Interest STILL owed (charged − paid; payments retire interest first). Shrinks as you pay.</summary>
+    private int InterestRemaining => System.Math.Max(0, InterestCharged - _interestPaid);
+    /// <summary>Borrowed principal still owed = total owed minus the remaining interest slice (never below 0).</summary>
+    private int PrincipalRemaining => System.Math.Max(0, _principal - InterestRemaining);
 
     /// <summary>Show a preview of the Debt curse cards (plus their keyword tips) in the relic's hover tooltip
     /// — the same mechanism vanilla Soot uses. The set MATCHES the live escalation tier, so hovering the
@@ -167,9 +172,9 @@ public sealed class DebtLoanRelic : RelicModel
         {
             var vars = DynamicVars;
             if (vars.TryGetValue("borrowed", out var bo)) bo.BaseValue = _borrowed;
-            if (vars.TryGetValue("ipct", out var ip)) ip.BaseValue = InterestPct;
-            if (vars.TryGetValue("igold", out var ig)) ig.BaseValue = InterestGold;
-            if (vars.TryGetValue("owed", out var b)) b.BaseValue = _principal;   // remaining repayable (principal)
+            if (vars.TryGetValue("igold", out var ig)) ig.BaseValue = InterestRemaining;   // interest still owed
+            if (vars.TryGetValue("prem", out var pr)) pr.BaseValue = PrincipalRemaining;   // principal still owed
+            if (vars.TryGetValue("owed", out var b)) b.BaseValue = _principal;             // total owed
             if (vars.TryGetValue("paid", out var p)) p.BaseValue = _totalPaid;
             if (vars.TryGetValue("cards", out var c)) c.BaseValue = _cards;
             // The badge (DisplayAmount = rooms-until-next-tier) is computed live from TotalFloor, but the widget

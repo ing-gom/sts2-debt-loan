@@ -38,6 +38,11 @@ internal sealed class LoanRecord
     /// reload or re-fire. Replaces the old rooms counter now that the per-room rate scales with borrower count.</summary>
     internal int InterestPctApplied;
 
+    /// <summary>How much of the charged interest has been paid off so far. Payments retire INTEREST FIRST; once
+    /// InterestPaid reaches the total interest charged (origination + node), further payments eat into the borrowed
+    /// principal. Drives the "remaining interest vs remaining principal" split on the ledger hover. Persisted.</summary>
+    internal int InterestPaid;
+
     /// <summary>TotalFloor of the shop where the loan was taken. Top-ups are allowed only at THAT shop.
     /// Rooms-since-loan (which drives the Debt-card count) is computed as TotalFloor − LoanFloor.</summary>
     internal int LoanFloor = -1;
@@ -215,6 +220,7 @@ internal static class LoanService
             relic.Principal = rec.Principal;
             relic.TotalPaid = rec.TotalPaid;
             relic.InterestPctApplied = rec.InterestPctApplied;
+            relic.InterestPaid = rec.InterestPaid;
             relic.LoanFloor = rec.LoanFloor;
             relic.Active = rec.Active;
             relic.DunningLetterGranted = rec.DunningLetterGranted;
@@ -245,6 +251,7 @@ internal static class LoanService
         rec.Principal = relic.Principal;
         rec.TotalPaid = relic.TotalPaid;
         rec.InterestPctApplied = relic.InterestPctApplied;
+        rec.InterestPaid = relic.InterestPaid;
         rec.LoanFloor = relic.LoanFloor;
         rec.Active = relic.Active;
         rec.DunningLetterGranted = relic.DunningLetterGranted;
@@ -726,19 +733,27 @@ internal static class LoanService
         SyncToRelic(player);
     }
 
-    /// <summary>A Debt card drained gold. The payment splits: a share pays DOWN the principal, the rest is
-    /// interest — so the loan amortizes and the shop repay cost shrinks. The share is
-    /// <see cref="DebtLoanConfig.PrincipalRepayShare"/> (20%) for the passive on-draw drain, or an override
-    /// (50% when the player voluntarily PLAYS a Dunning card = faster repayment). Pure record math; runs
-    /// deterministically on both co-op peers in the lockstep combat.</summary>
+    /// <summary>Total interest CHARGED on the loan so far = origination (20%) + accrued node interest, as gold of the
+    /// borrowed principal. Grows as node interest accrues; independent of payments.</summary>
+    internal static int InterestChargedNow(LoanRecord rec)
+        => (int)Math.Round(rec.Borrowed * ((DebtLoanConfig.BorrowOriginationPct + rec.InterestPctApplied) / 100.0));
+
+    /// <summary>Interest still owed = charged − already paid (never below 0). Payments clear this before principal.</summary>
+    internal static int InterestRemaining(LoanRecord rec) => Math.Max(0, InterestChargedNow(rec) - rec.InterestPaid);
+
+    /// <summary>A payment drained gold toward the loan. INTEREST FIRST: the payment retires outstanding interest
+    /// before it eats into the borrowed principal (tracked via <see cref="LoanRecord.InterestPaid"/>); the total owed
+    /// (<see cref="LoanRecord.Principal"/> = shop repay cost) always drops by the full amount. Pure record math; runs
+    /// deterministically on both co-op peers in the lockstep combat. (principalShareOverride is now ignored — kept
+    /// for signature compatibility with existing callers.)</summary>
     internal static async Task AccrueInterest(Player player, int drained, double? principalShareOverride = null)
     {
         var rec = For(player);
         if (rec == null || !rec.Active || drained <= 0) return;
         rec.TotalPaid += drained;
-        double share = principalShareOverride ?? DebtLoanConfig.PrincipalRepayShare;
-        int principalCut = Math.Min(rec.Principal, (int)Math.Round(drained * share));
-        rec.Principal = Math.Max(0, rec.Principal - principalCut);
+        int toInterest = Math.Min(drained, InterestRemaining(rec));   // interest first
+        rec.InterestPaid += toInterest;                               // the rest (drained − toInterest) is principal
+        rec.Principal = Math.Max(0, rec.Principal - drained);         // total owed drops by the full payment
         SyncToRelic(player);
         await Task.CompletedTask;
     }
@@ -902,6 +917,7 @@ internal static class LoanService
         var rec = For(player);
         if (rec == null || !rec.Active || amount <= 0) return;
         int cut = Math.Min(rec.Principal, amount);
+        rec.InterestPaid += Math.Min(cut, InterestRemaining(rec));   // interest first (same order as a normal payment)
         rec.Principal = Math.Max(0, rec.Principal - cut);
         rec.TotalPaid += cut;
         if (rec.Principal <= 0) rec.Active = false;   // spiral self-terminates; relic removed at next shop
