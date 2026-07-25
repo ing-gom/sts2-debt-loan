@@ -37,6 +37,7 @@ internal static class NCardFramePatch
         typeof(CounterclaimCard), typeof(StatementCard), typeof(InterestSupportCard),
         typeof(CollectionCard),   // 추심 — a held payment-set Power (feeds the 집행 token); the token stays plain
         typeof(BankruptcyCard),   // 파산 선언 — a Skill; it's a payment-set card, so it gets the purple+gold frame
+        typeof(RefinanceCard),    // 차환 — Skill; converts Debt curses into Payment cards
     };
 
     // Slate-lavender h/s/v for the banner / portrait-border / type-plaque (kept from the earlier look so they

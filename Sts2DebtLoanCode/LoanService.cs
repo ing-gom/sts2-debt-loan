@@ -473,7 +473,8 @@ internal static class LoanService
     /// Tiers lowered ~10 so card debt piles up more slowly (paired with the tighter per-shop credit limit).</summary>
     internal static int CardDebtPrice(System.Type t)
     {
-        if (t == typeof(InvoiceCard) || t == typeof(GarnishmentCard) || t == typeof(BankruptcyCard)) return 65;   // 고급: scaling attack / AoE / debt payoff
+        if (t == typeof(InvoiceCard) || t == typeof(GarnishmentCard) || t == typeof(BankruptcyCard) || t == typeof(RefinanceCard)) return 65;   // 고급: scaling attack / AoE / debt payoff
+        if (t == typeof(JobPlacementCard)) return 55;   // 취업알선: income skill
         if (t == typeof(RefundCard) || t == typeof(CounterclaimCard)
             || t == typeof(StatementCard) || t == typeof(InterestSupportCard)
             || t == typeof(PaymentBenefitCard)
@@ -678,23 +679,21 @@ internal static class LoanService
         rec.LastShopVisitFloor = floor;
         rec.DebtShopVisits++;
         rec.ShopSpentThisVisit = 0;   // fresh credit line at each new shop (see DebtLoanConfig.ShopCreditLimit)
+        rec.PurchasedCards.Clear();   // "sold" is per-VISIT now → cards can be re-bought next shop (dupes allowed), just not twice in one visit
         SyncToRelic(player);
     }
 
     /// <summary>Grant the 정기 납부 once per loan, when the debtor enters a shop that isn't the one they borrowed
     /// at (TotalFloor != LoanFloor). Deck mutation is local + deterministic → the same card lands on each peer.</summary>
-    // SHOP AUTO-GRANT channel = only 2 cards handed out for free: 정기 납부 (the repay engine) at LOAN TIME,
-    // then 취업알선 (income) on the FIRST shop revisit (the definite 2nd free card). 납부혜택 is NOT free anymore —
-    // it moved to the debt shop (see PurchasablePool). Everything else is BOUGHT so the free loop is a lean starter.
+    // SHOP AUTO-GRANT channel = ONLY 정기 납부 (the repay engine) handed out free, once, at LOAN TIME. Everything
+    // else — 취업알선(income), 납부혜택, and the rest — is BOUGHT at the debt shop (see PurchasablePool) and can be
+    // re-bought on later visits for duplicates (just not twice in one visit).
     private static readonly System.Type[] FixedOrder =
     {
-        typeof(DunningLetterCard),    // slot 0 — granted at loan time (정기 납부, the repay engine)
+        typeof(DunningLetterCard),    // slot 0 — granted at loan time (정기 납부, the repay engine); the ONLY free card
     };
-    private static readonly System.Type[] RemainderPool =
-    {
-        typeof(JobPlacementCard),     // slot 1 — 취업알선 (income), granted on the first shop revisit
-    };
-    private const int TotalEventCards = 2;   // FixedOrder(1) + RemainderPool(1) — the free starter set
+    private static readonly System.Type[] RemainderPool = System.Array.Empty<System.Type>();   // 취업알선 moved to the shop
+    private const int TotalEventCards = 1;   // FixedOrder(1) only — 정기 납부 is the single free starter card
 
     // PURCHASABLE pool = everything NOT auto-granted: the 4 remaining POWER engines + the 6 non-power cards. The
     // debtor BUYS these on debt at the shop (see BuyCardOnDebt); removed on repay like every other debt card. The
@@ -706,7 +705,8 @@ internal static class LoanService
         typeof(CollectionCard),                                                                             // 추심: 공격판 환급 (scaling attack gen)
         typeof(SettlementCard), typeof(InvoiceCard), typeof(GarnishmentCard),                              // receipt spenders
         typeof(LoanStrikeCard), typeof(MortgageCard), typeof(BloodPaymentCard),                            // borrow / HP
-        typeof(BankruptcyCard),                                                                            // debt payoff: wipe Debt cards → Strength
+        typeof(JobPlacementCard),                                                                          // 취업알선: income skill (moved from free grants)
+        typeof(BankruptcyCard), typeof(RefinanceCard),                                                     // debt payoff: Bankruptcy(→Strength) / Refinance(→Payment cards)
     };
     private const int ShopOfferCount = 5;   // cards displayed per shop visit (rotating), like the merchant's card row
 
