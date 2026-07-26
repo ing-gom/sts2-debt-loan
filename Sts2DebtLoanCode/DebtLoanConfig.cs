@@ -71,6 +71,13 @@ internal static class DebtLoanConfig
     /// <summary>Ceiling on the co-op extra node-interest cap (never adds more than this on top of the 40% base).</summary>
     internal static int MpInterestExtraCapMaxPct = 40;
 
+    /// <summary>How many times gold may be DRAWN on one loan (first borrow + top-ups). 0 = unlimited.
+    /// The gold cap alone (300/400) let a debtor take unlimited small loans and clean out a shop; with 3 draws the
+    /// scarce resource becomes the DECISIONS — 300 gold split three ways, so a 50-gold nibble costs a whole slot.
+    /// Resets when the loan is fully repaid (the record dies with it) — that is what 신용 회복 restores.
+    /// Debt-shop CARD buys don't count here; they have their own per-visit credit line (ShopCreditLimit).</summary>
+    internal static int MaxLoanDraws = 3;
+
     /// <summary>Highest act (0-based) where the merchant still lends: 0 = Act 1 only (default), 1 = through
     /// Act 2, 2 = through Act 3. Compared against <c>RunState.CurrentActIndex</c>.</summary>
     internal static int MaxLoanActIndex = 0;

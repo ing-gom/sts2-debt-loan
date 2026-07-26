@@ -22,6 +22,17 @@
 - 대출액 = `구매가 − 보유골드`(부족분). **소프트캡 `MaxLoan`=300**, 구매를 위해 그 위로
   **`OverCapAllowance`=100**까지 허용 → **하드캡 400**. 소프트캡 초과 시 전투당 빚 카드 수가 1 높게 시작.
 - **`MaxLoanActIndex`** 막까지만 대출(기본 Act 1). 상환은 어느 막/상점에서든 가능.
+- **★인출 횟수 제한(`MaxLoanDraws`=3)**: 한 대출에서 골드를 나눠 받을 수 있는 횟수(최초 대출 + 추가 인출
+  각각 1회, `LoanRecord.LoanDraws`, 유물 영속화). 금액 상한만 있던 시절엔 소액 대출을 무한 반복해 한 상점을
+  쓸어담을 수 있었다 — 이제 **300골드를 세 번의 결정으로 나눠 써야** 하고 50골드 인출도 슬롯 하나를 먹는다.
+  - 카운트는 **적용 경로 `ApplyActiveLoan`에서 증가**(SP 직접 / co-op은 dl_sync로 양 피어가 재생) →
+    **와이어 인자를 늘리지 않고** 수렴. 게이트는 `CanLoanCover`(구매자 로컬), 표시는 상점 칩.
+  - **완납 시 리셋**(record가 `ResetFor`로 사라짐) — 이게 신용 회복의 "재대출 가능"이 뜻하는 것.
+  - **빚 상점 카드 구매는 이 카운터와 무관**(거긴 방문당 외상 한도 `ShopCreditLimit`).
+- **★상점 칩(`NLoanDrawsChip`)**: 상인 러그 상단 중앙에 "대출 {남음} / {최대}". 소진 시 빨강 + 대출 가능
+  가격표의 초록이 함께 꺼진다(`MerchantPriceColorPatch`가 같은 `CanLoanCover` 게이트를 보므로 자동 일치).
+  유물 호버가 아니라 상점에 둔 이유 = **첫 대출 전에는 빚 장부 유물이 없어서** 정작 첫 결정 순간에 아무것도
+  못 보여준다. 14언어(`DebtShopUiRow.Draws`).
 - **추가 대출**은 유물 보유 + 원금 여유가 있을 때. 상점 아이템 중 대출로 살 수 있는 것은 가격표가
   **초록**(`MerchantPriceColorPatch`).
 
@@ -139,6 +150,7 @@
 | `maxLoan` | 런당 총 대출 상한(골드) | 300 |
 | `maxLoanAct` | 대출 허용 최대 막 | Act 1 |
 | `shopCreditLimit` | 상점 방문당 외상(카드 구매) 한도 | 120 |
+| `maxLoanDraws` | 한 대출당 골드 인출 횟수 (0=무제한) | 3 |
 
 `ModConfig` 또는 `RitsuLib` 중 어느 것으로도 조절(둘 다 선택; 없으면 기본값). 등록 전 `GetValue` 금지
 (타입 기본값 반환), 신 API는 리플렉션+폴백으로 first-wins 버전 스큐 대비.
@@ -159,6 +171,7 @@
 | `Settlement/Invoice/Refund/PaymentBenefit/InterestSupport/Counterclaim/Statement/Collection/BloodPayment/Garnishment/LoanStrike/Mortgage/JobPlacement/Wages/DiligentPayment*.cs` | 결제셋 카드/파워 |
 | `BankruptcyCard.cs` / `BankruptcyPower.cs` | 파산 선언 + 파산 파워 |
 | `NDebtCardShopPanel.cs` | 빚 상점 UI(그리드/상환/외상 한도/상인 손) |
+| `NLoanDrawsChip.cs` | 상인 상점 상단 "대출 N/3" 칩 |
 | `Patches/MerchantLoanPurchasePatch.cs` | 상점 구매 인터셉트 → 대출 결제 |
 | `Patches/ShopBackClosesDebtShopPatch.cs` | 네이티브 뒤로가기 → 빚 상점 닫기 |
 | `Patches/EnergyIconPatch.cs` / `NCardFramePatch.cs` / `PaymentCostOverlayPatch.cs` | 카드 시각(에너지/프레임/영수증 배지) |

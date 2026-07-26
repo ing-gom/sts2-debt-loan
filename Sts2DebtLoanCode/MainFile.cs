@@ -20,6 +20,7 @@ public class MainFile
     private const string KeyMaxLoan = "maxLoan";
     private const string KeyMaxAct = "maxLoanAct";
     private const string KeyShopCredit = "shopCreditLimit";
+    private const string KeyLoanDraws = "maxLoanDraws";
     private const string KeyGarnish = "garnishMaxPct";
     private const string KeyInterestCap = "interestGoldCap";
 
@@ -70,6 +71,12 @@ public class MainFile
                 .Description("The furthest act where the merchant will extend credit. 'Act 2' allows loans in Acts 1–2, 'Act 3' in Acts 1–3.");
             Loc(b, "대출 허용 막", "상인이 대출해주는 최대 막. 'Act 2' = 1~2막, 'Act 3' = 1~3막에서 대출 가능. 기본값 'Act 1' = 1막에서만.");
 
+            b.Slider(KeyLoanDraws, "Loan draws per loan", defaultValue: 3.0,
+                    onChanged: v => DebtLoanConfig.MaxLoanDraws = (int)v)
+                .Range(0f, 10f, 1f, format: "F0")
+                .Description("How many separate times you may draw gold on ONE loan (the first borrow plus each top-up). With the default 3, the 300-gold cap has to be split across three decisions instead of nibbled away. 0 = unlimited. Repaying the loan in full restores a fresh set. Debt-shop card purchases don't count — they have their own per-visit credit line.");
+            Loc(b, "대출당 인출 횟수", "한 대출에서 골드를 나눠 받을 수 있는 횟수 (최초 대출 + 추가 인출 각각 1회). 기본 3이면 300골드 한도를 세 번의 결정으로 나눠 써야 합니다. 0 = 무제한. 빚을 완납하면 다시 3회로 회복됩니다. 빚 상점 카드 구매는 별도 한도라 여기 포함되지 않습니다.");
+
             b.Slider(KeyShopCredit, "Debt-shop credit per visit (gold)", defaultValue: 120.0,
                     onChanged: v => DebtLoanConfig.ShopCreditLimit = (int)v)
                 .Range(50f, 400f, 25f, format: "F0")
@@ -93,6 +100,7 @@ public class MainFile
             DebtLoanConfig.MaxLoan = (int)ModConfigBridge.GetValue<double>(ModId, KeyMaxLoan, 300.0);
             DebtLoanConfig.MaxLoanActIndex = ActIndexOf(ModConfigBridge.GetValue<string>(ModId, KeyMaxAct, "Act 1"));
             DebtLoanConfig.ShopCreditLimit = (int)ModConfigBridge.GetValue<double>(ModId, KeyShopCredit, 120.0);
+            DebtLoanConfig.MaxLoanDraws = (int)ModConfigBridge.GetValue<double>(ModId, KeyLoanDraws, 3.0);
             DebtLoanConfig.GarnishMaxPct = (int)ModConfigBridge.GetValue<double>(ModId, KeyGarnish, 40.0);
             DebtLoanConfig.InterestGoldCap = (int)ModConfigBridge.GetValue<double>(ModId, KeyInterestCap, 100.0);
 

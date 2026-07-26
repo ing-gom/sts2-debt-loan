@@ -77,6 +77,12 @@ public sealed class DebtLoanRelic : RelicModel
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public bool RestructuringUsed { get => _restructuringUsed; set { AssertMutable(); _restructuringUsed = value; } }
 
+    private int _loanDraws;
+    /// <summary>Gold draws taken on this loan (first borrow + top-ups), capped by DebtLoanConfig.MaxLoanDraws.
+    /// Persisted so a reload can't hand back spent draws. Cleared with the loan on repay.</summary>
+    [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
+    public int LoanDraws { get => _loanDraws; set { AssertMutable(); _loanDraws = value; } }
+
     private int _eventGrantCount;
     /// <summary>How many of the SHOP power cards have been handed out (one per shop-revisit). Persisted so the
     /// fixed order (1st=정기 납부) + per-run shuffle survives reloads.</summary>

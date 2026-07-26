@@ -65,6 +65,14 @@ internal sealed class LoanRecord
     /// on the first visit to a shop other than the loan shop). Persisted on the relic so a reload keeps it.</summary>
     internal bool DunningLetterGranted;
 
+    /// <summary>How many times gold has actually been DRAWN on this loan (the first borrow + every top-up).
+    /// Capped by <see cref="DebtLoanConfig.MaxLoanDraws"/>: the gold cap alone let a debtor nibble a shop clean in
+    /// unlimited small loans, so the draws themselves are the scarce thing now — 300 gold split across 3 decisions.
+    /// Counts MERCHANT-ITEM loans only; debt-shop card buys have their own per-visit credit line. Dies with the
+    /// record on full repay, so clearing the debt restores a fresh set of draws (that's what 신용 회복 means).
+    /// Persisted on the relic.</summary>
+    internal int LoanDraws;
+
     /// <summary>Whether this loan's ONE 채무 조정 (Restructuring) write-off has been spent. Once true the card can no
     /// longer be played and the debt shop stops stocking it — without that gate it would be re-buyable at every shop
     /// (the sold-set clears per visit) for far less debt than it forgives, i.e. an infinite principal deleter. Dies
@@ -242,6 +250,7 @@ internal static class LoanService
             relic.Active = rec.Active;
             relic.DunningLetterGranted = rec.DunningLetterGranted;
             relic.RestructuringUsed = rec.RestructuringUsed;
+            relic.LoanDraws = rec.LoanDraws;
             relic.EventGrantCount = rec.EventGrantCount;
             relic.LifetimePayments = rec.LifetimePayments;
             relic.DebtShopVisits = rec.DebtShopVisits;
@@ -280,6 +289,7 @@ internal static class LoanService
         rec.Active = relic.Active;
         rec.DunningLetterGranted = relic.DunningLetterGranted;
         rec.RestructuringUsed = relic.RestructuringUsed;
+        rec.LoanDraws = relic.LoanDraws;
         rec.EventGrantCount = relic.EventGrantCount;
         rec.LifetimePayments = relic.LifetimePayments;
         rec.DebtShopVisits = relic.DebtShopVisits;
@@ -321,7 +331,7 @@ internal static class LoanService
 
     // ── Eligibility ──────────────────────────────────────────────────────────
 
-    private static bool ActAllowsLoan(Player player)
+    internal static bool ActAllowsLoan(Player player)
         => player.RunState.CurrentActIndex <= DebtLoanConfig.MaxLoanActIndex;
 
     internal static int RemainingRoom(Player player)
@@ -351,6 +361,7 @@ internal static class LoanService
 
         if (rec == null || !rec.RelicGranted) return true;   // FIRST loan (or fresh after a repay)
         if (!rec.Active) return false;
+        if (DrawsLeft(rec) <= 0) return false;               // spent all draws on this loan → the merchant is done
         return player.RunState.TotalFloor == rec.LoanFloor;  // top-up ONLY at the same shop
     }
 
@@ -435,6 +446,10 @@ internal static class LoanService
         rec.LoanFloor    = loanFloor;
         rec.Active       = true;
         rec.RelicGranted = true;
+        // One call = one DRAW (the first borrow and every top-up both land here). Counted on the APPLIED path, which
+        // SP runs directly and co-op replays on BOTH peers via dl_sync — so the count converges without widening the
+        // wire (adding a 5th broadcast arg would break version parity, see coop-guard).
+        rec.LoanDraws++;
         if (!PlayerHasLedger(player))
             await DebtLoanGrants.GrantRelic(player);
         // Hand the 정기 납부 (Standing Order) card AT LOAN TIME (not the first shop revisit) so you have immediate
@@ -1047,6 +1062,22 @@ internal static class LoanService
         if (player.Creature != null && player.Creature.GetPower<BadCreditPower>() != null)
             await PowerCmd.Remove<BadCreditPower>(player.Creature);  // kill the 강제 징수 spawner so its icon clears too
         await ApplyRepay(player);                                   // Active=false + deck sweep + remove relic + reset record
+    }
+
+    /// <summary>Draws still available on this loan (∞ when <see cref="DebtLoanConfig.MaxLoanDraws"/> ≤ 0).
+    /// Single source of truth for the <see cref="CanLoanCover"/> gate and the shop chip.</summary>
+    internal static int DrawsLeft(LoanRecord? rec)
+    {
+        int max = DebtLoanConfig.MaxLoanDraws;
+        if (max <= 0) return int.MaxValue;               // 0 = unlimited (ModConfig)
+        return Math.Max(0, max - (rec?.LoanDraws ?? 0));
+    }
+
+    /// <summary>Draws left for this player, for UI. No loan yet ⇒ the full allowance.</summary>
+    internal static int DrawsLeftFor(Player? p)
+    {
+        var rec = For(p);
+        return DrawsLeft(rec != null && rec.Active ? rec : null);
     }
 
     /// <summary>Principal still owed on this player's ACTIVE loan (0 if there is no live loan). The read-only view

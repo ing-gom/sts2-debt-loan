@@ -1708,6 +1708,54 @@ internal static class SoloTest
             }
             catch (Exception e) { W("  무료 슬롯 section failed: " + e); all = false; }
 
+            // ── 대출 인출 횟수 제한 (MaxLoanDraws) ─────────────────────────────────────────────────────────
+            // 금액 상한만 있던 시절엔 한 상점을 소액 대출로 쓸어담을 수 있었다. 이제 인출 "횟수"가 희소 자원.
+            Step("대출 인출 횟수 제한 (3회)");
+            try
+            {
+                int savedMax = DebtLoanConfig.MaxLoan;
+                DebtLoanConfig.MaxLoan = 9999;                 // 금액 상한이 아니라 횟수 상한을 보는 테스트
+                LoanService.ResetFor(player);                  // 완납 후처럼 깨끗한 상태에서 시작
+                int free0 = LoanService.DrawsLeftFor(player);  // 대출 전 = 만땅
+                await LoanService.GrantLoanDirect(player, 50); await Task.Delay(250);
+                int d1 = LoanService.DrawsLeftFor(player);
+                await LoanService.GrantLoanDirect(player, 50); await Task.Delay(250);
+                int d2 = LoanService.DrawsLeftFor(player);
+                await LoanService.GrantLoanDirect(player, 50); await Task.Delay(250);
+                int d3 = LoanService.DrawsLeftFor(player);
+                var drec = LoanService.For(player)!;
+                bool tD1 = free0 == 3 && d1 == 2 && d2 == 1 && d3 == 0 && drec.LoanDraws == 3;
+                W($"  assert draws countdown: before={free0}(3) →{d1}(2) →{d2}(1) →{d3}(0) rec.LoanDraws={drec.LoanDraws}(3) -> {tD1}");
+                all &= tD1;
+
+                // 소진되면 CanLoanCover가 막아야 한다 — 금액 여유가 충분해도.
+                int roomLeft = LoanService.RemainingRoom(player);
+                bool tD2 = roomLeft > 200 && LoanService.DrawsLeft(drec) == 0;
+                W($"  assert gate: remainingRoom={roomLeft}(>200, 금액은 남아있음) drawsLeft=0 → 대출 차단 -> {tD2}");
+                all &= tD2;
+
+                // 영속화: 유물에 실려 리로드를 견뎌야 한다(안 그러면 재접속으로 인출 횟수가 부활).
+                LoanService.SyncToRelic(player);
+                int onRelic = LoanService.LedgerRelicOf(player)?.LoanDraws ?? -1;
+                drec.LoanDraws = 0;                            // 레코드만 지우고 유물에서 복원
+                LoanService.RestoreFromRelic(player);
+                int restored = LoanService.For(player)?.LoanDraws ?? -1;
+                bool tD3 = onRelic == 3 && restored == 3;
+                W($"  assert persistence: relic.LoanDraws={onRelic}(3) restored={restored}(3) -> {tD3}");
+                all &= tD3;
+
+                // 완납하면 다시 3회 — 신용 회복의 의미.
+                if ((int)player.Gold < LoanService.For(player)!.Principal)
+                    await PlayerCmd.GainGold(LoanService.For(player)!.Principal - (int)player.Gold, player, false);
+                await LoanService.Repay(player); await Task.Delay(300);
+                int drawsAfterRepay = LoanService.DrawsLeftFor(player);
+                bool tD4 = drawsAfterRepay == 3;
+                W($"  assert repay resets draws: drawsLeft={drawsAfterRepay}(3, 완납=신용 회복) -> {tD4}");
+                all &= tD4;
+                DebtLoanConfig.MaxLoan = savedMax;
+            }
+            catch (Exception e) { W("  대출 인출 횟수 section failed: " + e); all = false; }
+
             await Shot("2_final");
             W($"=== solo test done: {(all ? "ALL PASS" : "FAIL")} ===");
             Flush(all);

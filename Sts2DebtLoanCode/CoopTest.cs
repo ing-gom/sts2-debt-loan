@@ -383,7 +383,8 @@ internal static class CoopTest
         var rec = LoanService.For(h);
         return $"owed(host)={owed} purchased(host)={PurchasedCount(h)} deckHasBought={DeckHasAnyPurchased(h)} "
              + $"nativeDebt={NativeDebtInDeck(h)} restructured={(rec != null ? rec.RestructuringUsed.ToString() : "n/a")} "
-             + $"lev={(owed >= 0 ? (owed / 30).ToString() : "-1")}";
+             + $"lev={(owed >= 0 ? (owed / 30).ToString() : "-1")} "
+             + $"draws={(rec != null ? rec.LoanDraws.ToString() : "n/a")}";   // relic SavedProperty → rides the checksum
     }
 
     /// <summary>How many cards this player has bought on debt (their sold-set size), or -1 if they carry no loan.
