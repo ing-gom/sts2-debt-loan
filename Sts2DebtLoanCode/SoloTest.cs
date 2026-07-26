@@ -305,6 +305,49 @@ internal static class SoloTest
                 await Task.Delay(800);   // let the button's _Process position + show it
                 W($"  assert debt-shop-button: attached={(debtBtn != null)} visible={debtBtn?.Visible}");
                 await Shot("3b_shop_buttons");                       // real shop: 외상 구매 button (원금 상환은 빚 상점 패널로 이동)
+
+                // ★대출 기회 = 네이티브 호버툴팁에 붙는 한 줄. 실제 마우스를 대출 가능 슬롯 위로 옮겨(WarpMouse)
+                // 게임의 CreateHoverTip 경로를 그대로 태운 뒤, 툴팁이 뜬 상태를 찍는다.
+                try
+                {
+                    if ((int)player.Gold > 40) await PlayerCmd.LoseGold((int)player.Gold - 40, player);   // 부족분을 만들어 대출 가능 상태로
+                    await Task.Delay(400);
+                    var slots = new List<MegaCrit.Sts2.Core.Nodes.Screens.Shops.NMerchantSlot>();
+                    void Walk(Node n) { foreach (var c in n.GetChildren()) { if (c is MegaCrit.Sts2.Core.Nodes.Screens.Shops.NMerchantSlot s) slots.Add(s); Walk(c); } }
+                    if (shopNode != null) Walk(shopNode);
+                    MegaCrit.Sts2.Core.Nodes.Screens.Shops.NMerchantSlot? target = null;
+                    foreach (var s in slots)
+                    {
+                        var e = s.GetType().GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
+                                 .Where(f => typeof(MegaCrit.Sts2.Core.Entities.Merchant.MerchantEntry).IsAssignableFrom(f.FieldType))
+                                 .Select(f => f.GetValue(s) as MegaCrit.Sts2.Core.Entities.Merchant.MerchantEntry).FirstOrDefault(x => x != null);
+                        if (e != null && s.Visible && LoanService.CanLoanCover(e, player)) { target = s; break; }
+                    }
+                    W($"  loan-chance tip: slots={slots.Count} loanable={(target != null)} gold={(int)player.Gold} draws={LoanService.DrawsLeftFor(player)}");
+                    if (target != null)
+                    {
+                        var r = target.GetGlobalRect();
+                        // ★마우스 워프로는 재현 불가(실측 2회: hoverTipSet=False). 자동화 환경에선 MouseEntered가
+                        // 안 나서 네이티브 호버가 발동하지 않는다. 그래서 패치 대상 메서드를 직접 호출한다 —
+                        // CreateAndShow가 곧 검증 대상이고, 프리픽스가 여기서 hoverTips에 우리 줄을 붙인다.
+                        MegaCrit.Sts2.Core.Nodes.HoverTips.NHoverTipSet.Remove(target);   // 중복 owner 등록은 throw
+                        await Task.Delay(120);
+                        var baseTips = new List<MegaCrit.Sts2.Core.HoverTips.IHoverTip>
+                        {
+                            new MegaCrit.Sts2.Core.HoverTips.HoverTip { Title = "TEST", Description = "슬롯 자체 툴팁 자리", Id = "sp_probe" },
+                        };
+                        var set = MegaCrit.Sts2.Core.Nodes.HoverTips.NHoverTipSet.CreateAndShow(
+                            target, baseTips, MegaCrit.Sts2.Core.HoverTips.HoverTipAlignment.Right);
+                        await Task.Delay(900);
+                        bool tipShown = set != null && set.Visible;
+                        W($"  loan-chance tip: set={(set != null)} visible={tipShown} over slot {r.Position}+{r.Size} (원본 1줄 + 대출 기회 1줄이 보여야 함)");
+                        all &= tipShown;
+                        await Shot("3d_loan_chance_tip");
+                        MegaCrit.Sts2.Core.Nodes.HoverTips.NHoverTipSet.Remove(target);
+                    }
+                    else W("  loan-chance tip: 대출 가능한 슬롯이 없어 호버 스샷 생략");
+                }
+                catch (Exception e) { W("  loan-chance tip shot failed: " + e.Message); }
                 if (shopNode != null)
                 {
                     // [diag] the shop's own CanvasLayer depth vs the debt-shop panel's — they should MATCH now, so
@@ -1714,7 +1757,7 @@ internal static class SoloTest
             try
             {
                 int savedMax = DebtLoanConfig.MaxLoan;
-                DebtLoanConfig.MaxLoan = 9999;                 // 금액 상한이 아니라 횟수 상한을 보는 테스트
+                DebtLoanConfig.MaxLoan = 0;                    // 기본값 = 금액 상한 없음 (횟수가 유일한 제약)
                 LoanService.ResetFor(player);                  // 완납 후처럼 깨끗한 상태에서 시작
                 int free0 = LoanService.DrawsLeftFor(player);  // 대출 전 = 만땅
                 await LoanService.GrantLoanDirect(player, 50); await Task.Delay(250);
@@ -1730,11 +1773,23 @@ internal static class SoloTest
 
                 // 소진되면 CanLoanCover가 막아야 한다 — 금액 여유가 충분해도.
                 int roomLeft = LoanService.RemainingRoom(player);
-                bool tD2 = roomLeft > 200 && LoanService.DrawsLeft(drec) == 0;
-                W($"  assert gate: remainingRoom={roomLeft}(>200, 금액은 남아있음) drawsLeft=0 → 대출 차단 -> {tD2}");
+                bool tD2 = roomLeft == int.MaxValue && LoanService.DrawsLeft(drec) == 0;
+                W($"  assert gate: remainingRoom={(roomLeft == int.MaxValue ? "무제한" : roomLeft.ToString())} (금액 상한 없음) drawsLeft=0 → 대출 차단 -> {tD2}");
                 all &= tD2;
 
+                // ★금액 상한 없음: 3회로 유물 3개(275×3=825)를 이론상 빌릴 수 있어야 한다.
+                LoanService.ResetFor(player);
+                for (int i = 0; i < 3; i++) { await LoanService.GrantLoanDirect(player, 275); await Task.Delay(200); }
+                var brec = LoanService.For(player)!;
+                bool tD5 = brec.Borrowed == 825 && LoanService.DrawsLeft(brec) == 0;
+                W($"  assert no gold cap: borrowed={brec.Borrowed}(825 = 275×3) drawsLeft=0 -> {tD5}");
+                all &= tD5;
+                LoanService.ResetFor(player);
+                await LoanService.GrantLoanDirect(player, 50); await Task.Delay(200);
+                drec = LoanService.For(player)!;
+
                 // 영속화: 유물에 실려 리로드를 견뎌야 한다(안 그러면 재접속으로 인출 횟수가 부활).
+                drec.LoanDraws = 3;                            // 영속화 확인용으로 소진 상태를 만든다
                 LoanService.SyncToRelic(player);
                 int onRelic = LoanService.LedgerRelicOf(player)?.LoanDraws ?? -1;
                 drec.LoanDraws = 0;                            // 레코드만 지우고 유물에서 복원

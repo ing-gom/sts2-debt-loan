@@ -336,6 +336,11 @@ internal static class LoanService
 
     internal static int RemainingRoom(Player player)
     {
+        // ★MaxLoan ≤ 0 = NO gold cap: the DRAW COUNT is the only limit, so three draws can theoretically finance
+        // three relics. The old 300/400 cap made the draw limit nearly redundant — MinLoan is 100, so the hard cap
+        // already allowed at most 4 draws and "3" only shaved one off. Now the question is purely "is this item
+        // worth one of my three?", which is the decision the limit was added to create.
+        if (DebtLoanConfig.MaxLoan <= 0) return int.MaxValue;
         var rec = For(player);
         int used = rec?.Borrowed ?? 0;      // cap is on lifetime borrowed, not the amortized outstanding
         return Math.Max(0, DebtLoanConfig.HardCap - used);   // may overshoot the soft cap up to the hard cap

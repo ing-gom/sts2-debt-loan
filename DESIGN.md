@@ -19,8 +19,12 @@
 ## 대출 규칙
 
 - **최초 1회** 대출 시 **빚 장부** 유물 획득 → 이때부터 이자/티어 카운터 시작(`LoanFloor`).
-- 대출액 = `구매가 − 보유골드`(부족분). **소프트캡 `MaxLoan`=300**, 구매를 위해 그 위로
-  **`OverCapAllowance`=100**까지 허용 → **하드캡 400**. 소프트캡 초과 시 전투당 빚 카드 수가 1 높게 시작.
+- 대출액 = `구매가 − 보유골드`(부족분), 단 **최소 `MinLoan`=100**부터 나간다.
+- **★금액 상한 없음(`MaxLoan`=0 기본)**: 제약은 **인출 횟수 하나뿐**이라, 3회로 유물 3개(275×3=825골드)까지
+  이론상 빌릴 수 있다. 예전 300/400 캡은 `MinLoan`이 100이라 **이미 최대 4회로 제한**하고 있었고, 거기에
+  3회 제한을 얹으면 1회 줄이는 효과뿐이어서 두 제약이 사실상 중복이었다. 양수로 두면 골드 천장이 복원된다
+  (`OverCapAllowance`=100까지 초과 허용 → 하드캡 = MaxLoan+100).
+  ⚠️구 문서의 "소프트캡 초과 시 빚 카드 +1"은 **구현된 적이 없다**(`Borrowed`를 `MaxLoan`과 비교하는 코드 없음).
 - **`MaxLoanActIndex`** 막까지만 대출(기본 Act 1). 상환은 어느 막/상점에서든 가능.
 - **★인출 횟수 제한(`MaxLoanDraws`=3)**: 한 대출에서 골드를 나눠 받을 수 있는 횟수(최초 대출 + 추가 인출
   각각 1회, `LoanRecord.LoanDraws`, 유물 영속화). 금액 상한만 있던 시절엔 소액 대출을 무한 반복해 한 상점을
@@ -29,10 +33,15 @@
     **와이어 인자를 늘리지 않고** 수렴. 게이트는 `CanLoanCover`(구매자 로컬), 표시는 상점 칩.
   - **완납 시 리셋**(record가 `ResetFor`로 사라짐) — 이게 신용 회복의 "재대출 가능"이 뜻하는 것.
   - **빚 상점 카드 구매는 이 카운터와 무관**(거긴 방문당 외상 한도 `ShopCreditLimit`).
-- **★상점 칩(`NLoanDrawsChip`)**: 상인 러그 상단 중앙에 "대출 {남음} / {최대}". 소진 시 빨강 + 대출 가능
-  가격표의 초록이 함께 꺼진다(`MerchantPriceColorPatch`가 같은 `CanLoanCover` 게이트를 보므로 자동 일치).
-  유물 호버가 아니라 상점에 둔 이유 = **첫 대출 전에는 빚 장부 유물이 없어서** 정작 첫 결정 순간에 아무것도
-  못 보여준다. 14언어(`DebtShopUiRow.Draws`).
+- **★표시 = 네이티브 호버 툴팁에 붙는 한 줄**(`LoanChanceHoverTipPatch`): 상품을 호버하면 그 아이템의 원래
+  툴팁 아래에 **"대출 기회 2 / 3"** + 설명이 붙는다. 게임의 모든 툴팁이 지나가는
+  `NHoverTipSet.CreateAndShow(owner, tips, alignment)` **프리픽스에서 `tips`에 한 줄을 concat** → 배치·엣지
+  플립·해제를 전부 게임이 처리(패치 지점 1곳). 14언어(`DebtShopUiRow.Draws`/`DrawsTip`).
+  - 게이트가 `CanLoanCover`라 **살 수 있는 물건엔 안 뜬다**(기회를 안 쓰므로) → 툴팁이 떴다는 것 자체가
+    "이건 빌려야 산다"는 신호. 같은 게이트를 보는 보라색 가격표(`MerchantPriceColorPatch`)와 절대 불일치 불가.
+  - **버린 두 안**: ①러그 상단 상시 칩 — 빚 상점의 "대출 가능 {잔액}/{한도}"와 같은 단어·같은 X/Y 형식인데
+    한쪽은 골드 한쪽은 횟수라 헷갈림. ②슬롯 옆 자체 패널 — 실측 스크린샷에서 **이웃 카드의 가격표를 가림**.
+  - 서브타입별 `CreateHoverTip` 패치도 기각(플레이버마다 tips 구성이 다르고, 같은 owner 재등록은 중복키 throw).
 - **추가 대출**은 유물 보유 + 원금 여유가 있을 때. 상점 아이템 중 대출로 살 수 있는 것은 가격표가
   **초록**(`MerchantPriceColorPatch`).
 
@@ -147,7 +156,7 @@
 
 | 키 | 의미 | 기본 |
 |---|---|---|
-| `maxLoan` | 런당 총 대출 상한(골드) | 300 |
+| `maxLoan` | 런당 총 대출 상한(골드), 0=무제한 | 0 |
 | `maxLoanAct` | 대출 허용 최대 막 | Act 1 |
 | `shopCreditLimit` | 상점 방문당 외상(카드 구매) 한도 | 120 |
 | `maxLoanDraws` | 한 대출당 골드 인출 횟수 (0=무제한) | 3 |
@@ -171,7 +180,7 @@
 | `Settlement/Invoice/Refund/PaymentBenefit/InterestSupport/Counterclaim/Statement/Collection/BloodPayment/Garnishment/LoanStrike/Mortgage/JobPlacement/Wages/DiligentPayment*.cs` | 결제셋 카드/파워 |
 | `BankruptcyCard.cs` / `BankruptcyPower.cs` | 파산 선언 + 파산 파워 |
 | `NDebtCardShopPanel.cs` | 빚 상점 UI(그리드/상환/외상 한도/상인 손) |
-| `NLoanDrawsChip.cs` | 상인 상점 상단 "대출 N/3" 칩 |
+| `Patches/LoanChanceHoverTipPatch.cs` | 상품 호버 툴팁에 "대출 기회 N/3" 한 줄 추가 |
 | `Patches/MerchantLoanPurchasePatch.cs` | 상점 구매 인터셉트 → 대출 결제 |
 | `Patches/ShopBackClosesDebtShopPatch.cs` | 네이티브 뒤로가기 → 빚 상점 닫기 |
 | `Patches/EnergyIconPatch.cs` / `NCardFramePatch.cs` / `PaymentCostOverlayPatch.cs` | 카드 시각(에너지/프레임/영수증 배지) |

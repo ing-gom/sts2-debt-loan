@@ -329,10 +329,10 @@ internal static class DebtLoanLoc
     // ── Debt-card shop panel UI (Buy on credit). {0} = the card's debt price. ──────────────────────────
     internal readonly struct DebtShopUiRow
     {
-        public readonly string Title, Hint, Price, Sold, Close, Credit, OverLimit, Free, Draws;
+        public readonly string Title, Hint, Price, Sold, Close, Credit, OverLimit, Free, Draws, DrawsTip;
         public DebtShopUiRow(string title, string hint, string price, string sold, string close,
-                             string credit, string overLimit, string free, string draws)
-        { Title = title; Hint = hint; Price = price; Sold = sold; Close = close; Credit = credit; OverLimit = overLimit; Free = free; Draws = draws; }
+                             string credit, string overLimit, string free, string draws, string drawsTip)
+        { Title = title; Hint = hint; Price = price; Sold = sold; Close = close; Credit = credit; OverLimit = overLimit; Free = free; Draws = draws; DrawsTip = drawsTip; }
     }
 
     internal static DebtShopUiRow DebtShopUiFor(string? lang)
@@ -342,20 +342,20 @@ internal static class DebtLoanLoc
     {
         // Credit = header showing this shop's remaining/limit credit line ({0}=remaining {1}=limit);
         // OverLimit = badge on offers you can't afford on this visit's credit.
-        ["eng"] = new("Buy on Credit", "Press to enter the debt shop.", "Debt {0}", "SOLD", "Back to Shop", "Credit {0}/{1}", "OVER LIMIT", "FREE", "Loans  {0} / {1}"),
-        ["kor"] = new("외상 구매", "누르면 빚 상점으로 이동됩니다.", "빚 {0}", "품절", "상점으로 돌아가기", "대출 가능 {0}/{1}", "한도 초과", "무료", "대출  {0} / {1}"),
-        ["jpn"] = new("ツケで購入", "押すと借金ショップへ移動します。", "借金 {0}", "売切れ", "ショップに戻る", "融資枠 {0}/{1}", "限度額超過", "無料", "融資  {0} / {1}"),
-        ["zhs"] = new("赊购", "点击进入赊账商店。", "债务 {0}", "售罄", "返回商店", "额度 {0}/{1}", "超出额度", "免费", "贷款  {0} / {1}"),
-        ["deu"] = new("Auf Kredit kaufen", "Drücken, um den Schuldenladen zu öffnen.", "Schuld {0}", "VERKAUFT", "Zurück zum Laden", "Kredit {0}/{1}", "ÜBER LIMIT", "GRATIS", "Kredite  {0} / {1}"),
-        ["fra"] = new("Acheter à crédit", "Appuyer pour ouvrir la boutique de crédit.", "Dette {0}", "VENDU", "Retour à la boutique", "Crédit {0}/{1}", "LIMITE DÉPASSÉE", "GRATUIT", "Prêts  {0} / {1}"),
-        ["spa"] = new("Comprar a crédito", "Pulsa para ir a la tienda de crédito.", "Deuda {0}", "VENDIDO", "Volver a la tienda", "Crédito {0}/{1}", "LÍMITE SUPERADO", "GRATIS", "Préstamos  {0} / {1}"),
-        ["esp"] = new("Comprar a crédito", "Pulsa para ir a la tienda de crédito.", "Deuda {0}", "VENDIDO", "Volver a la tienda", "Crédito {0}/{1}", "LÍMITE SUPERADO", "GRATIS", "Préstamos  {0} / {1}"),
-        ["ita"] = new("Compra a credito", "Premi per aprire il negozio a credito.", "Debito {0}", "VENDUTO", "Torna al negozio", "Credito {0}/{1}", "OLTRE IL LIMITE", "GRATIS", "Prestiti  {0} / {1}"),
-        ["pol"] = new("Kup na kredyt", "Naciśnij, aby przejść do sklepu na kredyt.", "Dług {0}", "SPRZEDANE", "Wróć do sklepu", "Kredyt {0}/{1}", "PONAD LIMIT", "ZA DARMO", "Pożyczki  {0} / {1}"),
-        ["ptb"] = new("Comprar fiado", "Pressione para ir à loja fiado.", "Dívida {0}", "VENDIDO", "Voltar à loja", "Crédito {0}/{1}", "ACIMA DO LIMITE", "GRÁTIS", "Empréstimos  {0} / {1}"),
-        ["rus"] = new("Купить в долг", "Нажмите, чтобы открыть долговой магазин.", "Долг {0}", "ПРОДАНО", "Вернуться в магазин", "Кредит {0}/{1}", "СВЕРХ ЛИМИТА", "БЕСПЛАТНО", "Займы  {0} / {1}"),
-        ["tha"] = new("ซื้อเงินเชื่อ", "กดเพื่อไปยังร้านค้าเงินเชื่อ", "หนี้ {0}", "ขายแล้ว", "กลับไปที่ร้านค้า", "วงเงิน {0}/{1}", "เกินวงเงิน", "ฟรี", "เงินกู้  {0} / {1}"),
-        ["tur"] = new("Borçla Satın Al", "Borç dükkânına gitmek için bas.", "Borç {0}", "SATILDI", "Dükkâna dön", "Kredi {0}/{1}", "LİMİT AŞILDI", "ÜCRETSİZ", "Krediler  {0} / {1}"),
+        ["eng"] = new("Buy on Credit", "Press to enter the debt shop.", "Debt {0}", "SOLD", "Back to Shop", "Credit {0}/{1}", "OVER LIMIT", "FREE", "Loan chances  {0} / {1}", "Buying this on credit spends one loan chance. A loan advances at least 100 Gold. Repaying the debt in full restores all three."),
+        ["kor"] = new("외상 구매", "누르면 빚 상점으로 이동됩니다.", "빚 {0}", "품절", "상점으로 돌아가기", "대출 가능 {0}/{1}", "한도 초과", "무료", "대출 기회  {0} / {1}", "빌려서 구매하면 대출 기회 1회를 씁니다. 대출은 최소 100골드부터 나갑니다. 빚을 완납하면 3회로 회복됩니다."),
+        ["jpn"] = new("ツケで購入", "押すと借金ショップへ移動します。", "借金 {0}", "売切れ", "ショップに戻る", "融資枠 {0}/{1}", "限度額超過", "無料", "融資の機会  {0} / {1}", "借入で購入すると融資の機会を1回消費します。融資は最低100ゴールドから。借金を完済すると3回に回復します。"),
+        ["zhs"] = new("赊购", "点击进入赊账商店。", "债务 {0}", "售罄", "返回商店", "额度 {0}/{1}", "超出额度", "免费", "贷款机会  {0} / {1}", "赊账购买将消耗1次贷款机会。贷款至少放款100金币。还清债务后恢复为3次。"),
+        ["deu"] = new("Auf Kredit kaufen", "Drücken, um den Schuldenladen zu öffnen.", "Schuld {0}", "VERKAUFT", "Zurück zum Laden", "Kredit {0}/{1}", "ÜBER LIMIT", "GRATIS", "Kreditchancen  {0} / {1}", "Ein Kauf auf Kredit verbraucht eine Kreditchance. Ein Kredit zahlt mindestens 100 Gold aus. Die vollständige Rückzahlung stellt alle drei wieder her."),
+        ["fra"] = new("Acheter à crédit", "Appuyer pour ouvrir la boutique de crédit.", "Dette {0}", "VENDU", "Retour à la boutique", "Crédit {0}/{1}", "LIMITE DÉPASSÉE", "GRATUIT", "Prêts restants  {0} / {1}", "Acheter à crédit consomme un prêt. Un prêt avance au moins 100 Or. Rembourser la dette en entier les restaure tous les trois."),
+        ["spa"] = new("Comprar a crédito", "Pulsa para ir a la tienda de crédito.", "Deuda {0}", "VENDIDO", "Volver a la tienda", "Crédito {0}/{1}", "LÍMITE SUPERADO", "GRATIS", "Préstamos rest.  {0} / {1}", "Comprar a crédito consume un préstamo. Un préstamo adelanta al menos 100 de Oro. Pagar toda la deuda restaura los tres."),
+        ["esp"] = new("Comprar a crédito", "Pulsa para ir a la tienda de crédito.", "Deuda {0}", "VENDIDO", "Volver a la tienda", "Crédito {0}/{1}", "LÍMITE SUPERADO", "GRATIS", "Préstamos rest.  {0} / {1}", "Comprar a crédito consume un préstamo. Un préstamo adelanta al menos 100 de Oro. Pagar toda la deuda restaura los tres."),
+        ["ita"] = new("Compra a credito", "Premi per aprire il negozio a credito.", "Debito {0}", "VENDUTO", "Torna al negozio", "Credito {0}/{1}", "OLTRE IL LIMITE", "GRATIS", "Prestiti rimasti  {0} / {1}", "Comprare a credito consuma un prestito. Un prestito anticipa almeno 100 Oro. Saldare il debito li ripristina tutti e tre."),
+        ["pol"] = new("Kup na kredyt", "Naciśnij, aby przejść do sklepu na kredyt.", "Dług {0}", "SPRZEDANE", "Wróć do sklepu", "Kredyt {0}/{1}", "PONAD LIMIT", "ZA DARMO", "Pozostałe pożyczki  {0} / {1}", "Zakup na kredyt zużywa jedną pożyczkę. Pożyczka wypłaca co najmniej 100 Złota. Spłata całego długu przywraca wszystkie trzy."),
+        ["ptb"] = new("Comprar fiado", "Pressione para ir à loja fiado.", "Dívida {0}", "VENDIDO", "Voltar à loja", "Crédito {0}/{1}", "ACIMA DO LIMITE", "GRÁTIS", "Empréstimos rest.  {0} / {1}", "Comprar fiado consome um empréstimo. Um empréstimo adianta ao menos 100 de Ouro. Pagar toda a dívida restaura os três."),
+        ["rus"] = new("Купить в долг", "Нажмите, чтобы открыть долговой магазин.", "Долг {0}", "ПРОДАНО", "Вернуться в магазин", "Кредит {0}/{1}", "СВЕРХ ЛИМИТА", "БЕСПЛАТНО", "Осталось займов  {0} / {1}", "Покупка в долг тратит один заём. Заём выдаёт не менее 100 золота. Полное погашение долга восстанавливает все три."),
+        ["tha"] = new("ซื้อเงินเชื่อ", "กดเพื่อไปยังร้านค้าเงินเชื่อ", "หนี้ {0}", "ขายแล้ว", "กลับไปที่ร้านค้า", "วงเงิน {0}/{1}", "เกินวงเงิน", "ฟรี", "โอกาสกู้  {0} / {1}", "การซื้อด้วยเงินเชื่อจะใช้โอกาสกู้ 1 ครั้ง เงินกู้จ่ายอย่างน้อย 100 ทอง ชำระหนี้ครบจะคืนเป็น 3 ครั้ง"),
+        ["tur"] = new("Borçla Satın Al", "Borç dükkânına gitmek için bas.", "Borç {0}", "SATILDI", "Dükkâna dön", "Kredi {0}/{1}", "LİMİT AŞILDI", "ÜCRETSİZ", "Kalan kredi  {0} / {1}", "Borçla almak bir kredi hakkını harcar. Kredi en az 100 Altın verir. Borcu tamamen ödemek üçünü de geri kazandırır."),
     };
 
     // ── New payment-set cards + powers (loc keys = ClassName → SCREAMING_SNAKE). EN + KO; English fallback for

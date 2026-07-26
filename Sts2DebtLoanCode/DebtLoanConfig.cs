@@ -7,8 +7,11 @@ namespace Sts2DebtLoan;
 /// </summary>
 internal static class DebtLoanConfig
 {
-    /// <summary>Hard cap on the total principal a run can borrow (spec: 300).</summary>
-    internal static int MaxLoan = 300;
+    /// <summary>Gold cap on total borrowing. ★0 = NO CAP (the default): the per-loan DRAW COUNT
+    /// (<see cref="MaxLoanDraws"/>) is the only limit, so three draws can finance three relics if you dare.
+    /// The old 300 cap made the draw limit almost meaningless — with <see cref="MinLoan"/> 100, the 400 hard cap
+    /// already permitted at most 4 draws. Set a positive value to bring the gold ceiling back.</summary>
+    internal static int MaxLoan = 0;
 
     /// <summary>Floor on a single loan. A loan always advances at least this much (capped by the remaining
     /// borrow room), so being 1 gold short doesn't create a trivial 1-gold debt — you borrow a meaningful

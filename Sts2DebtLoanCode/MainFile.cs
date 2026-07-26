@@ -60,11 +60,11 @@ public class MainFile
         {
             var b = ModConfigBridge.For(ModId, "The Red Ledger", Logger);
 
-            b.Slider(KeyMaxLoan, "Max loan (gold)", defaultValue: 300.0,
+            b.Slider(KeyMaxLoan, "Max loan (gold)", defaultValue: 0.0,
                     onChanged: v => DebtLoanConfig.MaxLoan = (int)v)
-                .Range(50f, 600f, 50f, format: "F0")
-                .Description("The most total gold you can borrow in a run (across the first loan and any top-ups).");
-            Loc(b, "최대 대출액 (골드)", "한 런에서 빌릴 수 있는 총 골드 상한 (최초 대출 + 추가 대출 합계).");
+                .Range(0f, 600f, 50f, format: "F0")
+                .Description("Gold ceiling on total borrowing across a run. 0 (default) means NO gold cap — the number of loan draws is the only limit, so three draws can finance three relics.");
+            Loc(b, "최대 대출액 (골드)", "한 런에서 빌릴 수 있는 총 골드 상한. 0(기본)이면 금액 제한 없음 — 인출 횟수만이 유일한 제약이라, 3번이면 유물 3개도 이론상 가능합니다.");
 
             b.Dropdown(KeyMaxAct, "Allow loans through act", "Act 1", ActOptions,
                     onChanged: v => DebtLoanConfig.MaxLoanActIndex = ActIndexOf(v))
@@ -97,7 +97,7 @@ public class MainFile
 
             b.Register();
 
-            DebtLoanConfig.MaxLoan = (int)ModConfigBridge.GetValue<double>(ModId, KeyMaxLoan, 300.0);
+            DebtLoanConfig.MaxLoan = (int)ModConfigBridge.GetValue<double>(ModId, KeyMaxLoan, 0.0);
             DebtLoanConfig.MaxLoanActIndex = ActIndexOf(ModConfigBridge.GetValue<string>(ModId, KeyMaxAct, "Act 1"));
             DebtLoanConfig.ShopCreditLimit = (int)ModConfigBridge.GetValue<double>(ModId, KeyShopCredit, 120.0);
             DebtLoanConfig.MaxLoanDraws = (int)ModConfigBridge.GetValue<double>(ModId, KeyLoanDraws, 3.0);
