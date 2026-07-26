@@ -70,6 +70,13 @@ public sealed class DebtLoanRelic : RelicModel
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public bool DunningLetterGranted { get => _dunningLetterGranted; set { AssertMutable(); _dunningLetterGranted = value; } }
 
+    private bool _restructuringUsed;
+    /// <summary>Whether this loan's ONE 채무 조정 (Restructuring) write-off has been spent. Persisted so a reload
+    /// can't hand back the once-per-loan use (which would turn the card into a repeatable principal deleter — see
+    /// <see cref="LoanRecord.RestructuringUsed"/>). Cleared with the loan on repay.</summary>
+    [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
+    public bool RestructuringUsed { get => _restructuringUsed; set { AssertMutable(); _restructuringUsed = value; } }
+
     private int _eventGrantCount;
     /// <summary>How many of the SHOP power cards have been handed out (one per shop-revisit). Persisted so the
     /// fixed order (1st=정기 납부) + per-run shuffle survives reloads.</summary>

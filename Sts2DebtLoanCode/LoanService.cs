@@ -65,6 +65,12 @@ internal sealed class LoanRecord
     /// on the first visit to a shop other than the loan shop). Persisted on the relic so a reload keeps it.</summary>
     internal bool DunningLetterGranted;
 
+    /// <summary>Whether this loan's ONE 채무 조정 (Restructuring) write-off has been spent. Once true the card can no
+    /// longer be played and the debt shop stops stocking it — without that gate it would be re-buyable at every shop
+    /// (the sold-set clears per visit) for far less debt than it forgives, i.e. an infinite principal deleter. Dies
+    /// with the record on full repay, so a LATER loan is a new agreement and gets its own. Persisted on the relic.</summary>
+    internal bool RestructuringUsed;
+
     /// <summary>How many of the SHOP power cards have been handed out (one per shop-revisit). Drives the fixed
     /// order — 1st = 정기 납부, the rest a per-run shuffle of the power cards. Persisted.</summary>
     internal int EventGrantCount;
@@ -235,6 +241,7 @@ internal static class LoanService
             relic.LoanFloor = rec.LoanFloor;
             relic.Active = rec.Active;
             relic.DunningLetterGranted = rec.DunningLetterGranted;
+            relic.RestructuringUsed = rec.RestructuringUsed;
             relic.EventGrantCount = rec.EventGrantCount;
             relic.LifetimePayments = rec.LifetimePayments;
             relic.DebtShopVisits = rec.DebtShopVisits;
@@ -272,6 +279,7 @@ internal static class LoanService
         rec.LoanFloor = relic.LoanFloor;
         rec.Active = relic.Active;
         rec.DunningLetterGranted = relic.DunningLetterGranted;
+        rec.RestructuringUsed = relic.RestructuringUsed;
         rec.EventGrantCount = relic.EventGrantCount;
         rec.LifetimePayments = relic.LifetimePayments;
         rec.DebtShopVisits = relic.DebtShopVisits;
@@ -467,21 +475,28 @@ internal static class LoanService
     /// <summary>Debt price of a purchasable card, by strength tier. owed is a SOFT cost (it only raises the repay
     /// total — not shop inflation, node interest, or curse tiers), so the real limiter is the per-visit reveal
     /// count × how many shops a run has; the price is the relative signal + a repay-build tax.</summary>
-    private const int PriceMin = 40, PriceMax = 70;   // shop price band (before sale) — lowered from 50/80
+    // Price band (before sale). Raised 40/70 → 60/95 when slot 0 became a FREE gift: two paid offers must NOT fit
+    // inside one visit's credit line (2 × 60 = 120 > 120 is false by 0 — see ShopCreditLimit's note, the min pair is
+    // 60+65 = 125 once the cheapest tier is 65), while a SALE card plus one more must fit.
+    private const int PriceMin = 60, PriceMax = 95;   // shop price band (before sale)
 
     /// <summary>Base tier price (centre of the band; the shown base is this ± variance, clamped to [40,70]).
     /// Tiers lowered ~10 so card debt piles up more slowly (paired with the tighter per-shop credit limit).</summary>
     internal static int CardDebtPrice(System.Type t)
     {
-        if (t == typeof(InvoiceCard) || t == typeof(GarnishmentCard) || t == typeof(BankruptcyCard) || t == typeof(RefinanceCard)) return 65;   // 고급: scaling attack / AoE / debt payoff
-        if (t == typeof(JobPlacementCard) || t == typeof(KitingCard)) return 55;   // 취업알선 / 돌려막기: income skills
+        // ★Prices were lifted ~20 when slot 0 became a FREE gift: one offer per visit is now given away, so the paid
+        // slots must cost enough that the per-visit credit line buys ONE of them (see the band + ShopCreditLimit).
+        if (t == typeof(RestructuringCard)) return 90;   // 채무 조정: once-per-loan write-off — the priciest offer (eats a whole visit's credit line)
+        if (t == typeof(InvoiceCard) || t == typeof(GarnishmentCard) || t == typeof(BankruptcyCard) || t == typeof(RefinanceCard)
+            || t == typeof(PromissoryNoteCard) || t == typeof(LeverageCard)) return 85;   // 고급: scaling attack / AoE / debt payoff / tempo / principal-scaled attack
+        if (t == typeof(JobPlacementCard) || t == typeof(KitingCard)) return 75;   // 취업알선 / 돌려막기: income skills
         if (t == typeof(RefundCard) || t == typeof(CounterclaimCard)
             || t == typeof(StatementCard) || t == typeof(InterestSupportCard)
             || t == typeof(PaymentBenefitCard)
-            || t == typeof(CollectionCard)) return 60;   // 파워 엔진(영구 가치)
-        if (t == typeof(SettlementCard) || t == typeof(LoanStrikeCard) || t == typeof(MortgageCard)) return 55;   // 중급
-        if (t == typeof(BloodPaymentCard)) return 45;   // 기본: HP-payment utility
-        return 55;
+            || t == typeof(CollectionCard)) return 80;   // 파워 엔진(영구 가치)
+        if (t == typeof(SettlementCard) || t == typeof(LoanStrikeCard) || t == typeof(MortgageCard)) return 75;   // 중급
+        if (t == typeof(BloodPaymentCard)) return 65;   // 기본: HP-payment utility
+        return 75;
     }
 
     /// <summary>The pre-sale shown price: tier base ± a deterministic variance (−10..+10 in 5s), clamped to the
@@ -509,14 +524,36 @@ internal static class LoanService
     /// debt-shop visit or from 차환 itself, so this is a CLOSED loop: 차환 mints the fuel that 차환/돌려막기 burn.</summary>
     internal static bool IsDebtCurseCard(CardModel c) => c is MegaCrit.Sts2.Core.Models.Cards.Debt;
 
+    // ── The FREE offer (leftmost slot) ────────────────────────────────────────────────────────────────────
+    // Slot 0 of every visit's row is a GIFT: no debt added, no credit-line spend, and — crucially — no native Debt
+    // curse. The debt shop stops being a pure "pay to get deeper" screen and always has one thing worth walking in
+    // for, while the loan pressure still lives entirely on the paid slots to its right. Which card lands there is
+    // the same deterministic shuffle as the rest, so it varies per visit (a guaranteed-floor variable reward) and
+    // both co-op peers agree without any extra wire.
+
+    /// <summary>Cards that must never occupy the free slot: anything that rewrites the LOAN RECORD itself. 채무 조정
+    /// forgives 250 principal — free, that's a −250 gift you could just wait for, so it stays a paid offer.
+    /// (Everything else is safe: the payment-set cards only pay off while you're in debt, and 돌려막기's native-Debt
+    /// fuel is minted by PAID purchases only, so a free copy can't bootstrap anything.)</summary>
+    private static bool FreeSlotIneligible(System.Type t) => t == typeof(RestructuringCard);
+
+    /// <summary>Is this the visit's FREE offer (slot 0)? Single source of truth for the price, the credit gate,
+    /// the sale/upgrade exclusions and the panel's "FREE" tag.</summary>
+    internal static bool IsFreeOffer(LoanRecord rec, System.Type t)
+    {
+        var offers = RevealedPurchasable(rec);
+        return offers.Length > 0 && offers[0] == t;
+    }
+
     /// <summary>Which of this visit's offers is ON SALE — a deterministic pick from the revealed set (per LoanFloor
-    /// + visit), like the merchant's discounted card. Its <see cref="ShopPriceFor"/> is knocked down ~30%.</summary>
+    /// + visit), like the merchant's discounted card. Its <see cref="ShopPriceFor"/> is knocked down ~30%.
+    /// Slot 0 is excluded: it's already free, and a discount tag on a free card reads as a bug.</summary>
     internal static System.Type? SaleCardFor(LoanRecord rec)
     {
         var offers = RevealedPurchasable(rec);
-        if (offers.Length == 0) return null;
+        if (offers.Length <= 1) return null;   // only the free slot exists → nothing to discount
         var rng = new System.Random(unchecked(rec.LoanFloor * 333 + rec.DebtShopVisits * 97 + 3));
-        return offers[rng.Next(offers.Length)];
+        return offers[1 + rng.Next(offers.Length - 1)];
     }
 
     /// <summary>Which of this visit's offers is stocked ALREADY UPGRADED (강화판) — a deterministic pick (per
@@ -528,6 +565,9 @@ internal static class LoanService
     {
         var offers = RevealedPurchasable(rec);
         if (offers.Length == 0) return null;
+        // ★Slot 0 IS eligible: landing the 강화판 on the free gift is the shop's jackpot (free AND upgraded), and it
+        // costs nothing to allow — ShopPriceFor returns 0 for slot 0 before the premium is ever applied, so the
+        // surcharge simply doesn't exist there. (The SALE tag stays paid-only: ~30% off a free card is nonsense.)
         var sale = SaleCardFor(rec);
         var pool = new List<System.Type>();
         foreach (var t in offers) if (t != sale && IsUpgradable(t)) pool.Add(t);
@@ -539,8 +579,9 @@ internal static class LoanService
     }
 
     /// <summary>Surcharge on the visit's upgraded offer (percent of its base price, rounded to 5). The band tops
-    /// out at <see cref="PriceMax"/> 70, so +30% stays under the per-visit credit line (100).</summary>
-    private const int UpgradePremiumPct = 30;
+    /// out at <see cref="PriceMax"/> 95, so +20% (114) stays under the per-visit credit line (120). ★Do not raise
+    /// this back to 30%: 95 × 1.3 = 124 would put the visit's 강화판 offer permanently out of reach.</summary>
+    private const int UpgradePremiumPct = 20;
 
     /// <summary>Can this card type be upgraded at all? (Curse-ish / fixed cards have MaxUpgradeLevel 0 and must
     /// never be picked as the visit's 강화판 — the buy would silently grant a normal copy at a premium price.)</summary>
@@ -556,9 +597,10 @@ internal static class LoanService
     /// charged price (BuyCardOnDebt uses this).</summary>
     internal static int ShopPriceFor(LoanRecord rec, System.Type t)
     {
+        if (IsFreeOffer(rec, t)) return 0;   // slot 0 is the gift — charged nothing, and ApplyBuyCard skips the whole debt path
         int price = ShopBasePrice(rec, t);
         if (UpgradedCardFor(rec) == t) price = (int)Math.Round(price * (100 + UpgradePremiumPct) / 500.0) * 5;   // 강화판 프리미엄
-        if (SaleCardFor(rec) == t) price = Math.Max(5, (int)Math.Round(price * 0.7 / 5.0) * 5);   // sale card ~30% off
+        if (SaleCardFor(rec) == t) price = Math.Max(5, (int)Math.Round(price * 0.55 / 5.0) * 5);   // sale card ~45% off (deep enough that sale + one more fits the credit line)
         return price;
     }
 
@@ -570,7 +612,11 @@ internal static class LoanService
     {
         if (rec.CurrentOffers != null && rec.OfferVisit == rec.DebtShopVisits) return rec.CurrentOffers;
         var available = new List<System.Type>();
-        foreach (var t in PurchasablePool) if (!rec.PurchasedCards.Contains(t.Name)) available.Add(t);
+        // 채무 조정 leaves the shelf for good once its once-per-loan use is spent — the sold-set clears every visit,
+        // so without this it would be re-stocked and re-buyable for far less debt than it forgives.
+        foreach (var t in PurchasablePool)
+            if (!rec.PurchasedCards.Contains(t.Name) && !(t == typeof(RestructuringCard) && rec.RestructuringUsed))
+                available.Add(t);
         System.Type[] offers;
         if (available.Count <= ShopOfferCount) offers = available.ToArray();
         else
@@ -579,6 +625,12 @@ internal static class LoanService
             for (int i = available.Count - 1; i > 0; i--) { int j = rng.Next(i + 1); (available[i], available[j]) = (available[j], available[i]); }
             offers = available.GetRange(0, ShopOfferCount).ToArray();
         }
+        // Slot 0 is the FREE gift, so it must not land on a free-slot-ineligible card (see FreeSlotIneligible).
+        // Swap it rightward with the first eligible offer instead of dropping the gift — deterministic, so co-op
+        // peers and a reload land on the same arrangement.
+        if (offers.Length > 1 && FreeSlotIneligible(offers[0]))
+            for (int i = 1; i < offers.Length; i++)
+                if (!FreeSlotIneligible(offers[i])) { (offers[0], offers[i]) = (offers[i], offers[0]); break; }
         rec.CurrentOffers = offers;
         rec.OfferVisit = rec.DebtShopVisits;
         return offers;
@@ -586,7 +638,9 @@ internal static class LoanService
 
     /// <summary>An offered card is buyable if the loan is active, it's been revealed, and it hasn't been bought yet.</summary>
     internal static bool IsPurchasable(LoanRecord rec, System.Type t)
-        => rec.Active && !rec.PurchasedCards.Contains(t.Name) && System.Array.IndexOf(RevealedPurchasable(rec), t) >= 0;
+        => rec.Active && !rec.PurchasedCards.Contains(t.Name)
+           && !(t == typeof(RestructuringCard) && rec.RestructuringUsed)   // spent its once-per-loan use → off the shelf
+           && System.Array.IndexOf(RevealedPurchasable(rec), t) >= 0;
 
     /// <summary>Gold of debt-shop credit still available THIS visit (limit minus what's already been spent on cards
     /// this visit). Separate from the initial loan's HardCap. Never negative.</summary>
@@ -596,7 +650,7 @@ internal static class LoanService
     /// <summary>Can this offer be bought right now given the per-visit credit line? (Its price fits the remaining
     /// credit.) The panel greys offers that fail this, and BuyCardOnDebt refuses them.</summary>
     internal static bool CanAffordCredit(LoanRecord rec, System.Type t)
-        => ShopPriceFor(rec, t) <= RemainingShopCredit(rec);
+        => IsFreeOffer(rec, t) || ShopPriceFor(rec, t) <= RemainingShopCredit(rec);   // the gift never touches the credit line
 
     /// <summary>Buy a revealed non-power card on debt: adds its price onto what you owe and drops the card into the
     /// deck (like every other debt card — removed on full repay). Marks it sold so the shop won't re-sell it.
@@ -637,15 +691,21 @@ internal static class LoanService
         var type = System.Array.Find(PurchasablePool, t => t.Name == typeName);
         if (type == null) { MainFile.Logger.Warn($"[{MainFile.ModId}] dl_sync buy: unknown card '{typeName}'."); return; }
 
+        // price 0 = the visit's FREE offer (slot 0). It is a pure gift: no principal, no card debt, no credit-line
+        // spend — and, below, no native Debt curse either. The price rides the wire (dl_sync buy … 0 …) rather than
+        // being re-derived here, because a remote peer never opened the panel and has no CurrentOffers cache.
+        bool free = price <= 0;
         rec.Principal += price;                                 // owed goes up; no gold gained (bought on credit)
         rec.CardDebt += price;                                  // card debt = principal that also accrues node interest
         rec.ShopSpentThisVisit += price;                        // count against this shop's per-visit credit line
         rec.PurchasedCards.Add(typeName);
         await DebtLoanGrants.GrantCard(player, type, upgraded: upgraded);   // fly-in shows again now the panel sits at the shop's layer depth
-        // Every debt-shop VISIT leaves a native Debt curse in your deck — the price of leaning on the credit line.
-        // Once per floor (= per shop visit), no matter how many cards you buy that visit; swept on repay. Runs in the
-        // same per-peer networked buy replay as the card grant, and reads shared floor state → co-op consistent.
-        if (player.RunState != null && rec.LastDebtGrantFloor != player.RunState.TotalFloor)
+        // Every debt-shop VISIT you actually BUY ON CREDIT leaves a native Debt curse in your deck — the price of
+        // leaning on the credit line. Once per floor (= per shop visit), no matter how many cards you buy that visit;
+        // swept on repay. ★The free offer is exempt: taking only the gift and walking out must cost nothing, so the
+        // per-floor guard is not even stamped on a free take (a later PAID buy that same visit still gets the curse).
+        // Runs in the same per-peer networked buy replay as the card grant, and reads shared floor state → co-op consistent.
+        if (!free && player.RunState != null && rec.LastDebtGrantFloor != player.RunState.TotalFloor)
         {
             rec.LastDebtGrantFloor = player.RunState.TotalFloor;
             await DebtLoanGrants.GrantNativeDebt(player);
@@ -755,6 +815,9 @@ internal static class LoanService
         typeof(CollectionCard),                                                                             // 추심: 공격판 환급 (scaling attack gen)
         typeof(SettlementCard), typeof(InvoiceCard), typeof(GarnishmentCard), typeof(KitingCard),          // receipt spenders (돌려막기: 빚 저주 → 골드)
         typeof(LoanStrikeCard), typeof(MortgageCard), typeof(BloodPaymentCard),                            // borrow / HP
+        typeof(PromissoryNoteCard),                                                                        // 어음: borrow for ENERGY (the third borrow currency)
+        typeof(LeverageCard),                                                                              // 레버리지: damage scaled by the principal you still owe
+        typeof(RestructuringCard),                                                                         // 채무 조정: once-per-loan principal write-off
         typeof(JobPlacementCard),                                                                          // 취업알선: income skill (moved from free grants)
         typeof(BankruptcyCard), typeof(RefinanceCard),                                                     // debt payoff: Bankruptcy(→Strength) / Refinance(→Payment cards)
     };
@@ -984,6 +1047,53 @@ internal static class LoanService
         if (player.Creature != null && player.Creature.GetPower<BadCreditPower>() != null)
             await PowerCmd.Remove<BadCreditPower>(player.Creature);  // kill the 강제 징수 spawner so its icon clears too
         await ApplyRepay(player);                                   // Active=false + deck sweep + remove relic + reset record
+    }
+
+    /// <summary>Principal still owed on this player's ACTIVE loan (0 if there is no live loan). The read-only view
+    /// 레버리지 scales its damage off and 어음 gates on. Never negative.</summary>
+    internal static int PrincipalOf(Player? player)
+    {
+        var rec = For(player);
+        return rec != null && rec.Active ? Math.Max(0, rec.Principal) : 0;
+    }
+
+    /// <summary>Is this player's once-per-loan 채무 조정 (Restructuring) still available? Needs a live loan with
+    /// principal left AND an unspent use. Single source of truth for the card's IsPlayable, the shop's offer list
+    /// and <see cref="IsPurchasable"/>, so the three can't drift apart.</summary>
+    internal static bool CanRestructure(Player? player)
+    {
+        var rec = For(player);
+        return rec != null && rec.Active && rec.Principal > 0 && !rec.RestructuringUsed;
+    }
+
+    /// <summary>Burn this loan's single 채무 조정 use. Called BEFORE the write-off, because a write-off that clears
+    /// the loan destroys the record (SettleLoanInCombat → ApplyRepay → ResetFor).</summary>
+    internal static void MarkRestructuringUsed(Player? player)
+    {
+        var rec = For(player);
+        if (rec == null || !rec.Active) return;
+        rec.RestructuringUsed = true;
+        SyncToRelic(player!);
+    }
+
+    /// <summary>Write principal off the ledger as FORGIVENESS — no gold and no HP changed hands (채무 조정). Retires
+    /// outstanding interest first, exactly like a payment, so the relic hover's "interest vs principal" split stays
+    /// coherent. ★It deliberately does NOT touch <see cref="LoanRecord.TotalPaid"/>: that is the "gold you actually
+    /// paid" line the 신용 회복 reward gates on (ApplyRepay's RewardMinPaid), so escaping via restructuring clears the
+    /// debt but forfeits the medal for having worked it off. Clearing the principal settles the loan mid-combat (the
+    /// curses lift right there) instead of leaving it for the next shop. Pure record math off a lockstep card play →
+    /// co-op safe.</summary>
+    internal static async Task ForgivePrincipal(Player player, int amount)
+    {
+        var rec = For(player);
+        if (rec == null || !rec.Active || amount <= 0) return;
+        int cut = Math.Min(rec.Principal, amount);
+        rec.InterestPaid += Math.Min(cut, InterestRemaining(rec));   // interest first (same order as a payment)
+        rec.Principal = Math.Max(0, rec.Principal - cut);
+        SyncToRelic(player);
+        RefreshRelicDisplay(player);
+        MainFile.Logger.Info($"[{MainFile.ModId}] forgave {cut} principal (owed now {rec.Principal}).");
+        if (rec.Principal <= 0) await SettleLoanInCombat(player);
     }
 
     /// <summary>The 강제 징수 (Forced Collection) writes principal off DIRECTLY — no gold, it's paid in HP. So

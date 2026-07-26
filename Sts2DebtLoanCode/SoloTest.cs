@@ -893,15 +893,18 @@ internal static class SoloTest
                     DebtLoanConfig.ShopCreditLimit = 9999;                       // isolate this test from the per-visit credit cap
                     var off = LoanService.RevealedPurchasable(recShop);
                     int d0 = deckDebt();
-                    await LoanService.BuyCardOnDebt(player, off[0]); await Task.Delay(80); int d1 = deckDebt();   // 1st buy → +1 Debt
-                    await LoanService.BuyCardOnDebt(player, off[1]); await Task.Delay(80); int d2 = deckDebt();   // same visit → no extra
+                    // ★Slot 0 is the FREE gift now, so the native-Debt curse is keyed to the first PAID buy, not the
+                    // first buy: taking only the gift and walking out must cost nothing (see LoanService.ApplyBuyCard).
+                    await LoanService.BuyCardOnDebt(player, off[0]); await Task.Delay(80); int dFree = deckDebt();  // FREE slot → NO Debt
+                    await LoanService.BuyCardOnDebt(player, off[1]); await Task.Delay(80); int d1 = deckDebt();     // 1st PAID buy → +1 Debt
+                    await LoanService.BuyCardOnDebt(player, off[2]); await Task.Delay(80); int d2 = deckDebt();     // same visit → no extra
                     recShop.LastDebtGrantFloor = -999; recShop.ShopSpentThisVisit = 0;   // simulate a NEW shop visit (fresh floor + credit)
-                    await LoanService.BuyCardOnDebt(player, off[2]); await Task.Delay(80); int d3 = deckDebt();   // new visit → +1 Debt
+                    await LoanService.BuyCardOnDebt(player, off[3]); await Task.Delay(80); int d3 = deckDebt();     // new visit → +1 Debt
                     DebtLoanConfig.ShopCreditLimit = savedCredit;               // restore
                     if ((int)player.Gold < recShop.Principal) await PlayerCmd.GainGold(recShop.Principal - (int)player.Gold, player, false);
                     await LoanService.Repay(player); await Task.Delay(120); int d4 = deckDebt();                  // repay → all swept
-                    tP7b = d1 == d0 + 1 && d2 == d1 && d3 == d2 + 1 && d4 == 0;
-                    W($"  assert debt-shop native-Debt: buy1={d1}(={d0}+1) buy2/sameVisit={d2}(=buy1) buy3/newVisit={d3}(=+1) afterRepay={d4}(=0) -> {tP7b}");
+                    tP7b = dFree == d0 && d1 == d0 + 1 && d2 == d1 && d3 == d2 + 1 && d4 == 0;
+                    W($"  assert debt-shop native-Debt: free={dFree}(={d0}, gift adds none) paid1={d1}(={d0}+1) paid2/sameVisit={d2}(=paid1) paid3/newVisit={d3}(=+1) afterRepay={d4}(=0) -> {tP7b}");
                 }
 
                 // tP7c) DEBT-SHOP 강화판: exactly ONE of the visit's offers is stocked already upgraded, it's an
@@ -1486,6 +1489,224 @@ internal static class SoloTest
                 }
             }
             catch (Exception e) { W("  card gallery failed: " + e.Message); }
+
+            // ── 도파민 3카드: 어음(에너지를 빚으로 산다) / 레버리지(원금이 곧 피해) / 채무 조정(런당 1회 탕감) ──────
+            // Fresh combat, because a combat whose enemies are already dead makes PowerCmd/CardCmd no-ops (the
+            // bankruptcy section's hard-won lesson) and 레버리지's CalculatedDamage only evaluates while
+            // CombatManager.IsInProgress.
+            Step("도파민 3카드 (어음/레버리지/채무 조정)");
+            try
+            {
+                if (Engine.GetMainLoop() is SceneTree)
+                {
+                    // Earlier sections repay the loan, and a settle calls ResetFor(player) → the record is GONE.
+                    // Every card here reads the ledger, so grant a fresh loan before entering combat.
+                    LoanService.ResetFor(player);
+                    await LoanService.GrantLoanDirect(player, 200);
+                    await Task.Delay(400);
+                    await RunManager.Instance.EnterRoomDebug(RoomType.Monster);
+                    await Task.Delay(4000);
+                    var ncc = new MegaCrit.Sts2.Core.GameActions.Multiplayer.BlockingPlayerChoiceContext();
+                    var nstate = player.Creature?.CombatState;
+                    var nfoe = nstate?.HittableEnemies?.FirstOrDefault(e => e != null && e.IsAlive)
+                               ?? nstate?.Enemies?.FirstOrDefault(e => e != null && e.IsAlive);
+                    var nrec = LoanService.For(player);
+                    if (nstate != null && nrec != null && player.Creature != null)
+                    {
+                        nrec.Active = true;
+                        nrec.RestructuringUsed = false;
+
+                        // ① 어음 — 0코 소멸: 에너지 +2, 원금 +100. AutoPlay pays the (zero) cost, OnPlay grants the energy.
+                        nrec.Principal = 400; LoanService.SyncToRelic(player);
+                        int e0 = player.PlayerCombatState.Energy, pn0 = nrec.Principal;
+                        var note = nstate.CreateCard<PromissoryNoteCard>(player);
+                        await CardPileCmd.AddGeneratedCardsToCombat(new List<CardModel> { note }, PileType.Hand, player, CardPilePosition.Random);
+                        await Task.Delay(150);
+                        int handBeforeNote = PileType.Hand.GetPile(player)?.Cards.Count ?? 0;
+                        try { await CardCmd.AutoPlay(ncc, note, null); } catch (Exception e) { W("  어음 play failed: " + e.Message); }
+                        await Task.Delay(300);
+                        int eGain = player.PlayerCombatState.Energy - e0;
+                        int pGain = (LoanService.For(player)?.Principal ?? 0) - pn0;
+                        int handAfterNote = PileType.Hand.GetPile(player)?.Cards.Count ?? 0;
+                        bool tN1 = eGain == 2 && pGain == 100;
+                        W($"  assert 어음: energy {e0}→{player.PlayerCombatState.Energy} (Δ{eGain}, exp 2) / owed {pn0}→{LoanService.For(player)?.Principal} (Δ{pGain}, exp 100) -> {tN1}");
+                        all &= tN1;
+
+                        // 어음+ : same deal, plus draw 2. Base play cost the hand 1 net card (played+exhausted);
+                        // the upgraded one must come out AHEAD of that by the 2 it draws.
+                        int baseHandDelta = handAfterNote - handBeforeNote;               // ≈ −1
+                        var noteU = nstate.CreateCard<PromissoryNoteCard>(player);
+                        noteU.UpgradeInternal(); noteU.FinalizeUpgradeInternal();
+                        await CardPileCmd.AddGeneratedCardsToCombat(new List<CardModel> { noteU }, PileType.Hand, player, CardPilePosition.Random);
+                        await Task.Delay(150);
+                        int handBeforeU = PileType.Hand.GetPile(player)?.Cards.Count ?? 0;
+                        try { await CardCmd.AutoPlay(ncc, noteU, null); } catch (Exception e) { W("  어음+ play failed: " + e.Message); }
+                        await Task.Delay(400);
+                        int upgHandDelta = (PileType.Hand.GetPile(player)?.Cards.Count ?? 0) - handBeforeU;
+                        bool tN2 = upgHandDelta - baseHandDelta >= 1;   // ≥1 extra card vs the base form (draw fired)
+                        W($"  assert 어음+ draw: handΔ base={baseHandDelta} upgraded={upgHandDelta} (upgraded must exceed base) -> {tN2}");
+                        all &= tN2;
+
+                        // ② 레버리지 — damage = 남은 원금 ÷ 30 (강화 ÷22), live off the ledger. THE regression that
+                        // matters: CalculatedDamageVar reads DynamicVars.ExtraDamage (NOT CalculationExtra), so a
+                        // wrong var pairing silently resolves to 0 here.
+                        var lrec = LoanService.For(player)!;
+                        lrec.Principal = 600; LoanService.SyncToRelic(player);
+                        var lev = nstate.CreateCard<LeverageCard>(player);
+                        var levU = nstate.CreateCard<LeverageCard>(player);
+                        levU.UpgradeInternal(); levU.FinalizeUpgradeInternal();
+                        // ★Both must be IN A PILE before Calculate(): CardModel.CombatState is DERIVED FROM Pile, and
+                        // CalculatedVar.Calculate skips the multiplier entirely when CombatState is null — a loose
+                        // card always reports 0 damage no matter how the vars are wired.
+                        await CardPileCmd.AddGeneratedCardsToCombat(new List<CardModel> { lev, levU }, PileType.Hand, player, CardPilePosition.Random);
+                        await Task.Delay(200);
+                        int dmgBase = (int)lev.DynamicVars.CalculatedDamage.Calculate(nfoe);
+                        int dmgUpg = (int)levU.DynamicVars.CalculatedDamage.Calculate(nfoe);
+                        bool tL1 = dmgBase == 20 && dmgUpg == 27;      // 600/30, 600/22
+                        W($"  assert 레버리지 scaling @owed 600: base={dmgBase}(exp 20) upgraded={dmgUpg}(exp 27) -> {tL1}");
+                        all &= tL1;
+                        // …and it tracks the ledger LIVE: paying the debt down must shrink the number on the face.
+                        lrec.Principal = 300; LoanService.SyncToRelic(player);
+                        int dmgAfter = (int)lev.DynamicVars.CalculatedDamage.Calculate(nfoe);
+                        bool tL2 = dmgAfter == 10;                     // 300/30
+                        W($"  assert 레버리지 live-tracking: owed 600→300 ⇒ dmg {dmgBase}→{dmgAfter}(exp 10) -> {tL2}");
+                        all &= tL2;
+                        // Actually swing it so the damage pipeline (not just the preview var) is proven.
+                        if (nfoe != null)
+                        {
+                            lrec.Principal = 600; LoanService.SyncToRelic(player);
+                            int foeHp0 = nfoe.CurrentHp;
+                            try { await CardCmd.AutoPlay(ncc, lev, nfoe); } catch (Exception e) { W("  레버리지 play failed: " + e.Message); }
+                            await Task.Delay(300);
+                            int drop = foeHp0 - nfoe.CurrentHp;
+                            bool tL3 = drop >= 10;                     // ~20 unblocked; allow enemy Block
+                            W($"  assert 레버리지 real hit: enemy HP Δ{drop} (exp ~20, ≥10 with block) -> {tL3}");
+                            all &= tL3;
+                        }
+
+                        // ③ 채무 조정 — 250 written off, ONCE per loan, and the card deletes itself from the DECK
+                        // (Exhaust alone is combat-only). Also seed a DECK copy to prove the sweep.
+                        var resRec = LoanService.For(player)!;
+                        resRec.Principal = 600; resRec.RestructuringUsed = false; LoanService.SyncToRelic(player);
+                        await DebtLoanGrants.GrantCard(player, typeof(RestructuringCard), preview: false);
+                        await Task.Delay(300);
+                        int deckRes0 = player.Deck.Cards.Count(c => c is RestructuringCard);
+                        int rp0 = resRec.Principal, paid0 = resRec.TotalPaid;
+                        var res = nstate.CreateCard<RestructuringCard>(player);
+                        await CardPileCmd.AddGeneratedCardsToCombat(new List<CardModel> { res }, PileType.Hand, player, CardPilePosition.Random);
+                        await Task.Delay(150);
+                        try { await CardCmd.AutoPlay(ncc, res, null); } catch (Exception e) { W("  채무 조정 play failed: " + e.Message); }
+                        await Task.Delay(500);
+                        var rrec2 = LoanService.For(player);
+                        int rp1 = rrec2?.Principal ?? 0, paid1 = rrec2?.TotalPaid ?? paid0;
+                        int deckRes1 = player.Deck.Cards.Count(c => c is RestructuringCard);
+                        bool used = rrec2 == null || rrec2.RestructuringUsed;
+                        bool tR1 = (rp0 - rp1) == 250 && used && deckRes0 >= 1 && deckRes1 == 0 && paid1 == paid0;
+                        W($"  assert 채무 조정: owed {rp0}→{rp1} (Δ{rp0 - rp1}, exp 250) used={used} deckCopies {deckRes0}→{deckRes1}(exp 0) totalPaid {paid0}→{paid1}(must NOT move: 탕감≠납부) -> {tR1}");
+                        all &= tR1;
+                        bool tR2 = !LoanService.CanRestructure(player)
+                                   && (rrec2 == null || !LoanService.IsPurchasable(rrec2, typeof(RestructuringCard)));
+                        W($"  assert 채무 조정 run-once gate: canRestructure={LoanService.CanRestructure(player)}(exp False) purchasable=False -> {tR2}");
+                        all &= tR2;
+                        await Shot("13_dopamine_cards");
+                    }
+                    else W("  도파민 3카드: no combat state / loan record — skipped");
+                }
+            }
+            catch (Exception e) { W("  도파민 3카드 section failed: " + e); all = false; }
+
+            // ── 빚 상점 무료 슬롯 (슬롯 0) ────────────────────────────────────────────────────────────────────
+            // The leftmost offer is a GIFT: price 0, no principal, no card debt, no credit-line spend, and — the one
+            // that is easy to get wrong — no native Debt curse. A PAID buy right after must still bring the curse.
+            Step("빚 상점 무료 슬롯 (슬롯 0)");
+            try
+            {
+                if (LoanService.For(player) == null)   // a preceding settle may have wiped the record
+                {
+                    LoanService.ResetFor(player);
+                    await LoanService.GrantLoanDirect(player, 200);
+                    await Task.Delay(400);
+                }
+                var frec = LoanService.For(player);
+                if (frec != null)
+                {
+                    frec.Active = true;
+                    frec.DebtShopVisits = 3;                                         // reveal the full offer row
+                    if (frec.Principal <= 0) frec.Principal = 300;
+                    frec.RestructuringUsed = false;
+                    frec.ShopSpentThisVisit = 0;
+                    frec.PurchasedCards.Clear();
+                    frec.CurrentOffers = null; frec.OfferVisit = -1;                 // force a fresh roll
+                    frec.LastDebtGrantFloor = -1;                                    // so a PAID buy is eligible for the curse
+                    LoanService.SyncToRelic(player);
+
+                    var offers = LoanService.RevealedPurchasable(frec);
+                    if (offers.Length >= 2)
+                    {
+                        var free = offers[0];
+                        bool tF0 = LoanService.IsFreeOffer(frec, free)
+                                   && LoanService.ShopPriceFor(frec, free) == 0
+                                   && free != typeof(RestructuringCard)               // never the run-once write-off
+                                   && LoanService.SaleCardFor(frec) != free           // sale tag is a paid-slot perk
+                                   && LoanService.CanAffordCredit(frec, free);        // never blocked by the credit line
+                        W($"  assert slot0 shape: card={free.Name} price={LoanService.ShopPriceFor(frec, free)}(exp 0) notRestructuring={free != typeof(RestructuringCard)} notSale={LoanService.SaleCardFor(frec) != free} -> {tF0}");
+                        all &= tF0;
+
+                        // ★가격/한도 불변식: 유료는 한 방문에 1장, 할인 카드를 집으면 2장. Checked against the LIVE
+                        // prices this visit rolled, so a later tweak to the band / sale depth / credit line that
+                        // breaks the intent fails here instead of in someone's run.
+                        var saleT = LoanService.SaleCardFor(frec);
+                        int salePrice = saleT != null ? LoanService.ShopPriceFor(frec, saleT) : -1;
+                        // ★The "two at full price" check must EXCLUDE the sale card — that discounted offer is exactly
+                        // the thing that is supposed to let a second card through, so counting it here would assert
+                        // the opposite of the design.
+                        var fullPrices = new List<int>();
+                        for (int i = 1; i < offers.Length; i++)
+                            if (offers[i] != saleT) fullPrices.Add(LoanService.ShopPriceFor(frec, offers[i]));
+                        fullPrices.Sort();
+                        int cheapestNonSale = fullPrices.Count > 0 ? fullPrices[0] : -1;
+                        int lim = DebtLoanConfig.ShopCreditLimit;
+                        bool twoFullPriceBlocked = fullPrices.Count < 2 || fullPrices[0] + fullPrices[1] > lim;
+                        bool saleLetsYouBuyTwo = salePrice < 0 || cheapestNonSale < 0 || salePrice + cheapestNonSale <= lim;
+                        int upgMax = 0;
+                        var upgT = LoanService.UpgradedCardFor(frec);
+                        if (upgT != null && !LoanService.IsFreeOffer(frec, upgT)) upgMax = LoanService.ShopPriceFor(frec, upgT);
+                        bool upgReachable = upgMax <= lim;
+                        bool tFP = twoFullPriceBlocked && saleLetsYouBuyTwo && upgReachable;
+                        W($"  assert 가격/한도 불변식 (limit {lim}): 정가={string.Join(",", fullPrices)} 세일={salePrice} | 정가2장={(fullPrices.Count >= 2 ? fullPrices[0] + fullPrices[1] : -1)}(must be >{lim}) 세일+최저정가={(salePrice >= 0 && cheapestNonSale >= 0 ? salePrice + cheapestNonSale : -1)}(must be <={lim}) 강화판={upgMax}(<={lim}) -> {tFP}");
+                        all &= tFP;
+
+                        int fp0 = frec.Principal, fc0 = frec.CardDebt, fs0 = frec.ShopSpentThisVisit;
+                        int nd0 = player.Deck.Cards.Count(c => c is MegaCrit.Sts2.Core.Models.Cards.Debt);
+                        int fd0 = player.Deck.Cards.Count;
+                        await LoanService.BuyCardOnDebt(player, free);
+                        await Task.Delay(600);
+                        var f2 = LoanService.For(player)!;
+                        int nd1 = player.Deck.Cards.Count(c => c is MegaCrit.Sts2.Core.Models.Cards.Debt);
+                        bool gotCard = player.Deck.Cards.Count > fd0;
+                        bool tF1 = f2.Principal == fp0 && f2.CardDebt == fc0 && f2.ShopSpentThisVisit == fs0
+                                   && nd1 == nd0 && gotCard;
+                        W($"  assert FREE take: owed {fp0}→{f2.Principal} cardDebt {fc0}→{f2.CardDebt} visitSpend {fs0}→{f2.ShopSpentThisVisit} nativeDebt {nd0}→{nd1} cardAdded={gotCard} -> {tF1}");
+                        all &= tF1;
+
+                        // …and the PAID slot right after still charges debt AND drops the native Debt curse (the
+                        // free take must not have consumed the per-visit curse stamp).
+                        var paid = offers[1];
+                        int price = LoanService.ShopPriceFor(f2, paid);
+                        int pp0 = f2.Principal;
+                        await LoanService.BuyCardOnDebt(player, paid);
+                        await Task.Delay(600);
+                        var f3 = LoanService.For(player)!;
+                        int nd2 = player.Deck.Cards.Count(c => c is MegaCrit.Sts2.Core.Models.Cards.Debt);
+                        bool tF2 = f3.Principal == pp0 + price && f3.ShopSpentThisVisit == price && nd2 == nd1 + 1;
+                        W($"  assert PAID buy after free: card={paid.Name} price={price} owed {pp0}→{f3.Principal} visitSpend={f3.ShopSpentThisVisit} nativeDebt {nd1}→{nd2}(exp +1) -> {tF2}");
+                        all &= tF2;
+                    }
+                    else W($"  무료 슬롯: only {offers.Length} offer(s) revealed — skipped");
+                }
+                else W("  무료 슬롯: no loan record — skipped");
+            }
+            catch (Exception e) { W("  무료 슬롯 section failed: " + e); all = false; }
 
             await Shot("2_final");
             W($"=== solo test done: {(all ? "ALL PASS" : "FAIL")} ===");

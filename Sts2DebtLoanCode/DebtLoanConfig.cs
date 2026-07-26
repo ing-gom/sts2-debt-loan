@@ -34,7 +34,11 @@ internal static class DebtLoanConfig
     /// loan's <see cref="HardCap"/>. Each shop visit gives a fresh line; card purchases that visit may total at most
     /// this. Cards are 40–70 gold, so 100 ≈ 2 cards per shop — you can't sweep the whole 5-card offer. Resets on
     /// entering a new shop. Spec: 150.</summary>
-    internal static int ShopCreditLimit = 100;
+    // ★Raised 100 → 120 alongside the FREE slot-0 gift and the higher price band (60~95). The line is tuned so a
+    // visit buys exactly ONE paid offer normally (cheapest pair 60+65 = 125 > 120), but the discounted card plus one
+    // more DOES fit (deep sale ≈ 33~52, + 60 = 93~112 ≤ 120) — the sale is what buys you a second card.
+    // The visit's 강화판 offer stays reachable too (95 × 1.20 = 114 ≤ 120).
+    internal static int ShopCreditLimit = 120;
 
 
     /// <summary>Share of every Debt-card payment that goes toward paying DOWN the principal (the rest is

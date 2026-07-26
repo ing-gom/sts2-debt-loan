@@ -70,11 +70,11 @@ public class MainFile
                 .Description("The furthest act where the merchant will extend credit. 'Act 2' allows loans in Acts 1–2, 'Act 3' in Acts 1–3.");
             Loc(b, "대출 허용 막", "상인이 대출해주는 최대 막. 'Act 2' = 1~2막, 'Act 3' = 1~3막에서 대출 가능. 기본값 'Act 1' = 1막에서만.");
 
-            b.Slider(KeyShopCredit, "Debt-shop credit per visit (gold)", defaultValue: 100.0,
+            b.Slider(KeyShopCredit, "Debt-shop credit per visit (gold)", defaultValue: 120.0,
                     onChanged: v => DebtLoanConfig.ShopCreditLimit = (int)v)
                 .Range(50f, 400f, 25f, format: "F0")
-                .Description("The most debt you may take on CARD purchases at the debt shop per shop visit (cards cost 40–70). Resets each new shop. Separate from the loan cap above.");
-            Loc(b, "상점당 외상 한도 (골드)", "빚 상점에서 카드 구매로 한 상점 방문당 질 수 있는 빚 상한 (카드 40~70골드). 새 상점마다 초기화. 위 대출 한도와는 별개.");
+                .Description("The most debt you may take on CARD purchases at the debt shop per shop visit (cards cost 60–95; the leftmost offer is FREE). At the default 120 a visit buys one paid card — or two if you take the discounted one. Resets each new shop. Separate from the loan cap above.");
+            Loc(b, "상점당 외상 한도 (골드)", "빚 상점에서 카드 구매로 한 상점 방문당 질 수 있는 빚 상한 (카드 60~95골드, 맨 왼쪽 1장은 무료). 기본 120이면 한 방문에 유료 1장 — 할인 카드를 집으면 2장까지. 새 상점마다 초기화. 위 대출 한도와는 별개.");
 
             b.Slider(KeyGarnish, "Garnishment at max interest (%)", defaultValue: 40.0,
                     onChanged: v => DebtLoanConfig.GarnishMaxPct = (int)v)
@@ -92,7 +92,7 @@ public class MainFile
 
             DebtLoanConfig.MaxLoan = (int)ModConfigBridge.GetValue<double>(ModId, KeyMaxLoan, 300.0);
             DebtLoanConfig.MaxLoanActIndex = ActIndexOf(ModConfigBridge.GetValue<string>(ModId, KeyMaxAct, "Act 1"));
-            DebtLoanConfig.ShopCreditLimit = (int)ModConfigBridge.GetValue<double>(ModId, KeyShopCredit, 100.0);
+            DebtLoanConfig.ShopCreditLimit = (int)ModConfigBridge.GetValue<double>(ModId, KeyShopCredit, 120.0);
             DebtLoanConfig.GarnishMaxPct = (int)ModConfigBridge.GetValue<double>(ModId, KeyGarnish, 40.0);
             DebtLoanConfig.InterestGoldCap = (int)ModConfigBridge.GetValue<double>(ModId, KeyInterestCap, 100.0);
 

@@ -43,6 +43,7 @@ internal sealed partial class NDebtCardShopPanel : Control
     private static NDebtCardShopPanel? _open;
 
     private static readonly Color PriceGreen = new(0.42f, 0.86f, 0.38f);   // debt price number (green; red when over credit)
+    private static readonly Color FreeGold = new(1.00f, 0.84f, 0.35f);     // the slot-0 gift's "FREE" word (gold, not the debt green)
 
     private NMerchantInventory _shop = null!;
     private Player _player = null!;
@@ -272,9 +273,12 @@ internal sealed partial class NDebtCardShopPanel : Control
         // per visit ON SALE (~30% off) — flagged with the merchant's own "%" sale tag on the card corner.
         var rec = LoanService.For(_player);
         int price = rec != null ? LoanService.ShopPriceFor(rec, type) : LoanService.CardDebtPrice(type);
-        bool isSale = rec != null && LoanService.SaleCardFor(rec) == type;
+        bool isFree = rec != null && LoanService.IsFreeOffer(rec, type);   // slot 0 — gift: no coin, no sale tag, no credit gate
+        bool isSale = !isFree && rec != null && LoanService.SaleCardFor(rec) == type;
         int original = isSale && rec != null ? LoanService.ShopBasePrice(rec, type) : 0;   // pre-sale, struck through
-        var costTag = MakeCostTag(price, original);
+        var costTag = MakeCostTag(price, original, isFree
+            ? DebtLoanLoc.DebtShopUiFor(MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng").Free
+            : null);
         // Coin + price sit at the SAME spot on EVERY card (like the shop) so the row of prices lines up; on a sale
         // card the struck-through original just extends to the RIGHT — it never shifts the coin.
         costTag.Position = new Vector2(cx - 42f, cardCy + 124f);
@@ -370,7 +374,9 @@ internal sealed partial class NDebtCardShopPanel : Control
             if (overLabel != null) overLabel.Visible = overCredit;
             // Price number turns RED when it's over this visit's remaining credit (unbuyable here), else stays green.
             // font_color override (not SelfModulate — that would multiply the green and muddy it).
-            if (costTag.GetNodeOrNull<MegaLabel>("priceNum") is { } priceNum)
+            // (skipped on the free offer — its "FREE" word is gold and never over-credit, so recolouring it green
+            //  would just wash the gift tag out)
+            if (!isFree && costTag.GetNodeOrNull<MegaLabel>("priceNum") is { } priceNum)
                 priceNum.AddThemeColorOverride("font_color", overCredit ? StsColors.red : PriceGreen);
         }
         _refreshers.Add(Refresh);
@@ -505,10 +511,25 @@ internal sealed partial class NDebtCardShopPanel : Control
 
     /// <summary>A shop-style cost tag: the merchant's gold-coin icon + the debt number, so the price reads like a
     /// native shop price (the 외상 구매 title + debt framing make clear it's charged to your loan, not gold).</summary>
-    private Control MakeCostTag(int price, int original = 0)
+    /// <summary>Price tag under an offer. <paramref name="freeText"/> (the visit's slot-0 gift) replaces the whole
+    /// coin+number with a single gold "FREE" word at the same anchor — no coin, because there is no debt to show.</summary>
+    private Control MakeCostTag(int price, int original = 0, string? freeText = null)
     {
         var root = new Control { Size = new Vector2(160f, 44f) };
         const float coinSize = 38f;
+        if (freeText != null)
+        {
+            var free = MakeLabel(freeText, 34, FreeGold);
+            if (free != null)
+            {
+                free.Name = "priceNum";   // Refresh() looks this up; it just never recolours a free tag
+                free.VerticalAlignment = VerticalAlignment.Center;
+                free.Size = new Vector2(160f, coinSize);
+                free.Position = new Vector2(0f, 0f);
+                root.AddChild(free);
+            }
+            return root;
+        }
         var coin = LoadCoin();
         if (coin != null)
         {
