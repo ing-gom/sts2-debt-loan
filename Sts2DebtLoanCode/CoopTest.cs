@@ -149,13 +149,27 @@ internal static class CoopTest
             var offers = rec != null ? LoanService.RevealedPurchasable(rec) : System.Array.Empty<System.Type>();
             if (rec != null && offers.Length > 0)
             {
-                var type = offers[0];
-                int price = LoanService.ShopPriceFor(rec, type);
-                int before = rec.Principal;
-                W($"HOST: buying {type.Name} for {price} (owed {before} → expect {before + price})");
-                await LoanService.BuyCardOnDebt(me, type);
+                // ★Slot 0 is the FREE gift (price 0 rides the dl_sync wire): owed and the native-Debt count must NOT
+                // move, but the card must still land in the deck on BOTH peers.
+                var freeType = offers[0];
+                int freePrice = LoanService.ShopPriceFor(rec, freeType);
+                int owedPreFree = rec.Principal, ndPreFree = NativeDebtInDeck(me);
+                W($"HOST: FREE slot0 = {freeType.Name} price={freePrice} (expect 0) — owed {owedPreFree} must stay, nativeDebt {ndPreFree} must stay");
+                await LoanService.BuyCardOnDebt(me, freeType);
                 await Task.Delay(5000);      // let dl_sync buy replay on BOTH peers
-                W($"HOST: after buy, owed={LedgerPrincipalOf(me)} purchased={PurchasedCount(me)} deckHasBought={DeckHasAnyPurchased(me)}");
+                W($"HOST: after FREE take, owed={LedgerPrincipalOf(me)} nativeDebt={NativeDebtInDeck(me)} purchased={PurchasedCount(me)} deckHasBought={DeckHasAnyPurchased(me)}");
+
+                // …and a PAID slot right after must charge debt AND drop the native Debt curse.
+                if (offers.Length > 1)
+                {
+                    var type = offers[1];
+                    int price = LoanService.ShopPriceFor(rec, type);
+                    int before = rec.Principal, ndBefore = NativeDebtInDeck(me);
+                    W($"HOST: PAID buying {type.Name} for {price} (owed {before} → expect {before + price}, nativeDebt {ndBefore} → expect +1)");
+                    await LoanService.BuyCardOnDebt(me, type);
+                    await Task.Delay(5000);
+                    W($"HOST: after PAID buy, owed={LedgerPrincipalOf(me)} nativeDebt={NativeDebtInDeck(me)} purchased={PurchasedCount(me)} deckHasBought={DeckHasAnyPurchased(me)}");
+                }
             }
             else W("HOST: no debt-shop offers to buy (skipping purchase step)");
             await Shot("03_bought");
@@ -170,6 +184,56 @@ internal static class CoopTest
             {
                 W($"HOST: in combat, my Debt cards = {CombatDebtCards(me)}");
                 await Shot("04_combat");
+
+                Step("HOST play 어음 / 레버리지 / 채무 조정");
+                // ★★ Cards MUST reach both peers through a networked route and be played through the lockstep
+                // action queue. The solo idiom (CombatState.CreateCard + AddGeneratedCardsToCombat + CardCmd.AutoPlay)
+                // is HOST-LOCAL on every count — CreateCard fabricates a card only this peer knows about, and
+                // CardCmd.AutoPlay executes directly instead of enqueueing — so it desyncs the run by construction
+                // (measured: StateDivergence checksum 4, client dropped). Use the built-in `card` console command
+                // (IsNetworked = true → spawns into BOTH peers' hands) and TryManualPlay (→ RequestEnqueue(
+                // PlayCardAction), the same lockstep path the JOIN's 대납 already uses).
+                var cstate = me.Creature?.CombatState;
+                if (cstate != null)
+                {
+                    async Task<CardModel?> NetSpawn(System.Type type)
+                    {
+                        string id = ModelDb.GetId(type).Entry;
+                        int hand = PileType.Hand.GetPile(me)?.Cards?.Count ?? -1;
+                        W($"HOST: spawning {id} via dl_testcard (hand {hand}/10)");
+                        run.ActionQueueSynchronizer.RequestEnqueue(new ConsoleCmdGameAction(me, $"dl_testcard {type.Name}", inCombat: true));
+                        await Task.Delay(4000);   // networked spawn lands on both peers (action queue may be busy)
+                        var c = PileType.Hand.GetPile(me)?.Cards?.FirstOrDefault(x => x.GetType() == type);
+                        if (c == null) W($"HOST: '{id}' not in hand after networked spawn (hand full?)");
+                        return c;
+                    }
+
+                    // 어음: 에너지 +2, 원금 +100
+                    int owedPreNote = LedgerPrincipalOf(me);
+                    var note = await NetSpawn(typeof(PromissoryNoteCard));
+                    if (note != null) { try { note.TryManualPlay(null); } catch (Exception e) { W("HOST 어음: " + e.Message); } }
+                    await Task.Delay(3500);
+                    W($"HOST: 어음 played — owed {owedPreNote}→{LedgerPrincipalOf(me)} (expect +100)");
+
+                    // 레버리지: 원금에서 파생된 피해가 실제로 적에게 들어가는지
+                    var lev = await NetSpawn(typeof(LeverageCard));
+                    var foe = cstate.HittableEnemies?.FirstOrDefault(e => e != null && e.IsAlive)
+                              ?? cstate.Enemies?.FirstOrDefault(e => e != null && e.IsAlive);
+                    int levDmg = lev != null ? (int)lev.DynamicVars.CalculatedDamage.Calculate(foe) : -1;
+                    int foeHp0 = foe?.CurrentHp ?? -1;
+                    if (lev != null && foe != null) { try { lev.TryManualPlay(foe); } catch (Exception e) { W("HOST 레버리지: " + e.Message); } }
+                    await Task.Delay(3500);
+                    W($"HOST: 레버리지 dmg={levDmg} (owed {LedgerPrincipalOf(me)} ÷ 30) enemyHP {foeHp0}→{foe?.CurrentHp ?? -1}");
+
+                    // 채무 조정: 원금 250 탕감 + 런당 1회 플래그
+                    int owedPreRes = LedgerPrincipalOf(me);
+                    var res = await NetSpawn(typeof(RestructuringCard));
+                    if (res != null) { try { res.TryManualPlay(null); } catch (Exception e) { W("HOST 채무 조정: " + e.Message); } }
+                    await Task.Delay(3500);
+                    W($"HOST: 채무 조정 played — owed {owedPreRes}→{LedgerPrincipalOf(me)} (expect −250, floored at 0) used={LoanService.For(me)?.RestructuringUsed}");
+                    await Shot("04d_new_cards");
+                }
+
 
                 var joinP = run.State!.Players.OrderBy(p => p.NetId).Last();   // non-host player (NetId 1000)
                 W($"HOST: JOIN gold={(int)joinP.Gold} (>=20 → eligible for 대납)");
@@ -220,7 +284,7 @@ internal static class CoopTest
 
             if (run.State == null || run.State.Players.Count == 0) { W("HOST: SESSION DROPPED"); Flush(false); return; }
             var host = run.State.Players.OrderBy(p => p.NetId).First();
-            W($"HOST: FINAL owed={LedgerPrincipalOf(host)} purchased={PurchasedCount(host)} deckHasBought={DeckHasAnyPurchased(host)} joinBailoutMax={joinBailoutMax}");
+            W($"HOST: FINAL {Descriptor(host)} joinBailoutMax={joinBailoutMax}");
             await Shot("05_final");
             W("=== coop host done ===");
             Flush(true);
@@ -247,6 +311,7 @@ internal static class CoopTest
             for (int i = 0; i < 90 && !File.Exists(hostTxt); i++)
             {
                 Step($"JOIN waiting for host (t+{i * 2}s)");
+                if (run.State == null || run.State.Players.Count == 0) break;   // dropped mid-loop → fall through to the report
                 var meJ = LocalPlayerOf(run);
                 if (meJ != null)
                 {
@@ -292,7 +357,7 @@ internal static class CoopTest
         }
         catch (Exception e) { W("JOIN exception: " + e); Flush(false); }
 
-        static string Of(Player h) => $"owed(host)={LedgerPrincipalOf(h)} purchased(host)={PurchasedCount(h)} deckHasBought={DeckHasAnyPurchased(h)}";
+        static string Of(Player h) => Descriptor(h);
     }
 
     /// <summary>Principal recorded on a player's Ledger relic, or -1 if they don't carry one. Both peers
@@ -301,6 +366,24 @@ internal static class CoopTest
     {
         var relic = LoanService.LedgerRelicOf(p);
         return relic?.Principal ?? -1;
+    }
+
+    /// <summary>Native Debt curses sitting in a player's DECK. The debt shop drops one per PAID visit; the FREE
+    /// slot-0 gift must not. Replicated through the `dl_sync buy` replay → both peers must agree.</summary>
+    private static int NativeDebtInDeck(Player p)
+        => PileType.Deck.GetPile(p)?.Cards?.Count(c => c is MegaCrit.Sts2.Core.Models.Cards.Debt) ?? -1;
+
+    /// <summary>THE convergence descriptor — both peers build this for the HOST player and the two strings must be
+    /// byte-identical. `lev` is 레버리지's damage DERIVED from the replicated principal (÷30, the base card's rate):
+    /// 레버리지 is the first card in this mod whose DAMAGE is the ledger, so any principal drift that the older
+    /// fixed-damage borrow cards used to hide shows up here as a different number.</summary>
+    private static string Descriptor(Player h)
+    {
+        int owed = LedgerPrincipalOf(h);
+        var rec = LoanService.For(h);
+        return $"owed(host)={owed} purchased(host)={PurchasedCount(h)} deckHasBought={DeckHasAnyPurchased(h)} "
+             + $"nativeDebt={NativeDebtInDeck(h)} restructured={(rec != null ? rec.RestructuringUsed.ToString() : "n/a")} "
+             + $"lev={(owed >= 0 ? (owed / 30).ToString() : "-1")}";
     }
 
     /// <summary>How many cards this player has bought on debt (their sold-set size), or -1 if they carry no loan.
@@ -593,6 +676,39 @@ public sealed class DebtLoanTestMissCmd : MegaCrit.Sts2.Core.DevConsole.ConsoleC
         // solo-verified; here we verify the co-op-critical GRANT + its cross-peer convergence + the 대납's USE.
         TaskHelper.RunSafely(LoanService.GrantBailoutForMissedPayment(issuingPlayer, upgraded: false));
         return new CmdResult(success: true, "dl_testmiss: fired missed-payment bailout grant.");
+    }
+}
+
+/// <summary>TEST-ONLY networked command (Debug builds only): put one of THIS MOD's cards into the issuing player's
+/// combat hand on BOTH peers, so the co-op self-test can then play it through the lockstep PlayCardAction.
+///
+/// Why not the built-in `card &lt;ID&gt;`? It is IsNetworked and its action DOES execute on both peers, but the card
+/// never reached the hand in this harness (measured twice, hand 5/10 so it wasn't the full-hand refusal) — so the
+/// test silently exercised nothing. This command mirrors <see cref="DebtLoanTestMissCmd"/>, which is the injection
+/// path already proven to converge in this very scenario (the 대납 grant), and it uses the mod's own
+/// AddGeneratedCardsToCombat rather than CardPileCmd.Add.
+///
+/// The created Task rides the CmdResult (like the built-in CardConsoleCmd) so the action AWAITS it — no detached
+/// RunSafely inside a mid-command hook (coop-guard class 1). Position is Top, not Random, so no RNG is consumed.</summary>
+public sealed class DebtLoanTestCardCmd : MegaCrit.Sts2.Core.DevConsole.ConsoleCommands.AbstractConsoleCmd
+{
+    public override string CmdName => "dl_testcard";
+    public override string Args => "<ClassName>";
+    public override string Description => "TEST: put a DebtLoan card into your combat hand (both peers).";
+    public override bool IsNetworked => true;
+    public override bool DebugOnly => false;
+
+    public override CmdResult Process(Player? issuingPlayer, string[] args)
+    {
+        var cstate = issuingPlayer?.Creature?.CombatState;
+        if (cstate == null) return new CmdResult(success: false, "dl_testcard: not in combat.");
+        if (args.Length == 0) return new CmdResult(success: false, "dl_testcard: no card class given.");
+        var type = typeof(DebtLoanTestCardCmd).Assembly.GetType("Sts2DebtLoan." + args[0]);
+        if (type == null) return new CmdResult(success: false, $"dl_testcard: unknown card '{args[0]}'.");
+        var card = cstate.CreateCard(ModelDb.GetByIdOrNull<CardModel>(ModelDb.GetId(type))!, issuingPlayer!);
+        var task = CardPileCmd.AddGeneratedCardsToCombat(
+            new List<CardModel> { card }, PileType.Hand, issuingPlayer!, CardPilePosition.Top);
+        return new CmdResult(task, success: true, $"dl_testcard: added {args[0]} to hand.");
     }
 }
 #endif
