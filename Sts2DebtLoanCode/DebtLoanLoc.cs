@@ -37,7 +37,7 @@ internal static class DebtLoanLoc
     private static readonly Dictionary<string, Row> ByLang = new()
     {
         ["eng"] = new("Debt Ledger",
-            "Borrowed [gold]{borrowed} Gold[/gold], interest owed [gold]{igold} Gold[/gold], principal [gold]{prem} Gold[/gold] → owed [gold]{owed} Gold[/gold]. Paid [gold]{paid} Gold[/gold] so far.\nInjected each combat: [gold]{cards:choose(1|2|3|4):None|Delinquency|Delinquency, Seizure|Bad Credit|None}[/gold]. More curses pile on the longer you owe.\nRepay at a shop to clear the principal — the Ledger and your payment cards stay, and your tier resets to 1. You cannot repay at the shop you borrowed from.\n[gold]Credit Restored[/gold]: repay [gold]{cr1} Gold[/gold] in total across all your loans to earn a permanent card — [gold]{cr2} Gold[/gold] for the upgraded version. (Currently tier [b]{tier}[/b])",
+            "Borrowed [gold]{borrowed} Gold[/gold], interest owed [gold]{igold} Gold[/gold], principal [gold]{prem} Gold[/gold] → owed [gold]{owed} Gold[/gold]. Paid [gold]{paid} Gold[/gold] so far.\nInjected each combat: [gold]{cards:choose(1|2|3|4):None|Delinquency|Delinquency, Seizure|Bad Credit|None}[/gold]. More curses pile on the longer you owe.\nRepay at a shop to clear the principal — the Ledger and your payment cards stay, and your debt tier resets to 1 (Credit is cumulative and never resets). You cannot repay at the shop you borrowed from.\n[gold]Credit Restored[/gold]: repay [gold]{cr1} Gold[/gold] in total across all your loans to earn a permanent card — [gold]{cr2} Gold[/gold] for the upgraded version. (Currently tier [b]{tier}[/b])",
             "Every signature is a small surrender.",
             "Payment", "Spend Gold to repay your debt.",
             "Delinquency", "Whenever this is drawn, gain [gold]Vulnerable[/gold] 1.",
@@ -46,7 +46,7 @@ internal static class DebtLoanLoc
             "Forced Collection", "At the end of your turn, lose [b]{hp}[/b] HP and repay [gold]{principal} Gold[/gold] of principal, then Exhaust."),
 
         ["kor"] = new("빚 장부",
-            "빌린 금액 [gold]{borrowed} 골드[/gold], 남은 이자 [gold]{igold} 골드[/gold], 남은 원금 [gold]{prem} 골드[/gold] → 현재 빚 [gold]{owed} 골드[/gold]. 지금까지 [gold]{paid} 골드[/gold] 갚음.\n전투마다 주입되는 저주: [gold]{cards:choose(1|2|3|4):없음|연체|연체, 차압|신용 불량|없음}[/gold]. 오래 갚지 않을수록 늘어납니다.\n상점에서 원금을 청산하면 장부와 결제 카드는 남고 등급만 1로 돌아갑니다. 빌린 그 상점에서는 갚을 수 없습니다.\n[gold]신용 회복[/gold]: 모든 대출을 통틀어 누적 [gold]{cr1} 골드[/gold]를 갑으면 영구 카드를, [gold]{cr2} 골드[/gold]면 강화판을 얻습니다. (현재 등급 [b]{tier}[/b])",
+            "빌린 금액 [gold]{borrowed} 골드[/gold], 남은 이자 [gold]{igold} 골드[/gold], 남은 원금 [gold]{prem} 골드[/gold] → 현재 빚 [gold]{owed} 골드[/gold]. 지금까지 [gold]{paid} 골드[/gold] 갚음.\n전투마다 주입되는 저주: [gold]{cards:choose(1|2|3|4):없음|연체|연체, 차압|신용 불량|없음}[/gold]. 오래 갚지 않을수록 늘어납니다.\n상점에서 원금을 청산하면 장부와 결제 카드는 남고 빚 등급만 1로 돌아갑니다(신용도는 누적 — 리셋되지 않습니다). 빌린 그 상점에서는 갚을 수 없습니다.\n[gold]신용 회복[/gold]: 모든 대출을 통틀어 누적 [gold]{cr1} 골드[/gold]를 갑으면 영구 카드를, [gold]{cr2} 골드[/gold]면 강화판을 얻습니다. (현재 등급 [b]{tier}[/b])",
             "모든 서명은 작은 항복이다.",
             "납부", "골드로 빚을 [gold]상환[/gold]합니다.",
             "연체", "이 카드가 손에 들어올 때 [gold]취약[/gold] 1을 얻습니다.",
@@ -55,7 +55,7 @@ internal static class DebtLoanLoc
             "강제 징수", "턴 종료 시, 체력을 [b]{hp}[/b] 잃고 원금 [gold]{principal} 골드[/gold]를 상환한 뒤 소멸합니다."),
 
         ["jpn"] = new("借金台帳",
-            "借入 [gold]{borrowed} ゴールド[/gold]、残り利息 [gold]{igold} ゴールド[/gold]、元金 [gold]{prem} ゴールド[/gold] → 残債 [gold]{owed} ゴールド[/gold]。返済 [gold]{paid} ゴールド[/gold]。\n戦闘ごとに加わる呪い: [gold]{cards:choose(1|2|3|4):なし|延滞|延滞・差し押さえ|信用不良|なし}[/gold]。返済が遅れるほど増える。\nショップで元金を清算すると、台帳と決済カードは残り、等級だけが1に戻る。借りた店では返済できない。\n[gold]信用回復[/gold]: すべての借入を通じて累計[gold]{cr1}ゴールド[/gold]返済で永続カード、[gold]{cr2}ゴールド[/gold]で強化版を獲得する。（現在 等級[b]{tier}[/b]）",
+            "借入 [gold]{borrowed} ゴールド[/gold]、残り利息 [gold]{igold} ゴールド[/gold]、元金 [gold]{prem} ゴールド[/gold] → 残債 [gold]{owed} ゴールド[/gold]。返済 [gold]{paid} ゴールド[/gold]。\n戦闘ごとに加わる呪い: [gold]{cards:choose(1|2|3|4):なし|延滞|延滞・差し押さえ|信用不良|なし}[/gold]。返済が遅れるほど増える。\nショップで元金を清算すると、台帳と決済カードは残り、借金の等級だけが1に戻る（信用度は累積のまま）。借りた店では返済できない。\n[gold]信用回復[/gold]: すべての借入を通じて累計[gold]{cr1}ゴールド[/gold]返済で永続カード、[gold]{cr2}ゴールド[/gold]で強化版を獲得する。（現在 等級[b]{tier}[/b]）",
             "署名はすべて、小さな降伏だ。",
             "支払い", "ゴールドで借金を返済する。",
             "延滞", "引いたとき、[gold]脆弱[/gold]を1得る。",
@@ -64,7 +64,7 @@ internal static class DebtLoanLoc
             "強制徴収", "ターン終了時、体力を[b]{hp}[/b]失い、元金[gold]{principal} ゴールド[/gold]を返済してから廃棄。"),
 
         ["zhs"] = new("债务账簿",
-            "借入 [gold]{borrowed} 金币[/gold]，剩余利息 [gold]{igold} 金币[/gold]，本金 [gold]{prem} 金币[/gold] → 待还 [gold]{owed} 金币[/gold]。已偿还 [gold]{paid} 金币[/gold]。\n每场战斗注入的诅咒：[gold]{cards:choose(1|2|3|4):无|拖欠|拖欠、扣押|信用不良|无}[/gold]。拖欠越久，诅咒越多。\n在商店结清本金后，账簿与结算牌保留，仅信用等级重置为 1。不能在借款的那家商店偿还。\n[gold]信用恢复[/gold]：所有贷款累计偿还 [gold]{cr1} 金币[/gold] 可获得一张永久卡牌，[gold]{cr2} 金币[/gold] 则为强化版。（当前等级 [b]{tier}[/b]）",
+            "借入 [gold]{borrowed} 金币[/gold]，剩余利息 [gold]{igold} 金币[/gold]，本金 [gold]{prem} 金币[/gold] → 待还 [gold]{owed} 金币[/gold]。已偿还 [gold]{paid} 金币[/gold]。\n每场战斗注入的诅咒：[gold]{cards:choose(1|2|3|4):无|拖欠|拖欠、扣押|信用不良|无}[/gold]。拖欠越久，诅咒越多。\n在商店结清本金后，账簿与结算牌保留，仅债务等级重置为 1（信用不受影响，永不重置）。不能在借款的那家商店偿还。\n[gold]信用恢复[/gold]：所有贷款累计偿还 [gold]{cr1} 金币[/gold] 可获得一张永久卡牌，[gold]{cr2} 金币[/gold] 则为强化版。（当前等级 [b]{tier}[/b]）",
             "每一个签名都是一次小小的屈服。",
             "还款", "消耗金币偿还债务。",
             "拖欠", "每当抽到此牌时，获得 1 层[gold]易伤[/gold]。",
@@ -109,7 +109,7 @@ internal static class DebtLoanLoc
             "Embargo forzoso", "Al final de tu turno, pierde [b]{hp}[/b] de vida y salda [gold]{principal} de oro[/gold] de la deuda; luego Agota."),
 
         ["ita"] = new("Registro dei debiti",
-            "Prestito [gold]{borrowed} Oro[/gold], interessi dovuti [gold]{igold} Oro[/gold], capitale [gold]{prem} Oro[/gold] → dovuto [gold]{owed} Oro[/gold]. Pagato [gold]{paid} Oro[/gold].\nInserito ogni combattimento: [gold]{cards:choose(1|2|3|4):Nessuna|Morosità|Morosità, Pignoramento|Insolvenza|Nessuna}[/gold]. Più tardi, più maledizioni.\nEstingui il capitale in un negozio — il registro e le carte di pagamento restano, solo il livello torna a 1. Non puoi estinguere nel negozio in cui hai preso il prestito.\n[gold]Credito ripristinato[/gold]: ripaga in totale [gold]{cr1} Oro[/gold] su tutti i tuoi prestiti per una carta permanente — [gold]{cr2} Oro[/gold] per la versione potenziata. (Livello attuale: [b]{tier}[/b])",
+            "Prestito [gold]{borrowed} Oro[/gold], interessi dovuti [gold]{igold} Oro[/gold], capitale [gold]{prem} Oro[/gold] → dovuto [gold]{owed} Oro[/gold]. Pagato [gold]{paid} Oro[/gold].\nInserito ogni combattimento: [gold]{cards:choose(1|2|3|4):Nessuna|Morosità|Morosità, Pignoramento|Insolvenza|Nessuna}[/gold]. Più tardi, più maledizioni.\nEstingui il capitale in un negozio — il registro e le carte di pagamento restano, solo il livello di debito torna a 1 (il Credito non si tocca: non si azzera mai). Non puoi estinguere nel negozio in cui hai preso il prestito.\n[gold]Credito ripristinato[/gold]: ripaga in totale [gold]{cr1} Oro[/gold] su tutti i tuoi prestiti per una carta permanente — [gold]{cr2} Oro[/gold] per la versione potenziata. (Livello attuale: [b]{tier}[/b])",
             "Ogni firma è una piccola resa.",
             "Pagamento", "Spendi oro per ripagare il debito.",
             "Morosità", "Ogni volta che la peschi, ottieni [gold]Vulnerabile[/gold] 1.",
@@ -118,7 +118,7 @@ internal static class DebtLoanLoc
             "Riscossione forzata", "Alla fine del turno, perdi [b]{hp}[/b] PV e ripaghi [gold]{principal} Oro[/gold] di debito, poi Consuma."),
 
         ["pol"] = new("Księga długów",
-            "Pożyczono [gold]{borrowed} złota[/gold], odsetki do spłaty [gold]{igold} złota[/gold], kapitał [gold]{prem} złota[/gold] → do spłaty [gold]{owed} złota[/gold]. Spłacono [gold]{paid} złota[/gold].\nDodawane w każdej walce: [gold]{cards:choose(1|2|3|4):Brak|Zaległość|Zaległość, Zajęcie|Niewypłacalność|Brak}[/gold]. Im dłużej zwlekasz, tym więcej klątw.\nUreguluj kapitał w sklepie — księga i karty płatnicze zostają, tylko poziom wraca do 1. Nie możesz spłacić w sklepie, w którym pożyczyłeś.\n[gold]Zdolność przywrócona[/gold]: spłać łącznie [gold]{cr1} złota[/gold] ze wszystkich pożyczek, aby zdobyć stałą kartę — [gold]{cr2} złota[/gold] za wersję ulepszoną. (Obecny poziom: [b]{tier}[/b])",
+            "Pożyczono [gold]{borrowed} złota[/gold], odsetki do spłaty [gold]{igold} złota[/gold], kapitał [gold]{prem} złota[/gold] → do spłaty [gold]{owed} złota[/gold]. Spłacono [gold]{paid} złota[/gold].\nDodawane w każdej walce: [gold]{cards:choose(1|2|3|4):Brak|Zaległość|Zaległość, Zajęcie|Niewypłacalność|Brak}[/gold]. Im dłużej zwlekasz, tym więcej klątw.\nUreguluj kapitał w sklepie — księga i karty płatnicze zostają, tylko poziom długu wraca do 1 (Zdolność zostaje nietknięta — nigdy się nie zeruje). Nie możesz spłacić w sklepie, w którym pożyczyłeś.\n[gold]Zdolność przywrócona[/gold]: spłać łącznie [gold]{cr1} złota[/gold] ze wszystkich pożyczek, aby zdobyć stałą kartę — [gold]{cr2} złota[/gold] za wersję ulepszoną. (Obecny poziom: [b]{tier}[/b])",
             "Każdy podpis to mała kapitulacja.",
             "Spłata", "Wydaj złoto, aby spłacić dług.",
             "Zaległość", "Za każdym razem, gdy ją dobierzesz, zyskaj [gold]Podatność[/gold] 1.",
@@ -136,7 +136,7 @@ internal static class DebtLoanLoc
             "Cobrança Forçada", "No fim do seu turno, perca [b]{hp}[/b] de Vida e quite [gold]{principal} de Ouro[/gold] da dívida, então Exaure."),
 
         ["rus"] = new("Долговая книга",
-            "Взято [gold]{borrowed} золота[/gold], проценты к оплате [gold]{igold} золота[/gold], основной долг [gold]{prem} золота[/gold] → долг [gold]{owed} золота[/gold]. Выплачено [gold]{paid} золота[/gold].\nДобавляется каждый бой: [gold]{cards:choose(1|2|3|4):Нет|Просрочка|Просрочка, Арест|Неплатёжеспособность|Нет}[/gold]. Чем дольше долг, тем больше проклятий.\nЗакройте основной долг в магазине — книга и платёжные карты остаются, лишь уровень возвращается к 1. Нельзя погасить в той лавке, где вы брали заём.\n[gold]Кредит восстановлен[/gold]: выплатите суммарно [gold]{cr1} золота[/gold] по всем займам — получите постоянную карту, [gold]{cr2} золота[/gold] — улучшенную. (Сейчас уровень [b]{tier}[/b])",
+            "Взято [gold]{borrowed} золота[/gold], проценты к оплате [gold]{igold} золота[/gold], основной долг [gold]{prem} золота[/gold] → долг [gold]{owed} золота[/gold]. Выплачено [gold]{paid} золота[/gold].\nДобавляется каждый бой: [gold]{cards:choose(1|2|3|4):Нет|Просрочка|Просрочка, Арест|Неплатёжеспособность|Нет}[/gold]. Чем дольше долг, тем больше проклятий.\nЗакройте основной долг в магазине — книга и платёжные карты остаются, лишь уровень долга возвращается к 1 (Кредит не затрагивается — он никогда не обнуляется). Нельзя погасить в той лавке, где вы брали заём.\n[gold]Кредит восстановлен[/gold]: выплатите суммарно [gold]{cr1} золота[/gold] по всем займам — получите постоянную карту, [gold]{cr2} золота[/gold] — улучшенную. (Сейчас уровень [b]{tier}[/b])",
             "Каждая подпись — маленькая капитуляция.",
             "Платёж", "Потратьте золото, чтобы погасить долг.",
             "Просрочка", "Каждый раз, когда вы берёте её, получите [gold]Уязвимость[/gold] 1.",
@@ -310,20 +310,20 @@ internal static class DebtLoanLoc
 
     private static readonly Dictionary<string, RepayUiRow> RepayUiByLang = new()
     {
-        ["eng"] = new("Repay Loan", "Pay back {0} gold to clear the principal. The Ledger and your debt cards stay — your credit tier resets to 1.", "Not enough gold — you owe {0}.", "No loan to repay.", "You cannot repay at the shop you borrowed from. Settle at the next one."),
-        ["kor"] = new("빚 갚기", "{0} 골드를 갚아 원금을 청산합니다. 장부와 결제 카드는 남고, 신용 등급이 1로 돌아갑니다.", "골드가 부족합니다 — {0} 골드를 빚지고 있습니다.", "갚을 빚이 없습니다.", "빌린 상점에서는 갚을 수 없습니다. 다음 상점에서 청산하세요."),
-        ["jpn"] = new("借金返済", "{0} ゴールドを返済して元金を清算する。台帳と決済カードは残り、信用等級が1に戻る。", "ゴールドが足りない — {0} の借りがある。", "返済する借金がない。", "借りた店では返済できない。次の店で清算しよう。"),
-        ["zhs"] = new("偿还贷款", "偿还 {0} 金币以结清本金。账簿与结算牌保留，信用等级重置为 1。", "金币不足——你欠 {0}。", "没有需要偿还的贷款。", "不能在借款的商店偿还。请到下一家商店结清。"),
-        ["deu"] = new("Kredit zurückzahlen", "Zahle {0} Gold, um die Hauptsumme zu tilgen. Das Hauptbuch und deine Schuldenkarten bleiben — deine Stufe fällt auf 1.", "Nicht genug Gold — du schuldest {0}.", "Kein Kredit zum Zurückzahlen.", "Im Laden, in dem du geliehen hast, kannst du nicht tilgen. Begleiche es im nächsten."),
-        ["fra"] = new("Rembourser le prêt", "Rembourse {0} or pour solder le capital. Le grand livre et tes cartes de dette restent — ton palier retombe à 1.", "Pas assez d'or — tu dois {0}.", "Aucun prêt à rembourser.", "Tu ne peux pas rembourser dans la boutique où tu as emprunté. Solde au prochain marchand."),
-        ["spa"] = new("Saldar préstamo", "Paga {0} de oro para saldar el capital. El libro y tus cartas de deuda permanecen; tu nivel vuelve a 1.", "No tienes suficiente oro — debes {0}.", "No hay préstamo que saldar.", "No puedes pagar en la tienda donde pediste el préstamo. Salda en la siguiente."),
-        ["esp"] = new("Saldar préstamo", "Paga {0} de oro para saldar el capital. El libro y tus cartas de deuda permanecen; tu nivel vuelve a 1.", "No tienes suficiente oro — debes {0}.", "No hay préstamo que saldar.", "No puedes pagar en la tienda donde pediste el préstamo. Salda en la siguiente."),
-        ["ita"] = new("Ripaga il prestito", "Paga {0} Oro per estinguere il capitale. Il registro e le carte debito restano — il livello torna a 1.", "Oro insufficiente — devi {0}.", "Nessun prestito da ripagare.", "Non puoi estinguere nel negozio in cui hai preso il prestito. Salda al prossimo."),
-        ["pol"] = new("Spłać pożyczkę", "Spłać {0} złota, aby uregulować kapitał. Księga i karty długu zostają — poziom wraca do 1.", "Za mało złota — jesteś winien {0}.", "Brak pożyczki do spłaty.", "Nie możesz spłacić w sklepie, w którym pożyczyłeś. Ureguluj w następnym."),
-        ["ptb"] = new("Quitar empréstimo", "Pague {0} de ouro para quitar o principal. O livro-razão e suas cartas de dívida permanecem — seu nível volta a 1.", "Ouro insuficiente — você deve {0}.", "Nenhum empréstimo para quitar.", "Você não pode quitar na loja onde pegou o empréstimo. Acerte na próxima."),
-        ["rus"] = new("Погасить заём", "Выплатите {0} золота, чтобы закрыть основной долг. Книга и долговые карты остаются — уровень возвращается к 1.", "Недостаточно золота — вы должны {0}.", "Нет займа для погашения.", "Нельзя погасить в той же лавке, где вы брали заём. Рассчитайтесь в следующей."),
-        ["tha"] = new("ชำระหนี้", "จ่าย {0} ทอง เพื่อปิดเงินต้น สมุดและการ์ดชำระยังอยู่ และระดับเครดิตกลับเป็น 1", "ทองไม่พอ — คุณติดหนี้ {0}", "ไม่มีหนี้ให้ชำระ", "ชำระที่ร้านที่คุณกู้มาไม่ได้ ไปปิดบัญชีที่ร้านถัดไป"),
-        ["tur"] = new("Krediyi Öde", "Ana parayı kapatmak için {0} altın öde. Defter ve borç kartların kalır — kademen 1'e döner.", "Yeterli altın yok — {0} borcun var.", "Ödenecek kredi yok.", "Borç aldığın dükkânda ödeme yapamazsın. Bir sonrakinde kapat."),
+        ["eng"] = new("Repay Loan", "Pay back {0} gold to clear the principal. The Ledger and your debt cards stay — your debt tier resets to 1 (your Credit score is untouched — it never resets).", "Not enough gold — you owe {0}.", "No loan to repay.", "You cannot repay at the shop you borrowed from. Settle at the next one."),
+        ["kor"] = new("빚 갚기", "{0} 골드를 갚아 원금을 청산합니다. 장부와 결제 카드는 남고, 빚 등급이 1로 돌아갑니다(신용도는 그대로 — 절대 리셋되지 않습니다).", "골드가 부족합니다 — {0} 골드를 빚지고 있습니다.", "갚을 빚이 없습니다.", "빌린 상점에서는 갚을 수 없습니다. 다음 상점에서 청산하세요."),
+        ["jpn"] = new("借金返済", "{0} ゴールドを返済して元金を清算する。台帳と決済カードは残り、借金の等級が1に戻る（信用度はそのまま——決してリセットされない）。", "ゴールドが足りない — {0} の借りがある。", "返済する借金がない。", "借りた店では返済できない。次の店で清算しよう。"),
+        ["zhs"] = new("偿还贷款", "偿还 {0} 金币以结清本金。账簿与结算牌保留，债务等级重置为 1（信用不受影响，永不重置）。", "金币不足——你欠 {0}。", "没有需要偿还的贷款。", "不能在借款的商店偿还。请到下一家商店结清。"),
+        ["deu"] = new("Kredit zurückzahlen", "Zahle {0} Gold, um die Hauptsumme zu tilgen. Das Hauptbuch und deine Schuldenkarten bleiben — deine Schuldenstufe fällt auf 1 (deine Bonität bleibt unberührt — sie wird nie zurückgesetzt).", "Nicht genug Gold — du schuldest {0}.", "Kein Kredit zum Zurückzahlen.", "Im Laden, in dem du geliehen hast, kannst du nicht tilgen. Begleiche es im nächsten."),
+        ["fra"] = new("Rembourser le prêt", "Rembourse {0} or pour solder le capital. Le grand livre et tes cartes de dette restent — ton palier de dette retombe à 1 (ton Crédit n'est pas touché : il ne se réinitialise jamais).", "Pas assez d'or — tu dois {0}.", "Aucun prêt à rembourser.", "Tu ne peux pas rembourser dans la boutique où tu as emprunté. Solde au prochain marchand."),
+        ["spa"] = new("Saldar préstamo", "Paga {0} de oro para saldar el capital. El libro y tus cartas de deuda permanecen; tu nivel de deuda vuelve a 1 (tu Crédito no se toca: nunca se reinicia).", "No tienes suficiente oro — debes {0}.", "No hay préstamo que saldar.", "No puedes pagar en la tienda donde pediste el préstamo. Salda en la siguiente."),
+        ["esp"] = new("Saldar préstamo", "Paga {0} de oro para saldar el capital. El libro y tus cartas de deuda permanecen; tu nivel de deuda vuelve a 1 (tu Crédito no se toca: nunca se reinicia).", "No tienes suficiente oro — debes {0}.", "No hay préstamo que saldar.", "No puedes pagar en la tienda donde pediste el préstamo. Salda en la siguiente."),
+        ["ita"] = new("Ripaga il prestito", "Paga {0} Oro per estinguere il capitale. Il registro e le carte debito restano — il livello di debito torna a 1 (il Credito non si tocca: non si azzera mai).", "Oro insufficiente — devi {0}.", "Nessun prestito da ripagare.", "Non puoi estinguere nel negozio in cui hai preso il prestito. Salda al prossimo."),
+        ["pol"] = new("Spłać pożyczkę", "Spłać {0} złota, aby uregulować kapitał. Księga i karty długu zostają — poziom długu wraca do 1 (Zdolność zostaje nietknięta — nigdy się nie zeruje).", "Za mało złota — jesteś winien {0}.", "Brak pożyczki do spłaty.", "Nie możesz spłacić w sklepie, w którym pożyczyłeś. Ureguluj w następnym."),
+        ["ptb"] = new("Quitar empréstimo", "Pague {0} de ouro para quitar o principal. O livro-razão e suas cartas de dívida permanecem — seu nível de dívida volta a 1 (seu Crédito não é afetado: nunca zera).", "Ouro insuficiente — você deve {0}.", "Nenhum empréstimo para quitar.", "Você não pode quitar na loja onde pegou o empréstimo. Acerte na próxima."),
+        ["rus"] = new("Погасить заём", "Выплатите {0} золота, чтобы закрыть основной долг. Книга и долговые карты остаются — уровень долга возвращается к 1 (Кредит не затрагивается — он никогда не обнуляется).", "Недостаточно золота — вы должны {0}.", "Нет займа для погашения.", "Нельзя погасить в той же лавке, где вы брали заём. Рассчитайтесь в следующей."),
+        ["tha"] = new("ชำระหนี้", "จ่าย {0} ทอง เพื่อปิดเงินต้น สมุดและการ์ดชำระยังอยู่ และระดับหนี้กลับเป็น 1 (เครดิตไม่ถูกแตะต้อง ไม่มีวันรีเซ็ต)", "ทองไม่พอ — คุณติดหนี้ {0}", "ไม่มีหนี้ให้ชำระ", "ชำระที่ร้านที่คุณกู้มาไม่ได้ ไปปิดบัญชีที่ร้านถัดไป"),
+        ["tur"] = new("Krediyi Öde", "Ana parayı kapatmak için {0} altın öde. Defter ve borç kartların kalır — borç kademen 1'e döner (Kredi puanın etkilenmez — asla sıfırlanmaz).", "Yeterli altın yok — {0} borcun var.", "Ödenecek kredi yok.", "Borç aldığın dükkânda ödeme yapamazsın. Bir sonrakinde kapat."),
     };
 
     // ── Debt-card shop panel UI (Buy on credit). {0} = the card's debt price. ──────────────────────────
