@@ -96,12 +96,33 @@ internal static class DebtLoanConfig
     internal static int LeveragePlating = 2;
 
     // ── 신용 회복 (Credit Restored) reward gate ──────────────────────────────────────────────────────────
-    /// <summary>Clearing a loan grants the permanent 신용 회복 reward card ONLY if it reached at least this tier…</summary>
-    internal static int RewardMinTier = 4;
-    /// <summary>…AND the total gold you actually PAID (갚은 금액 = cumulative TotalPaid) over the loan's life was at
-    /// least this much. Both gates must hold, so the reward is for genuinely working off a deep, large debt.
-    /// At 400 it's reachable from a near-max loan alone (MaxLoan 300 → owed 450 ≥ 400), without needing 취업알선.</summary>
-    internal static int RewardMinPaid = 400;
+    // ── 신용도 (Credit Score) ────────────────────────────────────────────────────────────────────────
+    /// <summary>누적 상환액 몇 골드당 신용도 1인가. 신용도는 <b>절대 리셋되지 않는</b> 런 단위 진행 트랙 —
+    /// 청산해도 유물과 기록이 남으므로 여러 번의 대출 사이클이 하나의 신용 이력으로 누적된다.</summary>
+    internal static int GoldPerCreditPoint = 100;
+
+    /// <summary>청산 시 받는 보상의 문턱(누적 상환액 골드). 신용도로는 3 / 6 / 9 / 12.
+    /// ★티어(빚을 얼마나 깊게 끌고 갔는가)가 아니라 <b>얼마나 갚았는가</b>로 바뀐 이유: 청산이 더는
+    /// 유물을 없애지 않으니 "깊은 빚을 한 번 청산" 대신 "신용을 쌓아 올린다"가 진행의 축이 됐다.</summary>
+    internal static int CreditRewardCard = 300;          // 신용 회복 카드
+    internal static int CreditRewardUpgraded = 600;      // 강화된 신용 회복 카드
+    internal static int CreditRewardUpgradeAny = 900;    // + 덱의 다른 카드 1장 강화
+    internal static int CreditRewardRemoveAny = 1200;    // + 덱의 다른 카드 1장 제거
+
+    /// <summary>고정 4단계(신용도 12) 뒤로 반복되는 <b>보너스 단계의 간격</b>(신용도 단위).
+    /// 매 2 마다 카드 <b>강화 또는 제거</b>를 하나 골라 받는다 — 끝이 없다.
+    /// <para>★사다리에 끝을 두면 신용도 12 이후의 상환이 아무 의미가 없어진다. 신용도는 청산해도
+    /// 리셋되지 않는 런 단위 트랙이라 후반에도 계속 쌓인다.</para></summary>
+    internal static int BonusRewardCredits = 2;
+
+    // ★신용도 파밍 가드는 상수가 아니라 규칙으로 — 대출을 받은 그 상점에서는 원금을 갚을 수 없다
+    // (LoanService.CanRepayHere). 취급 수수료 20% 때문에 "100 빌리고 120 갚기"는 순 골드 20에 신용도
+    // 1.2를 주므로, 같은 자리에서 되갚을 수 있으면 순 200골드로 최고 보상(누적 1200)까지 간다.
+    // 다음 상점까지 걸어가게 만들면 그 사이 노드 이자(5%/방)가 붙고 방 수도 소모돼 루프가 스스로 비싸진다.
+
+    // ⚠️구 RewardMinTier(4) / RewardMinPaid(400) 은 제거됐다. 보상 게이트가 "등급 4 AND 누적 400" 이라는
+    // 두 조건에서 위의 **누적 상환액 사다리 단일 축**(CreditRewardCard/Upgraded/UpgradeAny/RemoveAny)으로
+    // 바뀌었기 때문이다. 등급은 청산할 때마다 1로 리셋되므로 더는 진행의 축이 될 수 없다.
 
     // Debt-curse ESCALATION tier by rooms-since-loan. Each tier UNLOCKS a new curse in the injected set (see
     // LoanService.InjectAllDebtsForCombat): 1=빚 독촉(Dunning), 2=+연체(Delinquency), 3=+차압(Seizure),

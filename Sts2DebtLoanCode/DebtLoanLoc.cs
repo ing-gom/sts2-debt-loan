@@ -37,7 +37,7 @@ internal static class DebtLoanLoc
     private static readonly Dictionary<string, Row> ByLang = new()
     {
         ["eng"] = new("Debt Ledger",
-            "Borrowed [gold]{borrowed} Gold[/gold], interest owed [gold]{igold} Gold[/gold], principal [gold]{prem} Gold[/gold] → owed [gold]{owed} Gold[/gold]. Paid [gold]{paid} Gold[/gold] so far.\nInjected each combat: [gold]{cards:choose(1|2|3|4):None|Delinquency|Delinquency, Seizure|Bad Credit|None}[/gold]. More curses pile on the longer you owe.\nRepay the debt at a shop to remove this relic.",
+            "Borrowed [gold]{borrowed} Gold[/gold], interest owed [gold]{igold} Gold[/gold], principal [gold]{prem} Gold[/gold] → owed [gold]{owed} Gold[/gold]. Paid [gold]{paid} Gold[/gold] so far.\nInjected each combat: [gold]{cards:choose(1|2|3|4):None|Delinquency|Delinquency, Seizure|Bad Credit|None}[/gold]. More curses pile on the longer you owe.\nRepay at a shop to clear the principal — the Ledger and your payment cards stay, and your tier resets to 1. You cannot repay at the shop you borrowed from.\n[gold]Credit Restored[/gold]: repay [gold]{cr1} Gold[/gold] in total across all your loans to earn a permanent card — [gold]{cr2} Gold[/gold] for the upgraded version. (Currently tier [b]{tier}[/b])",
             "Every signature is a small surrender.",
             "Payment", "Spend Gold to repay your debt.",
             "Delinquency", "Whenever this is drawn, gain [gold]Vulnerable[/gold] 1.",
@@ -46,7 +46,7 @@ internal static class DebtLoanLoc
             "Forced Collection", "At the end of your turn, lose [b]{hp}[/b] HP and repay [gold]{principal} Gold[/gold] of principal, then Exhaust."),
 
         ["kor"] = new("빚 장부",
-            "빌린 금액 [gold]{borrowed} 골드[/gold], 남은 이자 [gold]{igold} 골드[/gold], 남은 원금 [gold]{prem} 골드[/gold] → 현재 빚 [gold]{owed} 골드[/gold]. 지금까지 [gold]{paid} 골드[/gold] 갚음.\n전투마다 주입되는 저주: [gold]{cards:choose(1|2|3|4):없음|연체|연체, 차압|신용 불량|없음}[/gold]. 오래 갚지 않을수록 늘어납니다.\n상점에서 빚을 갚으면 이 유물이 제거됩니다.",
+            "빌린 금액 [gold]{borrowed} 골드[/gold], 남은 이자 [gold]{igold} 골드[/gold], 남은 원금 [gold]{prem} 골드[/gold] → 현재 빚 [gold]{owed} 골드[/gold]. 지금까지 [gold]{paid} 골드[/gold] 갚음.\n전투마다 주입되는 저주: [gold]{cards:choose(1|2|3|4):없음|연체|연체, 차압|신용 불량|없음}[/gold]. 오래 갚지 않을수록 늘어납니다.\n상점에서 원금을 청산하면 장부와 결제 카드는 남고 등급만 1로 돌아갑니다. 빌린 그 상점에서는 갚을 수 없습니다.\n[gold]신용 회복[/gold]: 모든 대출을 통틀어 누적 [gold]{cr1} 골드[/gold]를 갑으면 영구 카드를, [gold]{cr2} 골드[/gold]면 강화판을 얻습니다. (현재 등급 [b]{tier}[/b])",
             "모든 서명은 작은 항복이다.",
             "납부", "골드로 빚을 [gold]상환[/gold]합니다.",
             "연체", "이 카드가 손에 들어올 때 [gold]취약[/gold] 1을 얻습니다.",
@@ -55,7 +55,7 @@ internal static class DebtLoanLoc
             "강제 징수", "턴 종료 시, 체력을 [b]{hp}[/b] 잃고 원금 [gold]{principal} 골드[/gold]를 상환한 뒤 소멸합니다."),
 
         ["jpn"] = new("借金台帳",
-            "借入 [gold]{borrowed} ゴールド[/gold]、残り利息 [gold]{igold} ゴールド[/gold]、元金 [gold]{prem} ゴールド[/gold] → 残債 [gold]{owed} ゴールド[/gold]。返済 [gold]{paid} ゴールド[/gold]。\n戦闘ごとに加わる呪い: [gold]{cards:choose(1|2|3|4):なし|延滞|延滞・差し押さえ|信用不良|なし}[/gold]。返済が遅れるほど増える。\nショップで借金を返済すると、このレリックは取り除かれる。",
+            "借入 [gold]{borrowed} ゴールド[/gold]、残り利息 [gold]{igold} ゴールド[/gold]、元金 [gold]{prem} ゴールド[/gold] → 残債 [gold]{owed} ゴールド[/gold]。返済 [gold]{paid} ゴールド[/gold]。\n戦闘ごとに加わる呪い: [gold]{cards:choose(1|2|3|4):なし|延滞|延滞・差し押さえ|信用不良|なし}[/gold]。返済が遅れるほど増える。\nショップで元金を清算すると、台帳と決済カードは残り、等級だけが1に戻る。借りた店では返済できない。\n[gold]信用回復[/gold]: すべての借入を通じて累計[gold]{cr1}ゴールド[/gold]返済で永続カード、[gold]{cr2}ゴールド[/gold]で強化版を獲得する。（現在 等級[b]{tier}[/b]）",
             "署名はすべて、小さな降伏だ。",
             "支払い", "ゴールドで借金を返済する。",
             "延滞", "引いたとき、[gold]脆弱[/gold]を1得る。",
@@ -64,7 +64,7 @@ internal static class DebtLoanLoc
             "強制徴収", "ターン終了時、体力を[b]{hp}[/b]失い、元金[gold]{principal} ゴールド[/gold]を返済してから廃棄。"),
 
         ["zhs"] = new("债务账簿",
-            "借入 [gold]{borrowed} 金币[/gold]，剩余利息 [gold]{igold} 金币[/gold]，本金 [gold]{prem} 金币[/gold] → 待还 [gold]{owed} 金币[/gold]。已偿还 [gold]{paid} 金币[/gold]。\n每场战斗注入的诅咒：[gold]{cards:choose(1|2|3|4):无|拖欠|拖欠、扣押|信用不良|无}[/gold]。拖欠越久，诅咒越多。\n在商店还清债务即可移除此遗物。",
+            "借入 [gold]{borrowed} 金币[/gold]，剩余利息 [gold]{igold} 金币[/gold]，本金 [gold]{prem} 金币[/gold] → 待还 [gold]{owed} 金币[/gold]。已偿还 [gold]{paid} 金币[/gold]。\n每场战斗注入的诅咒：[gold]{cards:choose(1|2|3|4):无|拖欠|拖欠、扣押|信用不良|无}[/gold]。拖欠越久，诅咒越多。\n在商店结清本金后，账簿与结算牌保留，仅信用等级重置为 1。不能在借款的那家商店偿还。\n[gold]信用恢复[/gold]：所有贷款累计偿还 [gold]{cr1} 金币[/gold] 可获得一张永久卡牌，[gold]{cr2} 金币[/gold] 则为强化版。（当前等级 [b]{tier}[/b]）",
             "每一个签名都是一次小小的屈服。",
             "还款", "消耗金币偿还债务。",
             "拖欠", "每当抽到此牌时，获得 1 层[gold]易伤[/gold]。",
@@ -73,7 +73,7 @@ internal static class DebtLoanLoc
             "强制征收", "回合结束时，失去 [b]{hp}[/b] 点生命并偿还 [gold]{principal} 金币[/gold] 本金，然后消耗。"),
 
         ["deu"] = new("Schuldenbuch",
-            "Geliehen [gold]{borrowed} Gold[/gold], offene Zinsen [gold]{igold} Gold[/gold], Kapital [gold]{prem} Gold[/gold] → offen [gold]{owed} Gold[/gold]. Zurückgezahlt [gold]{paid} Gold[/gold].\nJeder Kampf schleust ein: [gold]{cards:choose(1|2|3|4):Keine|Verzug|Verzug, Pfändung|Zahlungsunfähig|Keine}[/gold]. Je länger du schuldest, desto mehr Flüche.\nZahle die Schuld in einem Laden zurück, um dieses Relikt zu entfernen.",
+            "Geliehen [gold]{borrowed} Gold[/gold], offene Zinsen [gold]{igold} Gold[/gold], Kapital [gold]{prem} Gold[/gold] → offen [gold]{owed} Gold[/gold]. Zurückgezahlt [gold]{paid} Gold[/gold].\nJeder Kampf schleust ein: [gold]{cards:choose(1|2|3|4):Keine|Verzug|Verzug, Pfändung|Zahlungsunfähig|Keine}[/gold]. Je länger du schuldest, desto mehr Flüche.\nTilge die Hauptsumme in einem Laden — das Hauptbuch und deine Zahlungskarten bleiben, nur die Stufe fällt auf 1. Im Laden, in dem du geliehen hast, kannst du nicht tilgen.\n[gold]Bonität wiederhergestellt[/gold]: Zahle über alle Kredite hinweg insgesamt [gold]{cr1} Gold[/gold] ab für eine dauerhafte Karte — [gold]{cr2} Gold[/gold] für die verbesserte Fassung. (Aktuell Stufe [b]{tier}[/b])",
             "Jede Unterschrift ist eine kleine Kapitulation.",
             "Zahlung", "Gib Gold aus, um deine Schuld zu tilgen.",
             "Verzug", "Wann immer du sie ziehst, erhalte [gold]Verwundbar[/gold] 1.",
@@ -82,7 +82,7 @@ internal static class DebtLoanLoc
             "Zwangseinziehung", "Am Ende deiner Runde verlierst du [b]{hp}[/b] LP und tilgst [gold]{principal} Gold[/gold] der Schuld, dann verbraucht."),
 
         ["fra"] = new("Grand livre des dettes",
-            "Emprunté [gold]{borrowed} or[/gold], intérêts dus [gold]{igold} or[/gold], principal [gold]{prem} or[/gold] → dû [gold]{owed} or[/gold]. Remboursé [gold]{paid} or[/gold].\nInjecté à chaque combat : [gold]{cards:choose(1|2|3|4):Aucune|Défaut|Défaut, Saisie|Insolvabilité|Aucune}[/gold]. Plus tu tardes, plus il y a de malédictions.\nRembourse la dette dans une boutique pour retirer cette relique.",
+            "Emprunté [gold]{borrowed} or[/gold], intérêts dus [gold]{igold} or[/gold], principal [gold]{prem} or[/gold] → dû [gold]{owed} or[/gold]. Remboursé [gold]{paid} or[/gold].\nInjecté à chaque combat : [gold]{cards:choose(1|2|3|4):Aucune|Défaut|Défaut, Saisie|Insolvabilité|Aucune}[/gold]. Plus tu tardes, plus il y a de malédictions.\nSolde le capital dans une boutique — le grand livre et tes cartes de paiement restent, seul le palier retombe à 1. Tu ne peux pas rembourser dans la boutique où tu as emprunté.\n[gold]Crédit restauré[/gold] : rembourse [gold]{cr1} or[/gold] au total sur l'ensemble de tes prêts pour une carte permanente — [gold]{cr2} or[/gold] pour la version améliorée. (Palier actuel : [b]{tier}[/b])",
             "Chaque signature est une petite reddition.",
             "Paiement", "Dépense de l'or pour rembourser ta dette.",
             "Défaut", "Chaque fois que tu la pioches, gagne [gold]Vulnérable[/gold] 1.",
@@ -91,7 +91,7 @@ internal static class DebtLoanLoc
             "Saisie forcée", "À la fin de ton tour, perds [b]{hp}[/b] PV et rembourse [gold]{principal} or[/gold] de la dette, puis Épuise."),
 
         ["spa"] = new("Libro de deudas",
-            "Prestado [gold]{borrowed} de oro[/gold], interés pendiente [gold]{igold} de oro[/gold], principal [gold]{prem} de oro[/gold] → pendiente [gold]{owed} de oro[/gold]. Pagado [gold]{paid} de oro[/gold].\nInyectado cada combate: [gold]{cards:choose(1|2|3|4):Ninguna|Morosidad|Morosidad, Embargo|Insolvencia|Ninguna}[/gold]. Cuanto más debas, más maldiciones.\nSalda la deuda en una tienda para eliminar esta reliquia.",
+            "Prestado [gold]{borrowed} de oro[/gold], interés pendiente [gold]{igold} de oro[/gold], principal [gold]{prem} de oro[/gold] → pendiente [gold]{owed} de oro[/gold]. Pagado [gold]{paid} de oro[/gold].\nInyectado cada combate: [gold]{cards:choose(1|2|3|4):Ninguna|Morosidad|Morosidad, Embargo|Insolvencia|Ninguna}[/gold]. Cuanto más debas, más maldiciones.\nSalda el capital en una tienda: el libro y tus cartas de pago permanecen, solo el nivel vuelve a 1. No puedes pagar en la tienda donde pediste el préstamo.\n[gold]Crédito restaurado[/gold]: paga [gold]{cr1} de oro[/gold] en total entre todos tus préstamos para obtener una carta permanente; [gold]{cr2} de oro[/gold] para la versión mejorada. (Nivel actual: [b]{tier}[/b])",
             "Cada firma es una pequeña rendición.",
             "Pago", "Gasta oro para saldar tu deuda.",
             "Morosidad", "Cada vez que la robes, gana [gold]Vulnerable[/gold] 1.",
@@ -100,7 +100,7 @@ internal static class DebtLoanLoc
             "Embargo forzoso", "Al final de tu turno, pierde [b]{hp}[/b] de vida y salda [gold]{principal} de oro[/gold] de la deuda; luego Agota."),
 
         ["esp"] = new("Libro de deudas",
-            "Prestado [gold]{borrowed} de oro[/gold], interés pendiente [gold]{igold} de oro[/gold], principal [gold]{prem} de oro[/gold] → pendiente [gold]{owed} de oro[/gold]. Pagado [gold]{paid} de oro[/gold].\nInyectado cada combate: [gold]{cards:choose(1|2|3|4):Ninguna|Morosidad|Morosidad, Embargo|Insolvencia|Ninguna}[/gold]. Cuanto más debas, más maldiciones.\nSalda la deuda en una tienda para eliminar esta reliquia.",
+            "Prestado [gold]{borrowed} de oro[/gold], interés pendiente [gold]{igold} de oro[/gold], principal [gold]{prem} de oro[/gold] → pendiente [gold]{owed} de oro[/gold]. Pagado [gold]{paid} de oro[/gold].\nInyectado cada combate: [gold]{cards:choose(1|2|3|4):Ninguna|Morosidad|Morosidad, Embargo|Insolvencia|Ninguna}[/gold]. Cuanto más debas, más maldiciones.\nSalda el capital en una tienda: el libro y tus cartas de pago permanecen, solo el nivel vuelve a 1. No puedes pagar en la tienda donde pediste el préstamo.\n[gold]Crédito restaurado[/gold]: paga [gold]{cr1} de oro[/gold] en total entre todos tus préstamos para obtener una carta permanente; [gold]{cr2} de oro[/gold] para la versión mejorada. (Nivel actual: [b]{tier}[/b])",
             "Cada firma es una pequeña rendición.",
             "Pago", "Gasta oro para saldar tu deuda.",
             "Morosidad", "Cada vez que la robes, gana [gold]Vulnerable[/gold] 1.",
@@ -109,7 +109,7 @@ internal static class DebtLoanLoc
             "Embargo forzoso", "Al final de tu turno, pierde [b]{hp}[/b] de vida y salda [gold]{principal} de oro[/gold] de la deuda; luego Agota."),
 
         ["ita"] = new("Registro dei debiti",
-            "Prestito [gold]{borrowed} Oro[/gold], interessi dovuti [gold]{igold} Oro[/gold], capitale [gold]{prem} Oro[/gold] → dovuto [gold]{owed} Oro[/gold]. Pagato [gold]{paid} Oro[/gold].\nInserito ogni combattimento: [gold]{cards:choose(1|2|3|4):Nessuna|Morosità|Morosità, Pignoramento|Insolvenza|Nessuna}[/gold]. Più tardi, più maledizioni.\nSalda il debito in un negozio per rimuovere questo cimelio.",
+            "Prestito [gold]{borrowed} Oro[/gold], interessi dovuti [gold]{igold} Oro[/gold], capitale [gold]{prem} Oro[/gold] → dovuto [gold]{owed} Oro[/gold]. Pagato [gold]{paid} Oro[/gold].\nInserito ogni combattimento: [gold]{cards:choose(1|2|3|4):Nessuna|Morosità|Morosità, Pignoramento|Insolvenza|Nessuna}[/gold]. Più tardi, più maledizioni.\nEstingui il capitale in un negozio — il registro e le carte di pagamento restano, solo il livello torna a 1. Non puoi estinguere nel negozio in cui hai preso il prestito.\n[gold]Credito ripristinato[/gold]: ripaga in totale [gold]{cr1} Oro[/gold] su tutti i tuoi prestiti per una carta permanente — [gold]{cr2} Oro[/gold] per la versione potenziata. (Livello attuale: [b]{tier}[/b])",
             "Ogni firma è una piccola resa.",
             "Pagamento", "Spendi oro per ripagare il debito.",
             "Morosità", "Ogni volta che la peschi, ottieni [gold]Vulnerabile[/gold] 1.",
@@ -118,7 +118,7 @@ internal static class DebtLoanLoc
             "Riscossione forzata", "Alla fine del turno, perdi [b]{hp}[/b] PV e ripaghi [gold]{principal} Oro[/gold] di debito, poi Consuma."),
 
         ["pol"] = new("Księga długów",
-            "Pożyczono [gold]{borrowed} złota[/gold], odsetki do spłaty [gold]{igold} złota[/gold], kapitał [gold]{prem} złota[/gold] → do spłaty [gold]{owed} złota[/gold]. Spłacono [gold]{paid} złota[/gold].\nDodawane w każdej walce: [gold]{cards:choose(1|2|3|4):Brak|Zaległość|Zaległość, Zajęcie|Niewypłacalność|Brak}[/gold]. Im dłużej zwlekasz, tym więcej klątw.\nSpłać dług w sklepie, aby usunąć ten relikt.",
+            "Pożyczono [gold]{borrowed} złota[/gold], odsetki do spłaty [gold]{igold} złota[/gold], kapitał [gold]{prem} złota[/gold] → do spłaty [gold]{owed} złota[/gold]. Spłacono [gold]{paid} złota[/gold].\nDodawane w każdej walce: [gold]{cards:choose(1|2|3|4):Brak|Zaległość|Zaległość, Zajęcie|Niewypłacalność|Brak}[/gold]. Im dłużej zwlekasz, tym więcej klątw.\nUreguluj kapitał w sklepie — księga i karty płatnicze zostają, tylko poziom wraca do 1. Nie możesz spłacić w sklepie, w którym pożyczyłeś.\n[gold]Zdolność przywrócona[/gold]: spłać łącznie [gold]{cr1} złota[/gold] ze wszystkich pożyczek, aby zdobyć stałą kartę — [gold]{cr2} złota[/gold] za wersję ulepszoną. (Obecny poziom: [b]{tier}[/b])",
             "Każdy podpis to mała kapitulacja.",
             "Spłata", "Wydaj złoto, aby spłacić dług.",
             "Zaległość", "Za każdym razem, gdy ją dobierzesz, zyskaj [gold]Podatność[/gold] 1.",
@@ -127,7 +127,7 @@ internal static class DebtLoanLoc
             "Przymusowa egzekucja", "Na końcu tury tracisz [b]{hp}[/b] PŻ i spłacasz [gold]{principal} złota[/gold] długu, potem Zużywa się."),
 
         ["ptb"] = new("Livro-razão de dívidas",
-            "Emprestado [gold]{borrowed} de Ouro[/gold], juros devidos [gold]{igold} de Ouro[/gold], principal [gold]{prem} de Ouro[/gold] → devido [gold]{owed} de Ouro[/gold]. Pago [gold]{paid} de Ouro[/gold].\nInjetado a cada combate: [gold]{cards:choose(1|2|3|4):Nenhuma|Inadimplência|Inadimplência, Penhora|Crédito Ruim|Nenhuma}[/gold]. Quanto mais você deve, mais maldições.\nQuite a dívida em uma loja para remover esta relíquia.",
+            "Emprestado [gold]{borrowed} de Ouro[/gold], juros devidos [gold]{igold} de Ouro[/gold], principal [gold]{prem} de Ouro[/gold] → devido [gold]{owed} de Ouro[/gold]. Pago [gold]{paid} de Ouro[/gold].\nInjetado a cada combate: [gold]{cards:choose(1|2|3|4):Nenhuma|Inadimplência|Inadimplência, Penhora|Crédito Ruim|Nenhuma}[/gold]. Quanto mais você deve, mais maldições.\nQuite o principal em uma loja — o livro-razão e suas cartas de pagamento permanecem, apenas o nível volta a 1. Você não pode quitar na loja onde pegou o empréstimo.\n[gold]Crédito Restaurado[/gold]: pague [gold]{cr1} de ouro[/gold] no total somando todos os seus empréstimos para ganhar uma carta permanente — [gold]{cr2} de ouro[/gold] para a versão melhorada. (Nível atual: [b]{tier}[/b])",
             "Cada assinatura é uma pequena rendição.",
             "Pagamento", "Gaste ouro para quitar sua dívida.",
             "Inadimplência", "Sempre que comprá-la, ganhe [gold]Vulnerável[/gold] 1.",
@@ -136,7 +136,7 @@ internal static class DebtLoanLoc
             "Cobrança Forçada", "No fim do seu turno, perca [b]{hp}[/b] de Vida e quite [gold]{principal} de Ouro[/gold] da dívida, então Exaure."),
 
         ["rus"] = new("Долговая книга",
-            "Взято [gold]{borrowed} золота[/gold], проценты к оплате [gold]{igold} золота[/gold], основной долг [gold]{prem} золота[/gold] → долг [gold]{owed} золота[/gold]. Выплачено [gold]{paid} золота[/gold].\nДобавляется каждый бой: [gold]{cards:choose(1|2|3|4):Нет|Просрочка|Просрочка, Арест|Неплатёжеспособность|Нет}[/gold]. Чем дольше долг, тем больше проклятий.\nПогасите долг в магазине, чтобы убрать эту реликвию.",
+            "Взято [gold]{borrowed} золота[/gold], проценты к оплате [gold]{igold} золота[/gold], основной долг [gold]{prem} золота[/gold] → долг [gold]{owed} золота[/gold]. Выплачено [gold]{paid} золота[/gold].\nДобавляется каждый бой: [gold]{cards:choose(1|2|3|4):Нет|Просрочка|Просрочка, Арест|Неплатёжеспособность|Нет}[/gold]. Чем дольше долг, тем больше проклятий.\nЗакройте основной долг в магазине — книга и платёжные карты остаются, лишь уровень возвращается к 1. Нельзя погасить в той лавке, где вы брали заём.\n[gold]Кредит восстановлен[/gold]: выплатите суммарно [gold]{cr1} золота[/gold] по всем займам — получите постоянную карту, [gold]{cr2} золота[/gold] — улучшенную. (Сейчас уровень [b]{tier}[/b])",
             "Каждая подпись — маленькая капитуляция.",
             "Платёж", "Потратьте золото, чтобы погасить долг.",
             "Просрочка", "Каждый раз, когда вы берёте её, получите [gold]Уязвимость[/gold] 1.",
@@ -145,7 +145,7 @@ internal static class DebtLoanLoc
             "Принудительное взыскание", "В конце хода теряете [b]{hp}[/b] здоровья и гасите [gold]{principal} золота[/gold] долга, затем Истощается."),
 
         ["tha"] = new("บัญชีหนี้",
-            "ยืม [gold]{borrowed} ทอง[/gold] ดอกเบี้ยค้าง [gold]{igold} ทอง[/gold] เงินต้น [gold]{prem} ทอง[/gold] → ค้างชำระ [gold]{owed} ทอง[/gold] จ่ายไปแล้ว [gold]{paid} ทอง[/gold]\nใส่ทุกการต่อสู้: [gold]{cards:choose(1|2|3|4):ไม่มี|ค้างชำระ|ค้างชำระ, ยึดทรัพย์|เครดิตเสีย|ไม่มี}[/gold] ยิ่งค้างนานยิ่งมากขึ้น\nชำระหนี้ที่ร้านค้าเพื่อนำวัตถุโบราณนี้ออก",
+            "ยืม [gold]{borrowed} ทอง[/gold] ดอกเบี้ยค้าง [gold]{igold} ทอง[/gold] เงินต้น [gold]{prem} ทอง[/gold] → ค้างชำระ [gold]{owed} ทอง[/gold] จ่ายไปแล้ว [gold]{paid} ทอง[/gold]\nใส่ทุกการต่อสู้: [gold]{cards:choose(1|2|3|4):ไม่มี|ค้างชำระ|ค้างชำระ, ยึดทรัพย์|เครดิตเสีย|ไม่มี}[/gold] ยิ่งค้างนานยิ่งมากขึ้น\nปิดเงินต้นที่ร้านค้า สมุดและการ์ดชำระยังอยู่ มีเพียงระดับที่กลับเป็น 1 และชำระที่ร้านที่คุณกู้มาไม่ได้\n[gold]เครดิตคืนสภาพ[/gold]: ชำระรวมทุกสัญญา [gold]{cr1} ทอง[/gold] จะได้การ์ดถาวร และ [gold]{cr2} ทอง[/gold] จะได้รุ่นอัปเกรด (ตอนนี้ระดับ [b]{tier}[/b])",
             "ทุกลายเซ็นคือการยอมจำนนเล็กๆ",
             "การชำระ", "ใช้ทองเพื่อชำระหนี้",
             "ค้างชำระ", "ทุกครั้งที่จั่วการ์ดนี้ รับ[gold]เปราะบาง[/gold] 1",
@@ -154,7 +154,7 @@ internal static class DebtLoanLoc
             "บังคับเก็บหนี้", "เมื่อจบเทิร์น เสียพลังชีวิต [b]{hp}[/b] และชำระเงินต้น [gold]{principal} ทอง[/gold] จากนั้นเผาไหม้"),
 
         ["tur"] = new("Borç Defteri",
-            "Alınan [gold]{borrowed} Altın[/gold], kalan faiz [gold]{igold} Altın[/gold], anapara [gold]{prem} Altın[/gold] → kalan [gold]{owed} Altın[/gold]. Ödenen [gold]{paid} Altın[/gold].\nHer savaş eklenir: [gold]{cards:choose(1|2|3|4):Yok|Temerrüt|Temerrüt, Haciz|Kredi İflası|Yok}[/gold]. Borç uzadıkça daha fazla lanet.\nBu kalıntıyı kaldırmak için borcu bir dükkânda öde.",
+            "Alınan [gold]{borrowed} Altın[/gold], kalan faiz [gold]{igold} Altın[/gold], anapara [gold]{prem} Altın[/gold] → kalan [gold]{owed} Altın[/gold]. Ödenen [gold]{paid} Altın[/gold].\nHer savaş eklenir: [gold]{cards:choose(1|2|3|4):Yok|Temerrüt|Temerrüt, Haciz|Kredi İflası|Yok}[/gold]. Borç uzadıkça daha fazla lanet.\nAnaparayı bir dükkânda kapat — defter ve ödeme kartların kalır, yalnızca kademe 1'e döner. Borç aldığın dükkânda ödeme yapamazsın.\n[gold]Kredi Geri Geldi[/gold]: tüm kredilerin boyunca toplam [gold]{cr1} Altın[/gold] öde, kalıcı bir kart kazan — [gold]{cr2} Altın[/gold] ile geliştirilmiş sürümü. (Şu an kademe [b]{tier}[/b])",
             "Her imza küçük bir teslimiyettir.",
             "Ödeme", "Borcunu ödemek için altın harca.",
             "Temerrüt", "Onu her çektiğinde [gold]Savunmasız[/gold] 1 kazan.",
@@ -300,9 +300,9 @@ internal static class DebtLoanLoc
     //    ledger name inside PayBack matches the relic's own localized name (see ByLang above).
     internal readonly struct RepayUiRow
     {
-        public readonly string Title, PayBack, NotEnough, NoLoan;
-        public RepayUiRow(string title, string payBack, string notEnough, string noLoan)
-        { Title = title; PayBack = payBack; NotEnough = notEnough; NoLoan = noLoan; }
+        public readonly string Title, PayBack, NotEnough, NoLoan, SameShop;
+        public RepayUiRow(string title, string payBack, string notEnough, string noLoan, string sameShop)
+        { Title = title; PayBack = payBack; NotEnough = notEnough; NoLoan = noLoan; SameShop = sameShop; }
     }
 
     internal static RepayUiRow RepayUiFor(string? lang)
@@ -310,23 +310,111 @@ internal static class DebtLoanLoc
 
     private static readonly Dictionary<string, RepayUiRow> RepayUiByLang = new()
     {
-        ["eng"] = new("Repay Loan", "Pay back {0} gold to retire the Debt Ledger and clear all Debt cards.", "Not enough gold — you owe {0}.", "No loan to repay."),
-        ["kor"] = new("빚 갚기", "{0} 골드를 갚아 빚 장부를 반납하고 모든 빚 카드를 제거합니다.", "골드가 부족합니다 — {0} 골드를 빚지고 있습니다.", "갚을 빚이 없습니다."),
-        ["jpn"] = new("借金返済", "{0} ゴールドを返済して「借金台帳」を手放し、すべての借金カードを取り除く。", "ゴールドが足りない — {0} の借りがある。", "返済する借金がない。"),
-        ["zhs"] = new("偿还贷款", "偿还 {0} 金币以归还债务账簿，并清除所有债务牌。", "金币不足——你欠 {0}。", "没有需要偿还的贷款。"),
-        ["deu"] = new("Kredit zurückzahlen", "Zahle {0} Gold zurück, um das Schuldenbuch abzugeben und alle Schuldkarten zu entfernen.", "Nicht genug Gold — du schuldest {0}.", "Kein Kredit zum Zurückzahlen."),
-        ["fra"] = new("Rembourser le prêt", "Rembourse {0} or pour rendre le Grand livre des dettes et retirer toutes les cartes de Dette.", "Pas assez d'or — tu dois {0}.", "Aucun prêt à rembourser."),
-        ["spa"] = new("Saldar préstamo", "Paga {0} de oro para devolver el Libro de deudas y eliminar todas las cartas de Deuda.", "No tienes suficiente oro — debes {0}.", "No hay préstamo que saldar."),
-        ["esp"] = new("Saldar préstamo", "Paga {0} de oro para devolver el Libro de deudas y eliminar todas las cartas de Deuda.", "No tienes suficiente oro — debes {0}.", "No hay préstamo que saldar."),
-        ["ita"] = new("Ripaga il prestito", "Ripaga {0} oro per restituire il Registro dei debiti e rimuovere tutte le carte Debito.", "Oro insufficiente — devi {0}.", "Nessun prestito da ripagare."),
-        ["pol"] = new("Spłać pożyczkę", "Spłać {0} złota, aby oddać Księgę długów i usunąć wszystkie karty Długu.", "Za mało złota — jesteś winien {0}.", "Brak pożyczki do spłaty."),
-        ["ptb"] = new("Quitar empréstimo", "Pague {0} de ouro para devolver o Livro-razão de dívidas e remover todas as cartas de Dívida.", "Ouro insuficiente — você deve {0}.", "Nenhum empréstimo para quitar."),
-        ["rus"] = new("Погасить заём", "Верните {0} золота, чтобы сдать Долговую книгу и убрать все карты Долга.", "Недостаточно золота — вы должны {0}.", "Нет займа для погашения."),
-        ["tha"] = new("ชำระหนี้", "จ่ายคืน {0} ทองเพื่อคืนบัญชีหนี้และกำจัดการ์ดหนี้ทั้งหมด", "ทองไม่พอ — คุณติดหนี้ {0}", "ไม่มีหนี้ให้ชำระ"),
-        ["tur"] = new("Krediyi Öde", "Borç Defteri'ni iade etmek ve tüm Borç kartlarını kaldırmak için {0} altın öde.", "Yeterli altın yok — {0} borcun var.", "Ödenecek kredi yok."),
+        ["eng"] = new("Repay Loan", "Pay back {0} gold to clear the principal. The Ledger and your debt cards stay — your credit tier resets to 1.", "Not enough gold — you owe {0}.", "No loan to repay.", "You cannot repay at the shop you borrowed from. Settle at the next one."),
+        ["kor"] = new("빚 갚기", "{0} 골드를 갚아 원금을 청산합니다. 장부와 결제 카드는 남고, 신용 등급이 1로 돌아갑니다.", "골드가 부족합니다 — {0} 골드를 빚지고 있습니다.", "갚을 빚이 없습니다.", "빌린 상점에서는 갚을 수 없습니다. 다음 상점에서 청산하세요."),
+        ["jpn"] = new("借金返済", "{0} ゴールドを返済して元金を清算する。台帳と決済カードは残り、信用等級が1に戻る。", "ゴールドが足りない — {0} の借りがある。", "返済する借金がない。", "借りた店では返済できない。次の店で清算しよう。"),
+        ["zhs"] = new("偿还贷款", "偿还 {0} 金币以结清本金。账簿与结算牌保留，信用等级重置为 1。", "金币不足——你欠 {0}。", "没有需要偿还的贷款。", "不能在借款的商店偿还。请到下一家商店结清。"),
+        ["deu"] = new("Kredit zurückzahlen", "Zahle {0} Gold, um die Hauptsumme zu tilgen. Das Hauptbuch und deine Schuldenkarten bleiben — deine Stufe fällt auf 1.", "Nicht genug Gold — du schuldest {0}.", "Kein Kredit zum Zurückzahlen.", "Im Laden, in dem du geliehen hast, kannst du nicht tilgen. Begleiche es im nächsten."),
+        ["fra"] = new("Rembourser le prêt", "Rembourse {0} or pour solder le capital. Le grand livre et tes cartes de dette restent — ton palier retombe à 1.", "Pas assez d'or — tu dois {0}.", "Aucun prêt à rembourser.", "Tu ne peux pas rembourser dans la boutique où tu as emprunté. Solde au prochain marchand."),
+        ["spa"] = new("Saldar préstamo", "Paga {0} de oro para saldar el capital. El libro y tus cartas de deuda permanecen; tu nivel vuelve a 1.", "No tienes suficiente oro — debes {0}.", "No hay préstamo que saldar.", "No puedes pagar en la tienda donde pediste el préstamo. Salda en la siguiente."),
+        ["esp"] = new("Saldar préstamo", "Paga {0} de oro para saldar el capital. El libro y tus cartas de deuda permanecen; tu nivel vuelve a 1.", "No tienes suficiente oro — debes {0}.", "No hay préstamo que saldar.", "No puedes pagar en la tienda donde pediste el préstamo. Salda en la siguiente."),
+        ["ita"] = new("Ripaga il prestito", "Paga {0} Oro per estinguere il capitale. Il registro e le carte debito restano — il livello torna a 1.", "Oro insufficiente — devi {0}.", "Nessun prestito da ripagare.", "Non puoi estinguere nel negozio in cui hai preso il prestito. Salda al prossimo."),
+        ["pol"] = new("Spłać pożyczkę", "Spłać {0} złota, aby uregulować kapitał. Księga i karty długu zostają — poziom wraca do 1.", "Za mało złota — jesteś winien {0}.", "Brak pożyczki do spłaty.", "Nie możesz spłacić w sklepie, w którym pożyczyłeś. Ureguluj w następnym."),
+        ["ptb"] = new("Quitar empréstimo", "Pague {0} de ouro para quitar o principal. O livro-razão e suas cartas de dívida permanecem — seu nível volta a 1.", "Ouro insuficiente — você deve {0}.", "Nenhum empréstimo para quitar.", "Você não pode quitar na loja onde pegou o empréstimo. Acerte na próxima."),
+        ["rus"] = new("Погасить заём", "Выплатите {0} золота, чтобы закрыть основной долг. Книга и долговые карты остаются — уровень возвращается к 1.", "Недостаточно золота — вы должны {0}.", "Нет займа для погашения.", "Нельзя погасить в той же лавке, где вы брали заём. Рассчитайтесь в следующей."),
+        ["tha"] = new("ชำระหนี้", "จ่าย {0} ทอง เพื่อปิดเงินต้น สมุดและการ์ดชำระยังอยู่ และระดับเครดิตกลับเป็น 1", "ทองไม่พอ — คุณติดหนี้ {0}", "ไม่มีหนี้ให้ชำระ", "ชำระที่ร้านที่คุณกู้มาไม่ได้ ไปปิดบัญชีที่ร้านถัดไป"),
+        ["tur"] = new("Krediyi Öde", "Ana parayı kapatmak için {0} altın öde. Defter ve borç kartların kalır — kademen 1'e döner.", "Yeterli altın yok — {0} borcun var.", "Ödenecek kredi yok.", "Borç aldığın dükkânda ödeme yapamazsın. Bir sonrakinde kapat."),
     };
 
     // ── Debt-card shop panel UI (Buy on credit). {0} = the card's debt price. ──────────────────────────
+    // ── 신용도 (Credit Score) — 빚 상점 헤더. {0}=신용도, {1}=누적 상환액(골드).
+    //    ★DebtShopUiRow 에 11번째 인자를 끼우지 않고 별도 사전으로 둔다: 그 struct 는 이미 10인자라
+    //    14개 행을 다시 건드리면 인자 순서가 밀릴 위험이 크다(호버 loc 에서 실제로 한 번 밀렸다).
+    private static readonly Dictionary<string, string> CreditScoreByLang = new()
+    {
+        ["eng"] = "Credit {0}  ({1} repaid)",
+        ["kor"] = "신용도 {0}  (누적 {1} 골드 상환)",
+        ["jpn"] = "信用度 {0}  (累計 {1} ゴールド返済)",
+        ["zhs"] = "信用 {0}  (累计偿还 {1} 金币)",
+        ["deu"] = "Bonität {0}  ({1} Gold getilgt)",
+        ["fra"] = "Crédit {0}  ({1} or remboursé)",
+        ["spa"] = "Crédito {0}  ({1} de oro pagado)",
+        ["esp"] = "Crédito {0}  ({1} de oro pagado)",
+        ["ita"] = "Credito {0}  ({1} Oro ripagato)",
+        ["pol"] = "Zdolność {0}  (spłacono {1} złota)",
+        ["ptb"] = "Crédito {0}  ({1} de ouro pago)",
+        ["rus"] = "Кредит {0}  (выплачено {1} золота)",
+        ["tha"] = "เครดิต {0}  (ชำระแล้ว {1} ทอง)",
+        ["tur"] = "Kredi {0}  ({1} altın ödendi)",
+    };
+
+    // ── 신용 보상 수령 + 빚으로 카드 제거 UI ──────────────────────────────
+    /// <summary>신용도 줄 오른쪽 수령 버튼·호버 사다리·빚 제거 행의 문자열.
+    /// <para>★<see cref="DebtShopUiRow"/> 에 붙이지 않고 따로 둔 이유 = 그 struct 는 이미 10인자라 14개 행을
+    /// 다시 건드리면 인자 순서가 밀릴 위험이 크다(호버 loc 에서 실제로 한 번 밀렸다).</para></summary>
+    internal readonly struct RewardUiRow
+    {
+        public readonly string Claim, TipTitle, RungCard, RungUpgrade, RungUpgradeAny, RungRemoveAny,
+                               Claimed, Ready, ToGo, PurgeTitle, PurgeTip, PurgeNone,
+                               BonusUpgrade, BonusRemove, BonusNote;
+        public RewardUiRow(string claim, string tipTitle, string rungCard, string rungUpgrade,
+                           string rungUpgradeAny, string rungRemoveAny, string claimed, string ready,
+                           string toGo, string purgeTitle, string purgeTip, string purgeNone,
+                           string bonusUpgrade, string bonusRemove, string bonusNote)
+        { Claim = claim; TipTitle = tipTitle; RungCard = rungCard; RungUpgrade = rungUpgrade;
+          RungUpgradeAny = rungUpgradeAny; RungRemoveAny = rungRemoveAny; Claimed = claimed; Ready = ready;
+          ToGo = toGo; PurgeTitle = purgeTitle; PurgeTip = purgeTip; PurgeNone = purgeNone;
+          BonusUpgrade = bonusUpgrade; BonusRemove = bonusRemove; BonusNote = bonusNote; }
+    }
+
+    internal static RewardUiRow RewardUiFor(string? lang)
+        => lang != null && RewardUiByLang.TryGetValue(lang, out var r) ? r : RewardUiByLang["eng"];
+
+    private static readonly Dictionary<string, RewardUiRow> RewardUiByLang = new()
+    {
+        ["eng"] = new("Claim", "Credit Rewards", "Credit Restored card", "Upgrade that card", "Upgrade any card in your deck", "Remove any card from your deck", "claimed", "READY", "{0} gold to go", "Remove a Card", "Remove one card from your deck for {0} debt. The merchant's own removal price rises with it.", "Nothing removable.", "Upgrade", "Remove", "Then every {0} Credit: upgrade OR remove a card — your choice, forever."),
+        ["kor"] = new("수령", "신용 보상", "신용 회복 카드", "그 카드를 강화", "덱의 카드 1장 강화", "덱의 카드 1장 제거", "수령함", "수령 가능", "{0} 골드 남음", "카드 제거", "빚 {0}으로 덱에서 카드 1장을 제거합니다. 상인의 제거 가격도 같이 오릅니다.", "제거할 카드가 없습니다.", "강화", "제거", "이후 신용도 {0}마다: 카드 강화 또는 제거 중 하나를 선택 — 끝없이."),
+        ["jpn"] = new("受け取る", "信用報酬", "「信用回復」カード", "そのカードを強化", "デッキのカード1枚を強化", "デッキのカード1枚を除去", "受領済", "受領可能", "あと {0} ゴールド", "カード除去", "借金 {0} でデッキからカード1枚を除去する。店主の除去価格も上がる。", "除去できるカードがない。", "強化", "除去", "その後は信用度{0}ごとに、カードの強化か除去を選べる — 無限に。"),
+        ["zhs"] = new("领取", "信用奖励", "「信用恢复」牌", "强化那张牌", "强化牌组中的 1 张牌", "从牌组移除 1 张牌", "已领取", "可领取", "还差 {0} 金币", "移除卡牌", "以 {0} 债务从牌组移除 1 张牌。商人的移除价格也会随之上涨。", "没有可移除的卡牌。", "强化", "移除", "此后每 {0} 点信用：强化或移除一张牌，由你选择 — 无限循环。"),
+        ["deu"] = new("Abholen", "Bonitätsbelohnungen", "Karte „Bonität wiederhergestellt“", "Diese Karte verbessern", "Eine beliebige Karte im Deck verbessern", "Eine beliebige Karte aus dem Deck entfernen", "abgeholt", "BEREIT", "noch {0} Gold", "Karte entfernen", "Entferne eine Karte aus deinem Deck für {0} Schulden. Der Preis des Händlers steigt mit.", "Nichts zu entfernen.", "Verbessern", "Entfernen", "Danach alle {0} Bonität: Karte verbessern ODER entfernen — deine Wahl, endlos."),
+        ["fra"] = new("Réclamer", "Récompenses de crédit", "Carte « Crédit restauré »", "Améliorer cette carte", "Améliorer une carte de ton deck", "Retirer une carte de ton deck", "réclamé", "PRÊT", "encore {0} or", "Retirer une carte", "Retire une carte de ton deck pour {0} de dette. Le prix du marchand augmente aussi.", "Rien à retirer.", "Améliorer", "Retirer", "Ensuite, tous les {0} de crédit : améliorer OU retirer une carte — au choix, sans fin."),
+        ["spa"] = new("Reclamar", "Recompensas de crédito", "Carta «Crédito restaurado»", "Mejorar esa carta", "Mejorar una carta de tu mazo", "Eliminar una carta de tu mazo", "reclamado", "LISTO", "faltan {0} de oro", "Eliminar una carta", "Elimina una carta de tu mazo por {0} de deuda. El precio del mercader también sube.", "Nada que eliminar.", "Mejorar", "Eliminar", "Después, cada {0} de crédito: mejorar O eliminar una carta; tú eliges, sin fin."),
+        ["esp"] = new("Reclamar", "Recompensas de crédito", "Carta «Crédito restaurado»", "Mejorar esa carta", "Mejorar una carta de tu mazo", "Eliminar una carta de tu mazo", "reclamado", "LISTO", "faltan {0} de oro", "Eliminar una carta", "Elimina una carta de tu mazo por {0} de deuda. El precio del mercader también sube.", "Nada que eliminar.", "Mejorar", "Eliminar", "Después, cada {0} de crédito: mejorar O eliminar una carta; tú eliges, sin fin."),
+        ["ita"] = new("Riscuoti", "Ricompense di credito", "Carta «Credito ripristinato»", "Potenzia quella carta", "Potenzia una carta del mazzo", "Rimuovi una carta dal mazzo", "riscosso", "PRONTO", "mancano {0} Oro", "Rimuovi una carta", "Rimuovi una carta dal mazzo per {0} di debito. Anche il prezzo del mercante sale.", "Nulla da rimuovere.", "Potenzia", "Rimuovi", "Poi ogni {0} di credito: potenzia O rimuovi una carta — a tua scelta, all\'infinito."),
+        ["pol"] = new("Odbierz", "Nagrody kredytowe", "Karta „Zdolność przywrócona”", "Ulepsz tę kartę", "Ulepsz dowolną kartę w talii", "Usuń dowolną kartę z talii", "odebrano", "GOTOWE", "jeszcze {0} złota", "Usuń kartę", "Usuń jedną kartę z talii za {0} długu. Cena kupca też rośnie.", "Nie ma czego usunąć.", "Ulepsz", "Usuń", "Potem co {0} zdolności: ulepsz LUB usuń kartę — twój wybór, bez końca."),
+        ["ptb"] = new("Resgatar", "Recompensas de crédito", "Carta “Crédito Restaurado”", "Melhorar essa carta", "Melhorar uma carta do seu baralho", "Remover uma carta do seu baralho", "resgatado", "PRONTO", "faltam {0} de ouro", "Remover uma carta", "Remova uma carta do baralho por {0} de dívida. O preço do mercador também sobe.", "Nada a remover.", "Melhorar", "Remover", "Depois, a cada {0} de crédito: melhorar OU remover uma carta — você escolhe, sem fim."),
+        ["rus"] = new("Забрать", "Кредитные награды", "Карта «Кредит восстановлен»", "Улучшить эту карту", "Улучшить любую карту в колоде", "Убрать любую карту из колоды", "получено", "ГОТОВО", "ещё {0} золота", "Убрать карту", "Уберите одну карту из колоды за {0} долга. Цена торговца тоже вырастет.", "Нечего убирать.", "Улучшить", "Убрать", "Далее каждые {0} кредита: улучшить ИЛИ убрать карту — на ваш выбор, бесконечно."),
+        ["tha"] = new("รับรางวัล", "รางวัลเครดิต", "การ์ด เครดิตคืนสภาพ", "อัปเกรดการ์ดใบนั้น", "อัปเกรดการ์ดใบใดก็ได้ในสดำรับ", "นำการ์ดออกจากสำรับ 1 ใบ", "รับแล้ว", "พร้อม", "อีก {0} ทอง", "นำการ์ดออก", "นำการ์ด 1 ใบออกจากสำรับด้วยหนี้ {0} ราคาของพ่อค้าก็ขึ้นด้วย", "ไม่มีการ์ดที่นำออกได้", "อัปเกรด", "นำออก", "จากนั้นทุก {0} เครดิต: อัปเกรดหรือนำการ์ดออก — คุณเลือกเอง ไม่มีที่สิ้นสุด"),
+        ["tur"] = new("Al", "Kredi Ödülleri", "“Kredi Geri Geldi” kartı", "O kartı geliştir", "Desteesindeki bir kartı geliştir", "Destenden bir kartı kaldır", "alındı", "HAZIR", "{0} altın kaldı", "Kart Kaldır", "{0} borç karşılığında destenden bir kart kaldır. Satıcının kaldırma fiyatı da yükselir.", "Kaldırılacak bir şey yok.", "Geliştir", "Kaldır", "Sonrasında her {0} kredide: bir kartı geliştir VEYA kaldır — seçim senin, sonsuza dek."),
+    };
+    // ── 신용도 짧은 표기 — 보상 칩/사다리에 쓴다 ────────────────────────────────────────────────
+    /// <summary>{0}=신용도. ★칩에 문턱을 <b>골드(300)</b>가 아니라 <b>신용도(3)</b>로 적기 위한 서식.
+    /// 헤더가 이미 "신용도 N"으로 말하고 있으므로 같은 단위로 읽혀야 사다리가 한 축으로 보인다
+    /// (골드 금액은 툴팁에서 괄호로 계속 보여준다).</summary>
+    private static readonly Dictionary<string, string> CreditShortByLang = new()
+    {
+        ["eng"] = "Credit {0}",
+        ["kor"] = "신용도 {0}",
+        ["jpn"] = "信用度 {0}",
+        ["zhs"] = "信用 {0}",
+        ["deu"] = "Bonität {0}",
+        ["fra"] = "Crédit {0}",
+        ["spa"] = "Crédito {0}",
+        ["esp"] = "Crédito {0}",
+        ["ita"] = "Credito {0}",
+        ["pol"] = "Zdolność {0}",
+        ["ptb"] = "Crédito {0}",
+        ["rus"] = "Кредит {0}",
+        ["tha"] = "เครดิต {0}",
+        ["tur"] = "Kredi {0}",
+    };
+
+    internal static string CreditShortFormatFor(string? lang)
+        => lang != null && CreditShortByLang.TryGetValue(lang, out var s) ? s : CreditShortByLang["eng"];
+    /// <summary>빚 상점 헤더의 신용도 줄 서식. {0}=신용도, {1}=누적 상환액.</summary>
+    internal static string CreditScoreFormatFor(string? lang)
+        => lang != null && CreditScoreByLang.TryGetValue(lang, out var s) ? s : CreditScoreByLang["eng"];
+
     internal readonly struct DebtShopUiRow
     {
         public readonly string Title, Hint, Price, Sold, Close, Credit, OverLimit, Free, Draws, DrawsTip;

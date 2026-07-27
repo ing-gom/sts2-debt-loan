@@ -89,6 +89,33 @@ internal static class SoloTest
         }
     }
 
+    /// <summary>테스트용: '다음 상점에서 갚는' 상황을 만들어 상환한다.
+    /// ★실제 규칙은 "빌린 그 상점에서는 갚을 수 없다"(LoanService.CanRepayHere)인데, 대부분의 테스트가
+    /// 빌린 직후 같은 floor 에서 Repay 를 부른다 — 그대로 두면 조용히 false 만 돌아와 아무것도 검증하지
+    /// 못한다. LoanFloor 를 한 칸 뒤로 밀어 이동한 셈으로 만든 뒤 실제 Repay 경로를 그대로 탄다.</summary>
+    private static async System.Threading.Tasks.Task<bool> RepayElsewhere(Player player)
+    {
+        var r = LoanService.For(player);
+        if (r != null && player?.RunState != null && r.LoanFloor == player.RunState.TotalFloor)
+            r.LoanFloor = player.RunState.TotalFloor - 1;
+        return await LoanService.Repay(player);   // ★자기 자신을 부르면 무한 재귀 = 로그 없는 스택오버플로(실제로 겪음)
+    }
+
+    /// <summary>빚 상점 헤더의 신용도 호버 히트박스를 이름으로 찾는다. ★자동화에서는 좌표만 옮겨도
+    /// <c>MouseEntered</c> 가 발화하지 않아(Input.WarpMouse 로 2회 실측 실패) 네이티브 호버를 재현할 수 없다 →
+    /// 노드를 찾아 시그널을 직접 쏘는 것이 실경로를 타는 유일한 방법.</summary>
+    private static Godot.Node? FindHoverHit(Godot.Node? root)
+    {
+        if (root == null) return null;
+        if (root.Name == "dl_credit_hit") return root;
+        foreach (var child in root.GetChildren())
+        {
+            var hit = FindHoverHit(child);
+            if (hit != null) return hit;
+        }
+        return null;
+    }
+
     private static void Step(string name) { _step = name; _stepAt = DateTime.UtcNow; W($"— {name}"); }
 
     private static int ModelCount()
@@ -221,6 +248,18 @@ internal static class SoloTest
             W($"  assert choose render (per-tier name resolved): {tChoose}");
             all &= tChoose;
 
+            // ★신용 회복 예고 줄 — 보상 조건이 호버에 살아 있는지. 이 줄이 없으면 보상의 존재 자체가
+            // 인게임에서 비공개로 돌아간다(유물 문구는 "오래 갚지 않을수록 나빠진다"만 말하므로 빨리 갚는
+            // 게 정답처럼 읽힌다). ★플레이스홀더 미해결도 같이 잡는다 — loc 편집에서 변수명을 흘리면
+            // 화면에 "{cr1}" 이 그대로 뜬다(실제로 이 재설계에서 rtier/rpaid → cr1/cr2 로 갈아끼웠다).
+            // ★문턱은 이제 등급이 아니라 **누적 상환액 사다리**(300/600)다.
+            bool tReward = hoverT4.Contains(DebtLoanConfig.CreditRewardCard.ToString())
+                           && hoverT4.Contains(DebtLoanConfig.CreditRewardUpgraded.ToString())
+                           && !hoverT4.Contains("{cr1}") && !hoverT4.Contains("{cr2}") && !hoverT4.Contains("{tier}")
+                           && !hoverT4.Contains("{rtier}") && !hoverT4.Contains("{rpaid}");
+            W($"  assert 신용 회복 예고: 누적 {DebtLoanConfig.CreditRewardCard}/{DebtLoanConfig.CreditRewardUpgraded} 표시 + 미해결 변수 없음 -> {tReward}");
+            all &= tReward;
+
             // C) Persistence round-trip (numeric state on the relic).
             Step("save/load persistence");
             var save = RunManager.Instance.ToSave(null);
@@ -263,19 +302,178 @@ internal static class SoloTest
             W($"  assert same-shop: sameOk={sameOk} otherDenied={otherDenied} -> {tE}");
             all &= tE;
 
-            // F) Repay → relic REMOVED + record reset → can borrow again (fresh first loan allowed).
-            Step("repay → re-borrow");
+            // F) ★청산 재설계: 유물도 결제 카드도 사라지지 않는다. 원금만 0이 되고 등급이 1로 돌아가며,
+            //    인출 3회가 회복되어 다시 빌릴 수 있다. 누적 상환액(=신용도)은 리셋되지 않는다.
+            //    ★그리고 빌린 그 상점에서는 갚을 수 없다(파밍 가드) — 같은 floor 에서 먼저 거부되는지 본다.
+            Step("repay → 원금 0 · 등급 1 · 유물 유지");
             if ((int)player.Gold < re.Principal) await PlayerCmd.GainGold(re.Principal - (int)player.Gold, player, false);
             await Task.Delay(150);
+            var recF = LoanService.For(player)!;
+            recF.LoanFloor = player.RunState.TotalFloor;                 // "빌린 그 상점"을 재현
+            bool blockedHere = !LoanService.CanRepayHere(player) && !(await LoanService.Repay(player));
+            recF.LoanFloor = player.RunState.TotalFloor - 3;             // 다음 상점으로 이동한 셈
+            int paidBefore = recF.TotalPaid, principalBefore = recF.Principal;
             bool repaid = await LoanService.Repay(player);
             await Task.Delay(250);
-            bool relicGone = !LoanService.PlayerHasLedger(player);
-            bool recGone = LoanService.For(player) == null;
+            var recAfter = LoanService.For(player);
+            bool relicKept = LoanService.PlayerHasLedger(player);
+            bool recKept = recAfter != null;
+            bool zeroed = recAfter != null && recAfter.Principal == 0 && recAfter.CardDebt == 0;
+            bool tierReset = recAfter != null && recAfter.LoanFloor == player.RunState.TotalFloor;
+            bool paidKept = recAfter != null && recAfter.TotalPaid >= paidBefore + principalBefore;
+            bool drawsBack = recAfter != null && recAfter.LoanDraws == 0;
             if ((int)player.Gold > 0) await PlayerCmd.LoseGold((int)player.Gold, player, GoldLossType.Spent);
             bool canReborrow = LoanService.CanLoanCover(mkEntry(), player);
-            bool tF = repaid && relicGone && recGone && canReborrow;
-            W($"  assert repay-reborrow: repaid={repaid} relicGone={relicGone} recGone={recGone} canReborrow={canReborrow} -> {tF}");
+            bool tF = blockedHere && repaid && relicKept && recKept && zeroed && tierReset && paidKept && drawsBack && canReborrow;
+            W($"  assert repay: 같은상점거부={blockedHere} repaid={repaid} 유물유지={relicKept} 기록유지={recKept} 원금0={zeroed}"
+              + $" 등급리셋={tierReset} 누적상환유지={paidKept}({recAfter?.TotalPaid}) 인출회복={drawsBack} 재대출={canReborrow} -> {tF}");
             all &= tF;
+
+            // 신용도 = 누적 상환액 / 100 (청산해도 리셋되지 않는 런 단위 트랙)
+            int expScore0 = (recAfter?.TotalPaid ?? 0) / DebtLoanConfig.GoldPerCreditPoint;
+            bool tScore0 = LoanService.CreditScoreOf(player) == expScore0;
+            W($"  assert 신용도: {LoanService.CreditScoreOf(player)}(= {recAfter?.TotalPaid}/{DebtLoanConfig.GoldPerCreditPoint} = {expScore0}) -> {tScore0}");
+            all &= tScore0;
+
+            // F2) ★청산 후 "다음 상점에서" 다시 빌릴 수 있는가 — 위 F 의 재대출은 **청산한 그 자리**에서 재므로
+            //     TotalFloor == LoanFloor 라 톱업 게이트를 우연히 통과한다. 즉 진짜 회귀(청산 뒤 record 가
+            //     Active 인 채 남아 "톱업은 빌린 상점에서만" 규칙이 영구 적용 → 다음 상점부터 영영 대출 불가)를
+            //     그 assert 로는 못 잡는다. 한 칸 걸어간 상태를 만들어 그 경로를 직접 검사한다.
+            //     새 대출이 옛 LoanFloor 를 물려받아 첫 방부터 최고 등급으로 시작하지 않는지도 함께 본다.
+            Step("청산 후 다른 상점에서 재대출");
+            var recW = LoanService.For(player);
+            if (recW != null) recW.LoanFloor = player.RunState.TotalFloor - 5;   // 다섯 방 걸어간 셈
+            bool reborrowElsewhere = LoanService.CanLoanCover(mkEntry(), player);
+            await LoanService.GrantLoanDirect(player, 100);
+            await Task.Delay(200);
+            var recW2 = LoanService.For(player);
+            bool freshFloor = recW2 != null && recW2.LoanFloor == player.RunState.TotalFloor;   // 등급 1부터 다시
+            bool freshTier = LoanService.DebtCardCountFor(player) == 1;
+            bool freshBorrowed = recW2 != null && recW2.Borrowed == 100;        // 옛 사이클과 합산되지 않는다
+            bool freshDraws = recW2 != null && recW2.LoanDraws == 1;
+            bool tFRe = reborrowElsewhere && freshFloor && freshTier && freshBorrowed && freshDraws;
+            W($"  assert 청산후 재대출(다른 상점): 가능={reborrowElsewhere} 새LoanFloor={freshFloor} 등급1={freshTier}"
+              + $"({LoanService.DebtCardCountFor(player)}) 빌린금액={recW2?.Borrowed}(100, 합산아님) 인출={recW2?.LoanDraws}(1) -> {tFRe}");
+            all &= tFRe;
+            LoanService.ResetFor(player);
+
+            // F3) 신용 보상 사다리 — 수령 방식(자동 지급 아님). 문턱은 누적 상환액 300/600/900/1200 이고
+            //     수령은 항상 가장 낮은 미수령 문턱부터. ★600 은 새 카드를 또 주는 게 아니라 **300 에서 받은
+            //     그 카드를 강화**한다(유저 설계: 사다리는 중복 지급이 아니라 성장).
+            Step("신용 보상 사다리 수령");
+            LoanService.ResetFor(player);
+            await LoanService.GrantLoanDirect(player, 100);
+            var recR = LoanService.For(player)!;
+            int CreditCards() => player.Deck.Cards.Count(c => c is CreditRestoredCard);
+            int CreditPlus()  => player.Deck.Cards.Count(c => c is CreditRestoredCard && c.IsUpgraded);
+            int baseCards = CreditCards();
+
+            recR.TotalPaid = 0; recR.CreditRewardsTaken = 0;
+            bool none0 = LoanService.NextClaimableReward(recR) == 0 && !LoanService.HasUnclaimedCreditReward(player);
+            recR.TotalPaid = 300;                                     // 첫 단계 도달
+            bool ready300 = LoanService.NextClaimableReward(recR) == DebtLoanConfig.CreditRewardCard
+                            && LoanService.PendingRewardCount(recR) == 1;
+            await LoanService.ClaimCreditReward(player); await Task.Delay(200);
+            bool got300 = CreditCards() == baseCards + 1 && CreditPlus() == 0;   // 기본 카드 1장
+            bool spent300 = LoanService.NextClaimableReward(recR) == 0;          // 같은 단계 재수령 불가
+
+            recR.TotalPaid = 600;                                     // 두 번째 단계
+            await LoanService.ClaimCreditReward(player); await Task.Delay(200);
+            // ★핵심: 장수는 그대로고 그 카드가 강화됐다.
+            bool upg600 = CreditCards() == baseCards + 1 && CreditPlus() == 1;
+
+            // ★★순차 해금: 목돈으로 900·1200 을 동시에 넘겨도 **한 번에 하나씩만** 열린다.
+            //   다음 차례는 항상 900 이고, 900 을 받아야 1200 이 열린다(칩이 한 칸씩 나오는 근거).
+            recR.TotalPaid = 1200;
+            bool pending2 = LoanService.PendingRewardCount(recR) == 2;              // 밀린 건 2개지만
+            bool seqNext900 = LoanService.NextRewardTier(recR) == DebtLoanConfig.CreditRewardUpgradeAny
+                              && LoanService.NextRewardIndex(recR) == 2;            // 열린 건 900 하나
+            await LoanService.ClaimCreditReward(player); await Task.Delay(400);     // 900 = 덱 카드 강화
+            bool seqNext1200 = LoanService.NextRewardTier(recR) == DebtLoanConfig.CreditRewardRemoveAny
+                               && LoanService.NextRewardIndex(recR) == 3;           // 이제서야 1200
+            int deckBeforeR = player.Deck.Cards.Count;
+            await LoanService.ClaimCreditReward(player); await Task.Delay(400);     // 1200 = 덱 카드 제거
+            bool removedOne = player.Deck.Cards.Count == deckBeforeR - 1;
+
+            // ★★무한 보너스: 고정 4단계 뒤로는 신용도 2(=200골드)마다 강화/제거 택1이 끝없이 이어진다.
+            int bonus0 = LoanService.RewardTierAt(4), bonus1 = LoanService.RewardTierAt(5);
+            bool bonusTiers = bonus0 == DebtLoanConfig.CreditRewardRemoveAny + LoanService.BonusRewardStep
+                              && bonus1 == bonus0 + LoanService.BonusRewardStep
+                              && LoanService.IsBonusReward(4) && !LoanService.IsBonusReward(3);
+            bool lockedAt1200 = !LoanService.CanClaimNextReward(recR);   // 1200 에선 보너스가 아직 안 열림
+            recR.TotalPaid = bonus0;                                    // 첫 보너스 도달
+            int deckBeforeB = player.Deck.Cards.Count;
+            bool bonusClaim = await LoanService.ClaimCreditReward(player, removeChoice: true);   // 제거 쪽 선택
+            await Task.Delay(400);
+            bool bonusRemoved = player.Deck.Cards.Count == deckBeforeB - 1
+                                && LoanService.NextRewardIndex(recR) == 5           // 다음 보너스로 넘어감
+                                && LoanService.RewardTierAt(5) == bonus1;
+            bool endless = LoanService.NextUnreachedTier(recR) == bonus1;           // 사다리에 끝이 없다
+
+            bool tF3 = none0 && ready300 && got300 && spent300 && upg600 && pending2 && seqNext900
+                       && seqNext1200 && removedOne && bonusTiers && lockedAt1200 && bonusClaim
+                       && bonusRemoved && endless;
+            W($"  assert 신용 보상 사다리: 미도달0={none0} 300준비={ready300} 300수령={got300} 재수령차단={spent300}"
+              + $" 600강화={upg600}(장수 {CreditCards()}, 강화 {CreditPlus()})"
+              + $" 순차(밀림2={pending2} 다음900={seqNext900} 900수령후1200={seqNext1200} 덱-1={removedOne})"
+              + $" 보너스(문턱 {bonus0}/{bonus1}={bonusTiers} 1200선잠김={lockedAt1200} 수령={bonusClaim}"
+              + $" 제거됨={bonusRemoved} 무한={endless}) -> {tF3}");
+            all &= tF3;
+
+            // F4) 빚으로 카드 제거 — 상인의 제거 슬롯과 같은 가격 공식(75 + 25×이미 쓴 횟수)이고, 값은
+            //     골드가 아니라 빚으로 문다. 같은 카운터를 올리므로 다음 제거값이 오른다.
+            Step("빚으로 카드 제거");
+            int usedBefore = player.ExtraFields?.CardShopRemovalsUsed ?? 0;
+            int expPrice = 75 + 25 * usedBefore;
+            int priceSeen = LoanService.PurgePrice(player);
+            var recPurge = LoanService.For(player)!;
+            recPurge.ShopSpentThisVisit = 0;                              // 이번 방문 한도를 비워 가격만 검사
+            bool canPurge = LoanService.CanPurgeOnDebt(player);
+            int owedBeforeP = recPurge.Principal, deckBeforeP = player.Deck.Cards.Count;
+            // ★선택 화면은 셀렉터 자동응답(StartAutomation)이 받는다 → 실제 제거까지 진행된다.
+            bool purged = await LoanService.PurgeCardOnDebt(player);
+            await Task.Delay(400);
+            bool deckShrank = player.Deck.Cards.Count == deckBeforeP - 1;
+            bool owedRose = recPurge.Principal == owedBeforeP + priceSeen;
+            bool usedRose = (player.ExtraFields?.CardShopRemovalsUsed ?? 0) == usedBefore + 1;
+            bool priceRose = LoanService.PurgePrice(player) == priceSeen + 25;   // 다음 제거가 더 비싸다
+            bool tF4 = priceSeen == expPrice && canPurge && purged && deckShrank && owedRose && usedRose && priceRose;
+            W($"  assert 빚 카드제거: 가격={priceSeen}({expPrice}) 가능={canPurge} 실행={purged} 덱 {deckBeforeP}→{player.Deck.Cards.Count}"
+              + $" 빚 {owedBeforeP}→{recPurge.Principal} 제거횟수+1={usedRose} 다음가격={LoanService.PurgePrice(player)}(+25) -> {tF4}");
+            all &= tF4;
+
+            // F4b) ★★방문당 하드 1회 — 한도가 넘치게 남아있어도 두 번째 제거는 막힌다.
+            //     예전엔 예산(외상 한도)만으로 막햘는데, 한도 슬라이더를 올리면 한 방문에 여러 장을
+            //     지울 수 있어 "상인 제거 1회에 더해 한 번"이라는 설계가 무너졌다.
+            int savedLimitP = DebtLoanConfig.ShopCreditLimit;
+            DebtLoanConfig.ShopCreditLimit = 0;                     // ★한도를 0으로 막아도 제거는 영향 없음
+            var recCap = LoanService.For(player)!;
+            recCap.ShopSpentThisVisit = DebtLoanConfig.ShopCreditLimit;   // 한도 소진 상태
+            bool blockedSameVisit = !LoanService.CanPurgeOnDebt(player) && !(await LoanService.PurgeCardOnDebt(player));
+            bool flagSet = recCap.PurgedThisVisit;
+            recCap.PurgedThisVisit = false;                          // 다음 상점에 도착한 셈(CountShopVisit 이 하는 일)
+            // ★크레딧 한도와 무관: 한도 0 · 소진 상태인데도 새 방문이면 다시 살 수 있어야 한다.
+            bool freshVisitOk = LoanService.CanPurgeOnDebt(player);
+            DebtLoanConfig.ShopCreditLimit = savedLimitP;
+            bool tF4b = blockedSameVisit && flagSet && freshVisitOk;
+            W($"  assert 제거 방문당 1회: 같은방문차단={blockedSameVisit} 플래그={flagSet} 새방문재개={freshVisitOk}(한도 0에도) -> {tF4b}");
+            all &= tF4b;
+
+            // F5) ★규칙이 뒤집혔다(유저 결정): 카드 제거는 **외상 한도와 무관**하다. 한도를 다 써도,
+            //     한도가 0이어도 제거는 살 수 있다 — 유일한 제약은 '방문당 1회'와 오르는 가격뿐.
+            var recL2 = LoanService.For(player)!;
+            int savedLim2 = DebtLoanConfig.ShopCreditLimit;
+            recL2.PurgedThisVisit = false;
+            recL2.ShopSpentThisVisit = DebtLoanConfig.ShopCreditLimit;   // 한도 완전 소진
+            bool purgeIgnoresCredit = LoanService.CanPurgeOnDebt(player);
+            DebtLoanConfig.ShopCreditLimit = 0;                          // 한도 자체를 0으로
+            bool purgeIgnoresZeroLimit = LoanService.CanPurgeOnDebt(player);
+            DebtLoanConfig.ShopCreditLimit = savedLim2;
+            recL2.ShopSpentThisVisit = 0;
+            bool tF5 = purgeIgnoresCredit && purgeIgnoresZeroLimit;
+            W($"  assert 제거 ⟂ 외상한도: 한도소진에도가능={purgeIgnoresCredit} 한도0에도가능={purgeIgnoresZeroLimit} -> {tF5}");
+            all &= tF5;
+            LoanService.ResetFor(player);
 
             // G) Shop UI: take a loan at a REAL shop (repay button + green tags apply here).
             Step("shop repay button");
@@ -524,11 +722,12 @@ internal static class SoloTest
             int afterLoan = player.Deck.Cards.Count(c => c is DunningLetterCard);   // expect 1 (granted with the loan)
             bool granted = afterLoan == 1 && recMile.DunningLetterGranted;
             if ((int)player.Gold < recMile.Principal) await PlayerCmd.GainGold(recMile.Principal - (int)player.Gold, player, false);
-            await LoanService.Repay(player);                          // repay → card evaporates with the debt
+            await RepayElsewhere(player);                          // repay → card evaporates with the debt
             await Task.Delay(200);
             int afterRepay = player.Deck.Cards.Count(c => c is DunningLetterCard);
-            bool tM = dlModel && deckBefore == 0 && granted && afterRepay == 0;
-            W($"  assert dunning-letter (grant-at-loan): model={dlModel} before={deckBefore} afterLoan={afterLoan}(1) flag={recMile.DunningLetterGranted} afterRepay={afterRepay}(0) -> {tM}");
+            // ★청산해도 결제 카드는 남는다(엔진 유지) → 독촉장도 그대로 1장.
+            bool tM = dlModel && deckBefore == 0 && granted && afterRepay == 1;
+            W($"  assert dunning-letter (grant-at-loan): model={dlModel} before={deckBefore} afterLoan={afterLoan}(1) flag={recMile.DunningLetterGranted} afterRepay={afterRepay}(1, 청산해도 카드 유지) -> {tM}");
             all &= tM;
 
             // N) Frame recolor: render an NCard for the 독촉장 and screenshot so the custom slate-lavender frame
@@ -1006,7 +1205,7 @@ internal static class SoloTest
                     await LoanService.BuyCardOnDebt(player, off[3]); await Task.Delay(80); int d3 = deckDebt();     // new visit → +1 Debt
                     DebtLoanConfig.ShopCreditLimit = savedCredit;               // restore
                     if ((int)player.Gold < recShop.Principal) await PlayerCmd.GainGold(recShop.Principal - (int)player.Gold, player, false);
-                    await LoanService.Repay(player); await Task.Delay(120); int d4 = deckDebt();                  // repay → all swept
+                    await RepayElsewhere(player); await Task.Delay(120); int d4 = deckDebt();                  // repay → all swept
                     tP7b = dFree == d0 && d1 == d0 + 1 && d2 == d1 && d3 == d2 + 1 && d4 == 0;
                     W($"  assert debt-shop native-Debt: free={dFree}(={d0}, gift adds none) paid1={d1}(={d0}+1) paid2/sameVisit={d2}(=paid1) paid3/newVisit={d3}(=+1) afterRepay={d4}(=0) -> {tP7b}");
                 }
@@ -1032,13 +1231,18 @@ internal static class SoloTest
                     bool premium = picked && shownPrice > basePrice;
                     int savedCap = DebtLoanConfig.ShopCreditLimit;
                     DebtLoanConfig.ShopCreditLimit = 9999;                      // the premium price must not be the thing under test
+                    // ★DELTA 로 재야 한다(예전엔 FirstOrDefault(같은 타입).IsUpgraded 였다): 청산 재설계 이후
+                    // 결제 카드셋이 덱에 남으므로, 앞 구간에서 산 **강화 안 된 같은 종류**가 덱에 이미 있고
+                    // FirstOrDefault 가 그 낡은 사본을 집어 방금 산 강화판을 못 본다(실제로 여기서 오검출 FAIL).
+                    int UpCopies() => PileType.Deck.GetPile(player)?.Cards?.Count(c => c.GetType() == upType && c.IsUpgraded) ?? 0;
+                    int upBefore = UpCopies();
                     bool boughtU = picked && await LoanService.BuyCardOnDebt(player, upType!);
                     await Task.Delay(120);
                     DebtLoanConfig.ShopCreditLimit = savedCap;
-                    var inDeckU = PileType.Deck.GetPile(player)?.Cards?.FirstOrDefault(c => c.GetType() == upType);
-                    bool grantedUpgraded = inDeckU != null && inDeckU.IsUpgraded;
+                    int upAfter = UpCopies();
+                    bool grantedUpgraded = upAfter == upBefore + 1;
                     tP7c = picked && stable && notSale && premium && boughtU && grantedUpgraded;
-                    W($"  assert debt-shop 강화판: pick={upType?.Name}(inOffers={picked} stable={stable} notSale={notSale}) price={basePrice}->{shownPrice}({premium}) bought={boughtU} deckUpgraded={grantedUpgraded} -> {tP7c}");
+                    W($"  assert debt-shop 강화판: pick={upType?.Name}(inOffers={picked} stable={stable} notSale={notSale}) price={basePrice}->{shownPrice}({premium}) bought={boughtU} 강화사본 {upBefore}->{upAfter}(+1)={grantedUpgraded} -> {tP7c}");
                 }
 
                 // tP7d) 빚 카드 판정 단일화: 차환·돌려막기가 먹는 대상은 native Debt "한 종류"뿐이어야 한다.
@@ -1101,10 +1305,38 @@ internal static class SoloTest
                 {
                     LoanService.ResetFor(player);
                     await LoanService.GrantLoanDirect(player, 100);
-                    LoanService.For(player)!.DebtShopVisits = 3;   // reveal all 6
+                    var recVis = LoanService.For(player)!;
+                    recVis.DebtShopVisits = 3;   // reveal all 6
+                    // ★수령 버튼은 '미수령 보상이 있을 때만' 나타나므로, 스크린샷에 찍히게 하려면 문턱을 넘겨 둬야
+                    //   한다. 900 까지 도달시켜 대기 3개(●3 배지)와 사다리 호버를 한 장에 담는다.
+                    recVis.TotalPaid = DebtLoanConfig.CreditRewardUpgradeAny;
+                    recVis.CreditRewardsTaken = 0;
                     NDebtCardShopPanel.ShowForTest(player);
                     await Task.Delay(800);
                     await Shot("6e_debtshop");
+                    // 신용도 사다리 호버 — ★네이티브 호버 노드는 자동화 스크린샷에 안 잡힌다(Input.WarpMouse 도,
+                    //   시그널 직접 발화도 실패). 그래서 **툴팁 본문 문자열을 직접 검증**한다: 4단계가 모두 있고,
+                    //   도달/수령 마크가 상태와 맞고, 미해결 플레이스홀더가 남지 않았는지.
+                    try
+                    {
+                        var hit = FindHoverHit(NDebtCardShopPanel.OpenPanel);
+                        if (hit != null) { hit.EmitSignal("mouse_entered"); await Task.Delay(500); await Shot("6e2_credit_ladder"); }
+                        string ladder = NDebtCardShopPanel.CreditLadderText(player);
+                        W("  credit ladder tip:\n" + ladder);
+                        var recLad = LoanService.For(player);
+                        // ★사다리는 이제 골드(300)가 아니라 신용도(3)로 말한다 — 서식을 그대로 만들어 정확히 대조.
+                        string shortFmtT = DebtLoanLoc.CreditShortFormatFor(MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng");
+                        bool allRungs = LoanService.CreditRewardTiers.All(t =>
+                            ladder.Contains(string.Format(shortFmtT, t / DebtLoanConfig.GoldPerCreditPoint)));
+                        // 누적 900 → 300/600/900 은 수령 가능(▶), 1200 은 미도달(남은 골드 표기)
+                        bool readyMarks = ladder.Split('\n').Count(l => l.Contains("▶")) == 3;
+                        bool toGoShown = ladder.Contains((DebtLoanConfig.CreditRewardRemoveAny - (recLad?.TotalPaid ?? 0)).ToString());
+                        bool noRawFmt = !ladder.Contains("{0}") && !ladder.Contains("{1}");
+                        bool tLadder = allRungs && readyMarks && toGoShown && noRawFmt;
+                        W($"  assert 신용 사다리 툴팁: 4단계표시={allRungs} 수령가능▶3={readyMarks} 남은골드표기={toGoShown} 미해결없음={noRawFmt} -> {tLadder}");
+                        all &= tLadder;
+                    }
+                    catch (Exception e) { W("  credit ladder check failed: " + e.Message); all = false; }
                     var firstOffer = LoanService.RevealedPurchasable(LoanService.For(player)!).FirstOrDefault();
                     if (firstOffer != null) { await LoanService.BuyCardOnDebt(player, firstOffer); await Task.Delay(500); await Shot("6f_debtshop_bought"); }
                     W("  debt-shop panel rendered (see 6e_debtshop / 6f_debtshop_bought)");
@@ -1490,8 +1722,10 @@ internal static class SoloTest
                 bool stRelicGone = LoanService.LedgerRelicOf(player) == null;
                 bool stRecordReset = LoanService.For(player) == null;
                 int stDebtAfter = CountDebtInCombat();
-                bool tT = stRelicBefore && stDebtBefore >= 1 && stRelicGone && stRecordReset && stDebtAfter == 0;
-                W($"  assert mid-combat settle: relicBefore={stRelicBefore} debtBefore={stDebtBefore}(>=1) -> relicGone={stRelicGone} recordReset={stRecordReset} debtAfter={stDebtAfter}(0) -> {tT}");
+                // ★재설계: 유물도 기록도 남는다. 원금이 0이 되고 주입된 저주만 사라지는지 본다.
+                bool stZeroed = (LoanService.For(player)?.Principal ?? -1) == 0;
+                bool tT = stRelicBefore && stDebtBefore >= 1 && !stRelicGone && !stRecordReset && stZeroed && stDebtAfter == 0;
+                W($"  assert mid-combat settle: relicBefore={stRelicBefore} debtBefore={stDebtBefore}(>=1) -> 유물유지={!stRelicGone} 기록유지={!stRecordReset} 원금0={stZeroed} 주입저주={stDebtAfter}(0) -> {tT}");
                 all &= tT;
 
                 // T2) Reward gate = tier 4 AND total PAID ≥ 400 (갚은 금액). A near-max loan (borrow 300 → owe 450)
@@ -1511,11 +1745,22 @@ internal static class SoloTest
                 int rewardGain = rewardCards.Count - reward0;
                 var upCard = rewardCards.FirstOrDefault(c => c.IsUpgraded);
                 int rewardPlate = upCard != null && upCard.DynamicVars.TryGetValue("plate", out var pv) ? (int)pv.IntValue : -1;
-                bool tT2 = rewardGain == 1 && upCard != null && rewardPlate == 5;   // 신용 회복+ = 5 Plating
-                W($"  assert reward (tier4 + paid>=400): owedPaid={owedT2} added={rewardGain}(=1) upgraded={upCard != null} plate={rewardPlate}(=5) -> {tT2}");
+                // ★★청산은 이제 보상을 **주지 않는다** — 문턱을 '열어줄' 뿐이고 지급은 빚 상점의 수령
+                //   버튼이 한다(유저 설계). 그래서 여기서 검사할 것은 "카드가 늘었나"가 아니라
+                //   "수령 대기 상태가 됐나"이고, 그 다음 수령했을 때 비로소 카드가 들어오는가이다.
+                int paidNow = LoanService.For(player)?.TotalPaid ?? 0;
+                var recT2 = LoanService.For(player);
+                bool noAutoGrant = rewardGain == 0;                              // 청산만으로는 아무것도 안 들어온다
+                bool nowPending = LoanService.NextClaimableReward(recT2) == DebtLoanConfig.CreditRewardCard
+                                  && LoanService.HasUnclaimedCreditReward(player);
+                await LoanService.ClaimCreditReward(player); await Task.Delay(250);
+                int afterClaim = player.Deck.Cards.Count(c => c is CreditRestoredCard) - reward0;
+                bool tT2 = paidNow >= DebtLoanConfig.CreditRewardCard && noAutoGrant && nowPending && afterClaim == 1;
+                W($"  assert reward (수령식 사다리): 누적={paidNow} 청산자동지급={rewardGain}(0) 수령대기={nowPending}"
+                  + $" 수령후={afterClaim}(1) -> {tT2}");
                 all &= tT2;
 
-                // T2b) NEGATIVE: tier 4 but only paid 150 (< 400) must NOT grant the reward (the 400-paid gate).
+                // T2b) NEGATIVE: 누적 상환액이 첫 문턱(300) 미만이면 청산해도 수령 대기가 생기지 않는다.
                 LoanService.ResetFor(player);
                 await DebtLoanGrants.RemoveRelic(player);
                 await Task.Delay(120);
@@ -1527,8 +1772,10 @@ internal static class SoloTest
                 await LoanService.RecordPayment(player, tcc, owedT2b); // pay exactly owed → TotalPaid 150 (<500) → no reward
                 await Task.Delay(200);
                 int rewardGainB = player.Deck.Cards.Count(c => c is CreditRestoredCard) - reward0b;
-                bool tT2b = rewardGainB == 0;
-                W($"  assert reward gate (tier4 + paid<400 → none): paid={owedT2b} added={rewardGainB}(=0) -> {tT2b}");
+                bool noPendingB = !LoanService.HasUnclaimedCreditReward(player);   // 수령 버튼도 뜨지 않는다
+                bool claimNoopB = !await LoanService.ClaimCreditReward(player);    // 눌러도 아무 일 없음
+                bool tT2b = rewardGainB == 0 && noPendingB && claimNoopB;
+                W($"  assert reward gate (누적<300 → 수령 불가): paid={owedT2b} added={rewardGainB}(=0) 대기없음={noPendingB} 수령no-op={claimNoopB} -> {tT2b}");
                 all &= tT2b;
                 await Shot("10_settled");
             }
@@ -1879,7 +2126,7 @@ internal static class SoloTest
                 // 완납하면 다시 3회 — 신용 회복의 의미.
                 if ((int)player.Gold < LoanService.For(player)!.Principal)
                     await PlayerCmd.GainGold(LoanService.For(player)!.Principal - (int)player.Gold, player, false);
-                await LoanService.Repay(player); await Task.Delay(300);
+                await RepayElsewhere(player); await Task.Delay(300);
                 int drawsAfterRepay = LoanService.DrawsLeftFor(player);
                 bool tD4 = drawsAfterRepay == 3;
                 W($"  assert repay resets draws: drawsLeft={drawsAfterRepay}(3, 완납=신용 회복) -> {tD4}");

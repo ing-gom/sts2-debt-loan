@@ -66,17 +66,21 @@ internal sealed partial class NDebtCardShopButton : Control
     {
         try
         {
-            bool show = _shop.IsOpen && HasActiveLoan();
+            bool show = _shop.IsOpen && HasLedger();
             if (Visible != show) Visible = show;
             if (show) PositionInShop();
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] debt-shop button _Process failed: {e.Message}"); }
     }
 
-    private bool HasActiveLoan()
+    /// <summary>★조건이 "빚이 있다"에서 <b>"장부 유물을 갖고 있다"</b>로 넓어졌다(유저 결정). 이유: 청산하면
+    /// 원금이 0이 되는데, 예전 조건이면 그 순간 이 버튼이 사라져 <b>신용 보상 수령 버튼에 영영 닿을 수 없다</b>
+    /// (보상은 청산해야 열리는데 청산하면 문이 닫히는 모순). 이제 빚 상점은 '빚 창구'가 아니라 <b>장부 화면</b>이다
+    /// — 빚·신용도·보상 수령·카드 제거가 모두 여기 산다. 빚이 0이어도 외상 구매는 가능하다(신용이 좋으니 또 빌린다).</summary>
+    private bool HasLedger()
     {
         var rec = LoanService.For(_player);
-        return rec != null && rec.Active && rec.Principal > 0;
+        return LoanService.PlayerHasLedger(_player) || (rec != null && rec.Active && rec.Principal > 0);
     }
 
     private void ScaleWidget(float s)
@@ -136,7 +140,7 @@ internal sealed partial class NDebtCardShopButton : Control
 
     private void OnPressed()
     {
-        if (_player == null || !HasActiveLoan()) return;
+        if (_player == null || !HasLedger()) return;
         try { NDebtCardShopPanel.Show(_shop, _player); }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] open debt-shop panel failed: {e.Message}"); }
     }

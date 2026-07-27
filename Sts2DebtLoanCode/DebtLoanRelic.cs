@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
-using MegaCrit.Sts2.Core.Commands;                // RelicCmd, CardPileCmd
+using MegaCrit.Sts2.Core.CardSelection;            // CardSelectorPrefs (덤 선택 화면 프롬프트/옵션)
+using MegaCrit.Sts2.Core.Commands;                // RelicCmd, CardPileCmd, CardSelectCmd
 using MegaCrit.Sts2.Core.Entities.Cards;          // PileType, CardPilePosition
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Relics;         // RelicRarity
@@ -83,6 +85,15 @@ public sealed class DebtLoanRelic : RelicModel
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public int LoanDraws { get => _loanDraws; set { AssertMutable(); _loanDraws = value; } }
 
+    private int _creditRewardsTaken;
+    /// <summary>지금까지 받은 보상 단계 수(순차 해금이라 개수 하나로 충분 + 보너스가 무한이라 마스크 불가). 누적 상환액은 청산해도 리셋되지 않으므로
+    /// 이게 없으면 청산할 때마다 같은 보상을 다시 받는다. See <see cref="LoanRecord.CreditRewardsTaken"/>.
+    /// <para>★영속으로 복구됨(2026-07-27c). 한동안 <c>[SavedProperty]</c> 를 뗀 채 뒀는데, 그건 "새 저장
+    /// 프로퍼티가 크래시 원인"이라는 가설 때문이었다. 실제 원인은 테스트 헬퍼의 무한 재귀(스택 오버플로)로
+    /// 밝혀져 그 가설이 기각됐다. 비영속으로 두면 리로드 때 0 으로 돌아가 같은 보상을 다시 받을 수 있다.</para></summary>
+    [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
+    public int CreditRewardsTaken { get => _creditRewardsTaken; set { AssertMutable(); _creditRewardsTaken = value; } }
+
     private int _eventGrantCount;
     /// <summary>How many of the SHOP power cards have been handed out (one per shop-revisit). Persisted so the
     /// fixed order (1st=정기 납부) + per-run shuffle survives reloads.</summary>
@@ -111,6 +122,11 @@ public sealed class DebtLoanRelic : RelicModel
     /// reload mid-shop keeps the spent total; reset on entering a new shop.</summary>
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public int ShopSpentThisVisit { get => _shopSpentThisVisit; set { AssertMutable(); _shopSpentThisVisit = value; } }
+
+    private bool _purgedThisVisit;
+    /// <summary>이번 방문에서 빚으로 카드를 제거했는지(방문당 1회 제한). 리로드로 기회가 되살아나지 않도록 영속화.</summary>
+    [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
+    public bool PurgedThisVisit { get => _purgedThisVisit; set { AssertMutable(); _purgedThisVisit = value; } }
 
     private string _purchasedCardsCsv = "";
     /// <summary>CSV of non-power card type-names BOUGHT on debt at the shop this loan (so it shows them sold-out and
@@ -152,6 +168,17 @@ public sealed class DebtLoanRelic : RelicModel
             new DynamicVar("owed", _principal),      // total you'd repay right now
             new DynamicVar("paid", _totalPaid),
             new DynamicVar("cards", _cards),
+            // ── 신용 회복 예고 ────────────────────────────────────────────────────────────────────
+            // ★이 세 값이 없으면 보상의 존재 자체가 인게임에서 비공개다. 조건(등급·누적 상환액)은 이미
+            // 추적 중이고 누적 상환액은 바로 윗줄에 표시까지 되는데, 그게 '목표'라는 말이 어디에도 없어서
+            // 정직하게 빨리 갚은 플레이어는 보상도 못 받고 결제 카드셋도 잃는다 — 유물 문구가 "오래 갚지
+            // 않을수록 나빠진다"만 말하니 빨리 갚는 게 정답처럼 읽힌다. 목표를 적어주면 그 카운트다운이
+            // 위협 표시에서 리스크/리워드 선택으로 바뀐다.
+            // ★재설계: 문턱이 '등급(빚의 깊이)'에서 **누적 상환액 사다리**로 바뀌었다. 청산이 더는 유물을
+            // 없애지 않으니 "한 번 깊게 갔다 오기"가 아니라 "신용을 쌓아 올리기"가 진행의 축이다.
+            new DynamicVar("tier", _cards),                            // 현재 등급(=주입 저주 수)
+            new DynamicVar("cr1", DebtLoanConfig.CreditRewardCard),      // 신용 회복 카드 문턱(누적 상환액)
+            new DynamicVar("cr2", DebtLoanConfig.CreditRewardUpgraded),  // 강화판 문턱
         };
 
     /// <summary>Total interest CHARGED so far in gold = origination (20% of the loan) + accrued node interest gold.</summary>
@@ -198,6 +225,7 @@ public sealed class DebtLoanRelic : RelicModel
             if (vars.TryGetValue("owed", out var b)) b.BaseValue = _principal;             // total owed
             if (vars.TryGetValue("paid", out var p)) p.BaseValue = _totalPaid;
             if (vars.TryGetValue("cards", out var c)) c.BaseValue = _cards;
+            if (vars.TryGetValue("tier", out var t)) t.BaseValue = _cards;   // 신용 회복 예고의 "현재 등급"
             // The badge (DisplayAmount = rooms-until-next-tier) is computed live from TotalFloor, but the widget
             // only re-reads it when notified. Walking a node changes TotalFloor without a setter firing, so poke
             // it here → the badge counts DOWN as you move (this is called on every room via RefreshRelicDisplay).
@@ -309,6 +337,53 @@ internal static class DebtLoanGrants
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] reward-card grant failed: {e.Message}"); }
     }
 
+    /// <summary>600 문턱: <b>300 에서 이미 받은 신용 회복을 강화</b>한다. 같은 카드를 한 장 더 주지 않는 이유 =
+    /// 사다리가 '중복 지급'이 아니라 '성장'으로 읽혀야 하기 때문(유저 설계). 덱에 강화 안 된 신용 회복이 없으면
+    /// (300 을 건너뛰었거나 그 카드를 제거했다면) 강화판을 새로 준다.</summary>
+    internal static async Task UpgradeOrGrantRewardCard(Player player)
+    {
+        try
+        {
+            var existing = PileType.Deck.GetPile(player)?.Cards?
+                .FirstOrDefault(c => c is CreditRestoredCard && !c.IsUpgraded);
+            if (existing == null) { await GrantRewardCard(player, upgraded: true); return; }
+            existing.UpgradeInternal();
+            existing.FinalizeUpgradeInternal();
+            MainFile.Logger.Info($"[{MainFile.ModId}] upgraded the existing 신용 회복 reward card in the deck.");
+        }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] reward upgrade failed: {e.Message}"); }
+    }
+
+    /// <summary>900 문턱: 덱의 아무 카드 1장을 강화한다. 선택은 엔진의 덱 강화 화면
+    /// (<see cref="CardSelectCmd.FromDeckForUpgrade"/>)이 처리하고 <b>co-op 동기화도 엔진이 한다</b>.</summary>
+    internal static async Task UpgradeChosenDeckCard(Player player)
+    {
+        try
+        {
+            var prefs = new CardSelectorPrefs(CardSelectorPrefs.UpgradeSelectionPrompt, 1) { Cancelable = false };
+            var picked = (await CardSelectCmd.FromDeckForUpgrade(player, prefs)).FirstOrDefault();
+            if (picked == null) { MainFile.Logger.Info($"[{MainFile.ModId}] upgrade reward: nothing upgradable."); return; }
+            MainFile.Logger.Info($"[{MainFile.ModId}] credit reward upgraded '{picked.Id.Entry}'.");
+        }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] deck-upgrade reward failed: {e.Message}"); }
+    }
+
+    /// <summary>1200 문턱 / 빚 제거: 덱의 카드 1장을 제거한다. 선택 화면 + co-op 동기화는 엔진이 한다.
+    /// 실제로 제거된 카드를 돌려주므로(취소·후보 없음이면 null) 호출부가 과금 여부를 결정할 수 있다.</summary>
+    internal static async Task<CardModel?> RemoveChosenDeckCard(Player player, bool cancelable = false)
+    {
+        try
+        {
+            var prefs = new CardSelectorPrefs(CardSelectorPrefs.RemoveSelectionPrompt, 1) { Cancelable = cancelable };
+            var picked = (await CardSelectCmd.FromDeckForRemoval(player, prefs)).FirstOrDefault();
+            if (picked == null) return null;
+            await CardPileCmd.RemoveFromDeck(picked);
+            MainFile.Logger.Info($"[{MainFile.ModId}] removed '{picked.Id.Entry}' from the deck.");
+            return picked;
+        }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] deck-removal failed: {e.Message}"); return null; }
+    }
+
     /// <summary>Repay path: strip every 독촉장 (base or +) from the deck — the leverage tool evaporates with
     /// the debt. Uses CardPileCmd.RemoveFromDeck so the Deck pile updates too. Local, applied per-peer.</summary>
     internal static async Task RemoveDunningLetter(Player player)
@@ -338,6 +413,21 @@ internal static class DebtLoanGrants
                     || card is MegaCrit.Sts2.Core.Models.Cards.Debt) await CardPileCmd.RemoveFromDeck(card);
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] DebtLoan card sweep failed: {e.Message}"); }
+    }
+
+    /// <summary>청산 시 덱에서 <b>네이티브 Debt 저주만</b> 쓸어낸다 — 모드의 결제 카드셋은 남긴다.
+    /// <para>★<see cref="RemoveAllDebtLoanCards"/>(전부 제거)와 갈라진 이유: 청산이 더는 대출의 끝이 아니라
+    /// 사이클의 마디가 됐다. 빚에서 벗어나려고 쌓아 올린 엔진이 벗어나는 순간 같이 죽는 게 이 모드의 가장 큰
+    /// 구조적 결함이었으므로 결제 카드는 남긴다. 반대로 네이티브 Debt 는 '나쁜 빚'의 벌점이고 사용 불가 +
+    /// 손에 있으면 턴당 -10골드인 순수 하방이라, 남겨두면 청산이 보상이 아니라 처벌이 된다.</para></summary>
+    internal static async Task RemoveNativeDebtCards(Player player)
+    {
+        try
+        {
+            foreach (var card in new List<CardModel>(player.Deck.Cards))
+                if (card is MegaCrit.Sts2.Core.Models.Cards.Debt) await CardPileCmd.RemoveFromDeck(card);
+        }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] native Debt sweep failed: {e.Message}"); }
     }
 
     /// <summary>Mid-combat settle: strip the TEMPORARY injected Debt curses (납부/연체/차압/신용 불량/강제 징수) from the

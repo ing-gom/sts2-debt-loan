@@ -41,9 +41,14 @@ internal sealed partial class NDebtCardShopPanel : Control
     private float _bw, _bh, _colPitch, _rowPitch, _gridX, _gridTop;
 
     private static NDebtCardShopPanel? _open;
+    /// <summary>solo-verify 전용: 현재 열린 패널(호버 히트박스를 찾기 위해).</summary>
+    internal static NDebtCardShopPanel? OpenPanel => _open;
 
     private static readonly Color PriceGreen = new(0.42f, 0.86f, 0.38f);   // debt price number (green; red when over credit)
     private static readonly Color FreeGold = new(1.00f, 0.84f, 0.35f);     // the slot-0 gift's "FREE" word (gold, not the debt green)
+    private static readonly Color RewardGold = new(1.00f, 0.78f, 0.28f);   // 수령 가능한 보상 칩 (금색 — 빚 초록/상환 크림과 구분)
+    private static readonly Color ClaimedGreen = new(0.46f, 0.62f, 0.44f);  // 이미 받은 단계 — 있지만 끝난 일
+    private static readonly Color LockedGrey = new(0.52f, 0.50f, 0.47f);    // 아직 못 간 단계 — 보이되 가라앉지 않게
 
     private NMerchantInventory _shop = null!;
     private Player _player = null!;
@@ -189,6 +194,7 @@ internal sealed partial class NDebtCardShopPanel : Control
         // 원금 상환 (repay loan) — MOVED here from the main merchant shop, so settling the loan lives in the same
         // 빚 상점 where you take cards on debt.
         BuildRepayControl(board);
+        BuildPurgeControl(board);
 
         // Scroll ACROSS: this loan canvas slides in from the right while the merchant's own rug pans left, so the
         // two read as one continuous canvas being scrolled sideways.
@@ -630,16 +636,355 @@ internal sealed partial class NDebtCardShopPanel : Control
         label.Position = new Vector2(_bw / 2f - 210f, 58f);   // top-center, under the HUD line
         board.AddChild(label);
 
+        // 신용도 줄 — 외상 한도 아래. ★이건 이번 방문의 한도(위 줄)와 전혀 다른 축이다: 리셋되지 않는
+        // 런 단위 진행 트랙이라, 청산을 반복해도 계속 쌓이고 청산 보상의 등급을 결정한다.
+        var scoreFmt = DebtLoanLoc.CreditScoreFormatFor(MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng");
+        var rw = DebtLoanLoc.RewardUiFor(MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng");
+        var shortFmt = DebtLoanLoc.CreditShortFormatFor(MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng");
+        var scoreLabel = MakeLabel("", 28, StsColors.cream);
+        if (scoreLabel != null)
+        {
+            scoreLabel.HorizontalAlignment = HorizontalAlignment.Center;
+            scoreLabel.VerticalAlignment = VerticalAlignment.Center;
+            scoreLabel.Size = new Vector2(420f, 40f);
+            scoreLabel.Position = new Vector2(_bw / 2f - 210f, 104f);
+            board.AddChild(scoreLabel);
+        }
+
+        // 신용도 라벨 위의 투명 히트박스 — 여기에 호버하면 보상 사다리 전체가 뜬다. ★라벨(MegaLabel) 자체에
+        // 마우스 이벤트를 걸지 않는 이유: 라벨은 MouseFilter 기본값이 제각각이고 Size 가 텍스트에 따라
+        // 흔들려서, 고정 크기의 빈 Button 을 겹쳐 두는 편이 히트 영역이 안정적이다.
+        var scoreHit = new Button
+        {
+            Name = "dl_credit_hit",   // solo-verify 가 시그널을 직접 발화해 호버를 재현한다(자동화에선 MouseEntered 가 안 난다)
+            Flat = true, Text = "", FocusMode = FocusModeEnum.None,
+            Size = new Vector2(420f, 40f), Position = new Vector2(_bw / 2f - 210f, 104f),
+        };
+        scoreHit.MouseEntered += () =>
+        {
+            NHoverTipSet.Remove(scoreHit);   // 재호버 시 선행 제거 필수 — _activeHoverTips 가 중복 키에 throw
+            NHoverTipSet.CreateAndShow(scoreHit, MakeCreditTip(rw), HoverTipAlignment.Left);
+        };
+        scoreHit.MouseExited += () => NHoverTipSet.Remove(scoreHit);
+        board.AddChild(scoreHit);
+
+        // ★★사다리는 **한 칸씩 열린다**(유저 요청): 지금 받을 차례인 단계 하나만 칩으로 보여주고, 그걸
+        //   받아야 다음 칸이 나타난다. 네 개를 한꺼번에 늘어놓으면 "지금 할 일"이 흐려지고, 무엇보다
+        //   보너스 단계가 무한이라 전부 그리는 건 애초에 불가능하다.
+        //   보너스 단계(신용도 12 초과)는 **강화 / 제거 중 택1**이라 칩이 두 개로 갈라진다.
+        var chipA = new Button
+        {
+            Name = "dl_reward_chip",   // solo-verify 가 이름으로 찾아 클릭/호버를 재현한다
+            Flat = true, Text = "", FocusMode = FocusModeEnum.None,
+            Size = new Vector2(230f, 44f),
+        };
+        var chipB = new Button
+        {
+            Name = "dl_reward_chip_alt",
+            Flat = true, Text = "", FocusMode = FocusModeEnum.None, Visible = false,
+            Size = new Vector2(230f, 44f),
+        };
+        board.AddChild(chipA);
+        board.AddChild(chipB);
+        var labelA = MakeLabel("", 26, RewardGold);
+        var labelB = MakeLabel("", 26, RewardGold);
+        foreach (var l in new[] { labelA, labelB })
+        {
+            if (l == null) continue;
+            l.HorizontalAlignment = HorizontalAlignment.Center;
+            l.VerticalAlignment = VerticalAlignment.Center;
+            l.Size = new Vector2(230f, 44f);
+            board.AddChild(l);
+        }
+        if (labelB != null) labelB.Visible = false;
+
+        chipA.Pressed += () => TaskHelper.RunSafely(ClaimFlow(removeChoice: false));
+        chipB.Pressed += () => TaskHelper.RunSafely(ClaimFlow(removeChoice: true));
+        foreach (var (btn, isRemove) in new[] { (chipA, false), (chipB, true) })
+        {
+            var b = btn; bool rm = isRemove;
+            b.MouseEntered += () =>
+            {
+                NHoverTipSet.Remove(b);
+                NHoverTipSet.CreateAndShow(b, MakeRungTip(rw, rm), HoverTipAlignment.Left);
+                _shop?.MerchantHand?.PointAtTarget(b, Vector2.Zero);
+            };
+            b.MouseExited += () => { NHoverTipSet.Remove(b); _shop?.MerchantHand?.StopPointing(0.15f); };
+        }
+
         void Refresh()
         {
             var r = LoanService.For(_player);
             int remaining = r != null ? LoanService.RemainingShopCredit(r) : DebtLoanConfig.ShopCreditLimit;
             label.Text = string.Format(ui.Credit, remaining, DebtLoanConfig.ShopCreditLimit);
+            if (scoreLabel != null)
+                scoreLabel.Text = string.Format(scoreFmt, LoanService.CreditScore(r), r?.TotalPaid ?? 0);
             // Warn-tint when the line is used up (nothing more can be bought here this visit).
             label.SelfModulate = remaining <= 0 ? StsColors.red : StsColors.cream;
+
+            int idx = LoanService.NextRewardIndex(r);
+            int tier = LoanService.RewardTierAt(idx);
+            bool ready = LoanService.CanClaimNextReward(r);
+            bool bonus = LoanService.IsBonusReward(idx);
+            string pts = string.Format(shortFmt, tier / Math.Max(1, DebtLoanConfig.GoldPerCreditPoint));
+
+            // 보너스면 두 칸(강화/제거)을 나란히, 아니면 가운데 한 칸.
+            bool two = bonus && ready;
+            float w = 230f, gap = 12f;
+            float totalW = two ? w * 2 + gap : w;
+            float x0 = _bw / 2f - totalW / 2f;
+            chipA.Position = new Vector2(x0, 148f);
+            chipB.Position = new Vector2(x0 + w + gap, 148f);
+            if (labelA != null) labelA.Position = chipA.Position;
+            if (labelB != null) labelB.Position = chipB.Position;
+
+            chipA.Disabled = !ready;
+            chipB.Visible = two;
+            chipB.Disabled = !two;
+            if (labelB != null) labelB.Visible = two;
+
+            if (labelA != null)
+            {
+                labelA.Text = two ? $"{pts} {rw.BonusUpgrade}" : ready ? $"{pts} {rw.Claim}" : pts;
+                labelA.Modulate = ready ? RewardGold : LockedGrey;
+            }
+            if (labelB != null && two)
+            {
+                labelB.Text = $"{pts} {rw.BonusRemove}";
+                labelB.Modulate = RewardGold;
+            }
         }
         _refreshers.Add(Refresh);
         Refresh();
+    }
+
+    /// <summary>지금 차례인 단계 하나짜리 툴팁 — 그 보상이 무엇이고 지금 어떤 상태인지. 아직 못 간 단계는
+    /// <b>앞으로 몇 골드</b>가 남았는지 말해준다(사다리가 목표로 읽히게 하는 핵심 문구).
+    /// 보너스 단계에서는 <paramref name="removeChoice"/> 로 갈라진 두 칩이 각자의 설명을 갖는다.</summary>
+    private IHoverTip MakeRungTip(DebtLoanLoc.RewardUiRow rw, bool removeChoice)
+    {
+        var rec = LoanService.For(_player);
+        int paid = rec?.TotalPaid ?? 0;
+        int idx = LoanService.NextRewardIndex(rec);
+        int tier = LoanService.RewardTierAt(idx);
+        bool bonus = LoanService.IsBonusReward(idx);
+        string[] fixedNames = { rw.RungCard, rw.RungUpgrade, rw.RungUpgradeAny, rw.RungRemoveAny };
+        string name = bonus ? (removeChoice ? rw.RungRemoveAny : rw.RungUpgradeAny) : fixedNames[idx];
+        string body = paid >= tier ? rw.Ready : string.Format(rw.ToGo, tier - paid);
+        // 헤더와 같은 서식을 재사용 → "신용도 3  (누적 300 골드 상환)". 단위(신용도)와 실제 금액을 한 줄에.
+        var scoreFmt = DebtLoanLoc.CreditScoreFormatFor(MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng");
+        string head = string.Format(scoreFmt, tier / Math.Max(1, DebtLoanConfig.GoldPerCreditPoint), tier);
+        string tail = bonus ? $"\n{string.Format(rw.BonusNote, DebtLoanConfig.BonusRewardCredits)}" : "";
+        return new HoverTip { Title = name, Description = $"[gold]{head}[/gold]\n{body}{tail}", Id = "sts2debtloan_rung" };
+    }
+
+    /// <summary>수령 → 새로고침. 900/1200 은 여기서 카드 선택 화면이 열리고, co-op 이면 그 선택을 엔진이
+    /// 양 피어 간에 맞춘다(<see cref="LoanService.ClaimCreditReward"/> 주석 참조).</summary>
+    private async Task ClaimFlow(bool removeChoice)
+    {
+        if (_player == null) return;
+        try
+        {
+            if (!await LoanService.ClaimCreditReward(_player, removeChoice)) return;
+            await Task.Delay(120);
+            foreach (var f in _refreshers) f();
+        }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] claim flow failed: {e.Message}"); }
+    }
+
+    /// <summary>신용 보상 사다리 툴팁 — 도달/수령 상태를 단계별로 보여주고, 아직 못 넘긴 다음 문턱까지
+    /// 몇 골드가 남았는지 말해준다. ★이 화면이 없으면 사다리의 존재 자체가 인게임에서 비공개다(유물 문구는
+    /// "오래 갚지 않을수록 나빠진다"만 말하니 빨리 갚는 게 정답처럼 읽힌다).</summary>
+    private IHoverTip MakeCreditTip(DebtLoanLoc.RewardUiRow rw)
+        => new HoverTip { Title = rw.TipTitle, Description = CreditLadderText(_player), Id = "sts2debtloan_creditladder" };
+
+    /// <summary>사다리 본문을 만드는 <b>단일 출처</b>. 툴팁 노드와 분리해 둔 이유 = solo-verify 가 이 문자열을
+    /// 직접 읽어 검증할 수 있게 하기 위해서다(네이티브 호버는 자동화에서 화면에 안 잡힌다 —
+    /// <c>Input.WarpMouse</c> 로도, 시그널 직접 발화로도 스크린샷에 남지 않았다).</summary>
+    internal static string CreditLadderText(Player? player)
+    {
+        string lang = MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng";
+        var rw = DebtLoanLoc.RewardUiFor(lang);
+        var shortFmt = DebtLoanLoc.CreditShortFormatFor(lang);
+        var rec = LoanService.For(player);
+        int paid = rec?.TotalPaid ?? 0;
+        int next = LoanService.NextRewardIndex(rec);
+        var fixedTiers = LoanService.CreditRewardTiers;
+        string[] names = { rw.RungCard, rw.RungUpgrade, rw.RungUpgradeAny, rw.RungRemoveAny };
+
+        // 이 툴팁은 '지도'다 — 고정 4단계는 끝까지 보여줘서 무엇을 향해 가는지 알려주되, 상태(✓/▶/남은 골드)로
+        // 어디까지 왔는지를 구분한다. 칩은 순차로 한 칸씩만 열리므로 둘의 역할이 겹치지 않는다.
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < fixedTiers.Length; i++)
+        {
+            int t = fixedTiers[i];
+            string mark = i < next ? "[gold]✓[/gold]" : paid >= t ? "[gold]▶[/gold]" : "  ";
+            string tail = i < next ? $"  ({rw.Claimed})"
+                        : paid >= t ? $"  ([gold]{rw.Ready}[/gold])"
+                        : $"  ({string.Format(rw.ToGo, t - paid)})";
+            string pts = string.Format(shortFmt, t / Math.Max(1, DebtLoanConfig.GoldPerCreditPoint));
+            sb.Append($"{mark} [gold]{pts}[/gold]  {names[i]}{tail}\n");
+        }
+        // 무한 보너스 안내 — 12 이후로도 상환이 계속 값어치를 갖는다는 것 자체가 정보다.
+        sb.Append($"[gold]∞[/gold] {string.Format(rw.BonusNote, DebtLoanConfig.BonusRewardCredits)}");
+        return sb.ToString();
+    }
+
+    /// <summary>"카드 제거" 행 — 바닥 액션 줄의 <b>왼쪽</b>(상환 버튼은 가운데). 상인의 제거 슬롯 1회에
+    /// <b>더해</b> 파는 추가 제거이고, 값은 그 상점의 제거가와 같되 <b>골드가 아니라 빚</b>으로 문다.
+    /// <para>★같은 카운터(<c>CardShopRemovalsUsed</c>)를 올리므로 상인의 다음 제거값도 같이 오른다 —
+    /// "덤"이 아니라 "한 번 더 살 기회"다. ★<b>방문당 1회</b>이며 외상 한도와는 <b>무관</b>하다
+    /// (카드 구매와 예산을 다투지 않는다).</para></summary>
+    private void BuildPurgeControl(Control board)
+    {
+        var rw = DebtLoanLoc.RewardUiFor(MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng");
+        float bandY = _bh - 84f;
+        const float w = 268f, h = 52f;
+        // ★왼쪽 끝에 붙이지 않는다: 화면 바닥-왼쪽 모서리에는 게임의 드로파일 위젯이 있어
+        // x=56 으로 두었더니 실쪼에서 캐프션이 그 위젯과 겹쳋다(스크린샷으로 확인).
+        float x = 150f;
+
+        // ★상인의 카드 제거 슬롯 아이콘을 **그대로 재사용**한다(유저 요청). 그 슬롯(NMerchantCardRemoval)은
+        // 상점 씬의 자식이라 PackedScene 으로 새로 찍을 수 없고, 노드째 Duplicate 하면 `_Ready`/`UpdateVisual`
+        // 이 null 엔트리로 돌아 터진다 → **스프라이트의 텍스처만** 빌려 우리 버튼에 입힌다. 결과적으로
+        // 같은 그림·같은 자리 문법(아이콘 + 가격)인데 클릭은 우리 빚 결제 흐름으로 간다.
+        var icon = LoadRemovalIcon();
+        // ★크기는 상점의 제거 슬롯이 실제 렌더되는 크기를 그대로 가져온다(유저 요청).
+        // 재질 측정이 안 된 경우에만 상환 버튼과 같은 92px 로 떨어진다(패널 내 아이콘 기본치).
+        float iconSz = _removalIconSize.X > 8f ? Mathf.Clamp(_removalIconSize.X, 64f, 140f) : 92f;
+        TextureButton? iconBtn = null;
+        if (icon != null)
+        {
+            iconBtn = new TextureButton
+            {
+                TextureNormal = icon,
+                IgnoreTextureSize = true,
+                StretchMode = TextureButton.StretchModeEnum.KeepAspectCentered,
+                CustomMinimumSize = new Vector2(iconSz, iconSz),
+                Size = new Vector2(iconSz, iconSz),
+                Position = new Vector2(x, bandY - iconSz / 2f),
+                PivotOffset = new Vector2(iconSz / 2f, iconSz / 2f),
+            };
+            board.AddChild(iconBtn);
+        }
+        float textX = x + (icon != null ? iconSz + 14f : 0f);
+
+        var btn = new Button { Flat = true, Text = "", FocusMode = FocusModeEnum.None,
+                               Size = new Vector2(w, h), Position = new Vector2(textX, bandY - h / 2f) };
+        board.AddChild(btn);
+
+        var caption = MakeLabel(rw.PurgeTitle, 32, StsColors.cream);
+        if (caption != null)
+        {
+            caption.HorizontalAlignment = HorizontalAlignment.Left;
+            caption.VerticalAlignment = VerticalAlignment.Center;
+            caption.Size = new Vector2(w - 80f, h);
+            caption.Position = new Vector2(textX, bandY - h / 2f);
+            board.AddChild(caption);
+        }
+        var priceNum = MakeLabel("", 32, PriceGreen);
+        if (priceNum != null)
+        {
+            priceNum.HorizontalAlignment = HorizontalAlignment.Right;
+            priceNum.VerticalAlignment = VerticalAlignment.Center;
+            priceNum.Size = new Vector2(76f, h);
+            priceNum.Position = new Vector2(textX + w - 76f, bandY - h / 2f);
+            board.AddChild(priceNum);
+        }
+
+        btn.Pressed += () => TaskHelper.RunSafely(PurgeFlow());
+        if (iconBtn != null) iconBtn.Pressed += () => TaskHelper.RunSafely(PurgeFlow());
+        btn.MouseEntered += () =>
+        {
+            NHoverTipSet.Remove(btn);
+            bool ok = LoanService.CanPurgeOnDebt(_player);
+            // 이번 방문의 제거 기회를 이미 썼으면 상점의 자기 문구인 "품절"을 그대로 쓴다
+            // (바닐라 제거 슬롯도 쓰면 회색으로 죽는다) — 새 loc 문자열 없이 14언어가 이미 있다.
+            var recTip = LoanService.For(_player);
+            string body = ok ? string.Format(rw.PurgeTip, LoanService.PurgePrice(_player))
+                        : (recTip?.PurgedThisVisit ?? false) ? DebtLoanLoc.DebtShopUiFor(
+                              MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng").Sold
+                        : rw.PurgeNone;
+            NHoverTipSet.CreateAndShow(btn, new HoverTip { Title = rw.PurgeTitle, Description = body, Id = "sts2debtloan_purge" },
+                                       HoverTipAlignment.Right);
+            _shop?.MerchantHand?.PointAtTarget(btn, Vector2.Zero);
+        };
+        btn.MouseExited += () => { NHoverTipSet.Remove(btn); _shop?.MerchantHand?.StopPointing(0.15f); };
+
+        void Refresh()
+        {
+            int price = LoanService.PurgePrice(_player);
+            bool ok = LoanService.CanPurgeOnDebt(_player);
+            bool hasLedger = LoanService.PlayerHasLedger(_player);
+            btn.Visible = hasLedger;
+            if (iconBtn != null) { iconBtn.Visible = hasLedger; iconBtn.Modulate = ok ? Colors.White : new Color(0.62f, 0.58f, 0.52f); }
+            if (caption != null) { caption.Visible = hasLedger; caption.Modulate = ok ? StsColors.cream : new Color(0.62f, 0.58f, 0.52f); }   // 한도 초과 오퍼와 같은 딜
+            if (priceNum != null)
+            {
+                priceNum.Visible = hasLedger;
+                priceNum.Text = price.ToString();
+                // 한도 초과 / 제거 불가면 빨강 — 오퍼 가격표와 같은 규칙(font_color override, SelfModulate 아님).
+                priceNum.AddThemeColorOverride("font_color", ok ? PriceGreen : StsColors.red);
+            }
+        }
+        _refreshers.Add(Refresh);
+        Refresh();
+    }
+
+    /// <summary>상인의 카드 제거 슬롯이 쓰는 <b>바로 그 텍스처</b>. 라이브 상점 씬의
+    /// <c>%MerchantCardRemoval</c> → <c>%Visual</c>(Sprite2D)에서 읽어 캐시한다.
+    /// <para>★캐시가 필요한 이유 = 이 패널은 상점 없이도 열릴 수 있고(solo-verify 의 ShowForTest), 그때는
+    /// 씬에 상점이 없어 원본을 못 찾는다. 한 번이라도 진짜 상점을 본 뒤라면 캐시로 같은 그림을 쓴다.
+    /// 못 찾으면 null → 아이콘 없이 캡션+가격만 그린다(기능은 그대로).</para></summary>
+    private static Texture2D? _removalIconCache;
+    /// <summary>상인 슬롯이 실제로 화면에 그려지는 크기(px). ★텍스처 원본 크기가 아니라
+    /// <b>스프라이트의 전역 스케일까지 곱한 값</b>을 쓴다 — 상점 씨이 슬롯을 줄여 배치하므로
+    /// 원본 크기를 그대로 쓰면 훨씬 커진다(유저 요청 = “기존 상점 UI 를 참조해 크기를 정하라”).</summary>
+    private static Vector2 _removalIconSize = Vector2.Zero;
+
+    private Texture2D? LoadRemovalIcon()
+    {
+        if (_removalIconCache != null) return _removalIconCache;
+        try
+        {
+            Node? root = (Node?)_shop ?? (Engine.GetMainLoop() as SceneTree)?.Root;
+            var slot = root != null ? FindNodeByType<NMerchantCardRemoval>(root) : null;
+            // %Visual 은 슬롯 씬 안의 unique-name 노드. 이름 탐색이 실패하면 첫 Sprite2D 자식으로 폴백.
+            var sprite = slot?.GetNodeOrNull<Sprite2D>("%Visual") ?? (slot != null ? FindNodeByType<Sprite2D>(slot) : null);
+            if (sprite?.Texture != null)
+            {
+                _removalIconCache = sprite.Texture;
+                // 실제 렌더 크기 = 텍스처 크기 × 전역 스케일. Sprite2D 는 Control 이 아니라 GetRect() 가
+                // 로컬 rect 이므로 GlobalScale 을 곱해야 화면상 크기가 된다.
+                var sz = sprite.GetRect().Size * sprite.GlobalScale.Abs();
+                if (sz.X > 8f && sz.Y > 8f) _removalIconSize = sz;
+            }
+        }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] removal icon reuse failed: {e.Message}"); }
+        return _removalIconCache;
+    }
+
+    private static T? FindNodeByType<T>(Node root) where T : Node
+    {
+        if (root is T hit) return hit;
+        foreach (var child in root.GetChildren())
+        {
+            var found = FindNodeByType<T>(child);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private async Task PurgeFlow()
+    {
+        if (_player == null) return;
+        try
+        {
+            if (!await LoanService.PurgeCardOnDebt(_player)) return;
+            await Task.Delay(150);
+            foreach (var f in _refreshers) f();
+        }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] purge flow failed: {e.Message}"); }
     }
 
     private void BuildRepayControl(Control board)
@@ -703,8 +1048,11 @@ internal sealed partial class NDebtCardShopPanel : Control
             var rec = LoanService.For(_player);
             int cost = rec?.Principal ?? 0;
             bool hasLoan = rec != null && rec.Active && cost > 0;
-            bool usable = hasLoan && (int)_player.Gold >= cost;
-            string body = !hasLoan ? ui.NoLoan : usable ? string.Format(ui.PayBack, cost) : string.Format(ui.NotEnough, cost);
+            bool here = LoanService.CanRepayHere(_player);   // 빌린 그 상점에서는 갚을 수 없다
+            bool usable = hasLoan && here && (int)_player.Gold >= cost;
+            string body = !hasLoan ? ui.NoLoan
+                        : !here ? ui.SameShop
+                        : usable ? string.Format(ui.PayBack, cost) : string.Format(ui.NotEnough, cost);
             NHoverTipSet.CreateAndShow(icon, MakeRepayTip(ui.Title, body), HoverTipAlignment.Left);
             _shop?.MerchantHand?.PointAtTarget(icon, Vector2.Zero);   // merchant points at the repay action too
         };
@@ -716,7 +1064,7 @@ internal sealed partial class NDebtCardShopPanel : Control
             var rec = LoanService.For(_player);
             int cost = rec?.Principal ?? 0;
             bool hasLoan = rec != null && rec.Active && cost > 0;
-            bool affordable = (int)_player.Gold >= cost;
+            bool affordable = (int)_player.Gold >= cost && LoanService.CanRepayHere(_player);
             icon.Visible = hasLoan;
             if (coinIcon != null) coinIcon.Visible = hasLoan;
             if (caption != null) caption.Visible = hasLoan;
@@ -738,6 +1086,7 @@ internal sealed partial class NDebtCardShopPanel : Control
         {
             var rec = LoanService.For(_player);
             if (rec == null || !rec.Active || (int)_player.Gold < rec.Principal) return;
+            if (!LoanService.CanRepayHere(_player)) return;
             bool ok = await LoanService.Repay(_player);
             if (ok) MainFile.Logger.Info($"[{MainFile.ModId}] debt-shop repay succeeded.");
         }

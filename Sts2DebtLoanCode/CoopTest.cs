@@ -69,11 +69,25 @@ internal static class CoopTest
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] coop arm failed: {e.Message}"); }
     }
 
+    /// <summary>진행 폴링 루프. ★두 번 데였다:
+    /// <para>① 트리가 아직 없으면 예전엔 <b>재예약 없이 return</b> 해서 한 번만 어긋나도 폴링이 영영 멈췄다
+    /// — 호스트가 COOP 로그 2줄만 찍고 멈추고(=폴링 사망), 조인은 상대가 준비되기를 무한 대기해
+    /// <b>결과 파일 0개</b>가 된다. 이 증상은 '조인 실패'와 구별되지 않는다 → 이제 <c>CallDeferred</c> 로 다시 잡는다.</para>
+    /// <para>② 이걸 <c>async void</c> + <c>Task.Delay</c> 로 바꿔 봤다가 <b>더 나빠졌다</b> — 모드 초기화 시점엔
+    /// 동기화 컨텍스트가 없어 continuation 이 메인 스레드로 안 돌아온다(호스트에서 재현). <c>CreateTimer</c> 가 정답.</para></summary>
     private static void Poll()
     {
-        if (Engine.GetMainLoop() is not SceneTree tree || _done) return;
-        try { Tick(tree); } catch (Exception e) { W("tick exception: " + e.Message); }
-        if (!_done) tree.CreateTimer(2.0).Timeout += Poll;
+        if (_done) return;
+        if (Engine.GetMainLoop() is SceneTree tree)
+        {
+            try { Tick(tree); } catch (Exception e) { W("tick exception: " + e.Message); }
+            if (!_done) tree.CreateTimer(2.0).Timeout += Poll;
+            return;
+        }
+        // ★트리가 아직 없어도 루프를 죽이지 않는다 — 예전 코드는 여기서 재예약 없이 return 해서 한 번만
+        // 어긋나도 폴링이 영영 멈췄다. (Task.Delay 로 갈아타는 것도 시도했으나, 모드 초기화 시점엔 동기화
+        // 컨텍스트가 없어 continuation 이 메인 스레드로 안 돌아와 호스트에서 더 나빠졌다 — 실측.)
+        Callable.From(Poll).CallDeferred();
     }
 
     private static void Tick(SceneTree tree)
@@ -173,6 +187,79 @@ internal static class CoopTest
             }
             else W("HOST: no debt-shop offers to buy (skipping purchase step)");
             await Shot("03_bought");
+
+            // ⑥ 청산 → 청산 후 재대출 — 재설계로 **통째로 바뀐 경로**라 이번 co-op 재실측의 핵심이다.
+            //   Repay → BroadcastRepay(`dl_sync repaid`) → 양 피어가 ApplyRepay 를 재생: Active=false, 원금·
+            //   Borrowed·이자 회계 0, LoanFloor/LoanDraws 리셋, 네이티브 Debt sweep. 이어서 새 대출이 **톱업이
+            //   아니라 새 사이클**로 잡히는지(Borrowed 가 합산되지 않고 100, draws=1)까지 본다.
+            //   ★★반드시 **전투 밖**에서 한다: `Repay` 는 `RewardSynchronizer.SyncLocalGoldLost` 를 부르는데
+            //   엔진이 전투 중 골드 손실 sync 를 금지한다("Tried to sync losing N gold during combat!" →
+            //   InvalidOperationException, 실측으로 2회 확인). 실제 플레이도 동일 — 상환 버튼은 상점 패널에만
+            //   있고, 전투 중 청산은 골드가 오가지 않는 `SettleLoanInCombat → ApplyRepay` 로 따로 간다.
+            //   여기(상점 단계, 전투 진입 전)가 실제 플레이와 같은 자리다. 바로 아래 `room monster` 전환이
+            //   checksum 경계 역할을 하므로, 청산/재대출 상태가 갈라졌다면 JOIN 이 거기서 드롭된다.
+            Step("HOST repay → settle → re-borrow");
+            // 톱업 1회 — 청산 목돈을 신용 보상 첫 문턱(300) 위로 올려 ⑦ 수령 단계가 실제로 발화하게 한다.
+            // (겸사겸사 '같은 상점에서의 추가 인출'도 양 피어에서 재생되는지 본다: draws 가 2 가 돼야 한다.)
+            await LoanService.GrantLoanDirect(me, 150);
+            await Task.Delay(3000);
+            W($"HOST: ⑥ top-up → owed={LedgerPrincipalOf(me)} draws={LoanService.For(me)?.LoanDraws}(2)");
+
+            // ★★먼저 **다음 상점으로 이동**해야 한다 — 빌린 그 상점에서는 갚을 수 없다(CanRepayHere: 신용도
+            //   파밍 가드). 이 이동 없이 부르면 `Repay` 가 조용히 false 를 돌려주고 시나리오가 아무것도
+            //   검증하지 못한 채 "수렴 PASS" 로 보인다(실측으로 한 번 그렇게 나왔다 — repay=False, active=True,
+            //   그리고 뒤이은 재대출이 새 사이클이 아니라 톱업으로 잡혀 borrowed=200/draws=2 가 됐다).
+            run.ActionQueueSynchronizer.RequestEnqueue(new ConsoleCmdGameAction(me, "room shop", inCombat: false));
+            await Task.Delay(8000);
+            if (run.State == null || run.State.Players.Count == 0) { W("HOST: SESSION DROPPED at pre-repay room jump"); Flush(false); return; }
+            var recPre = LoanService.For(me);
+            W($"HOST: ⑥ moved to next shop — floor={me.RunState?.TotalFloor} loanFloor={recPre?.LoanFloor} "
+              + $"canRepayHere={LoanService.CanRepayHere(me)}(True)");
+
+            int owedPreRepay = LedgerPrincipalOf(me);
+            run.ActionQueueSynchronizer.RequestEnqueue(new ConsoleCmdGameAction(me, "gold 999", inCombat: false));
+            await Task.Delay(3000);
+            bool repaidOk = await LoanService.Repay(me);
+            await Task.Delay(4000);
+            var recSettled = LoanService.For(me);
+            W($"HOST: ⑥ repay={repaidOk} owed {owedPreRepay}→{LedgerPrincipalOf(me)}(0) "
+              + $"active={(recSettled != null ? recSettled.Active.ToString() : "n/a")}(False) paid={recSettled?.TotalPaid} "
+              + $"nativeDebt={NativeDebtInDeck(me)}(0, 청산이 쓸어냄)");
+            await Shot("03b_settled");
+
+            // ⑦ 신용 보상 수령 — 청산으로 누적 상환액이 문턱을 넘었으면 대기 상태가 되고, 수령은 버튼(=여기)이
+            //   한다. `dl_sync claim` 은 **awaited** 재생이라 양 피어가 같은 큐 위치에서 처리한다.
+            //   ⚠️900/1200 은 카드 선택 화면을 여는데, 이 하네스는 `CardSelectCmd.PushSelector` 로 셀렉터를
+            //   밀어 넣으므로 **엔진의 choice 동기화 블록이 통째로 건너뛰어진다**(각 피어가 독립 선택).
+            //   그래서 여기서 증명되는 것은 '와이어 + 상태 수렴'이지 엔진 핸드셰이크가 아니다. 하네스 셀렉터가
+            //   결정적(list.Take(n))이고 덱 순서가 양 피어 동일이라 선택 자체는 일치한다.
+            var recClaim = LoanService.For(me);
+            int pendingBefore = LoanService.PendingRewardCount(recClaim);
+            int claimedBefore = recClaim?.CreditRewardsTaken ?? 0;
+            if (pendingBefore > 0)
+            {
+                await LoanService.ClaimCreditReward(me);
+                await Task.Delay(5000);
+            }
+            W($"HOST: ⑦ claim pending {pendingBefore}→{LoanService.PendingRewardCount(LoanService.For(me))} "
+              + $"claimed {claimedBefore}→{LoanService.For(me)?.CreditRewardsTaken} paid={LoanService.For(me)?.TotalPaid}");
+
+            await LoanService.GrantLoanDirect(me, 100);
+            await Task.Delay(4000);
+            var recNew = LoanService.For(me);
+            W($"HOST: ⑥ re-borrow borrowed={recNew?.Borrowed}(100, 옛 사이클과 합산 아님) owed={LedgerPrincipalOf(me)}(120) "
+              + $"draws={recNew?.LoanDraws}(1) active={recNew?.Active}(True)");
+
+            // ⑧ 빚으로 카드 제거 — 제거 화면 + 빚 증가 + 제거 카운터를 양 피어가 함께 재생해야 한다.
+            Step("HOST purge a card on debt");
+            int deckBeforePurge = PileType.Deck.GetPile(me)?.Cards?.Count ?? -1;
+            int owedBeforePurge = LedgerPrincipalOf(me);
+            int purgePrice = LoanService.PurgePrice(me);
+            bool purgeOk = await LoanService.PurgeCardOnDebt(me);
+            await Task.Delay(5000);
+            W($"HOST: ⑧ purge={purgeOk} price={purgePrice} deck {deckBeforePurge}→{PileType.Deck.GetPile(me)?.Cards?.Count} "
+              + $"owed {owedBeforePurge}→{LedgerPrincipalOf(me)} removalsUsed={me.ExtraFields?.CardShopRemovalsUsed}");
+            await Shot("03c_purged");
 
             // 3) Combat → run-wide debt injection still fires; 4) room jump → checksum boundary.
             Step("HOST enter combat");
@@ -283,6 +370,7 @@ internal static class CoopTest
             else W("HOST: combat did not start (room monster jump failed)");
 
             if (run.State == null || run.State.Players.Count == 0) { W("HOST: SESSION DROPPED"); Flush(false); return; }
+
             var host = run.State.Players.OrderBy(p => p.NetId).First();
             W($"HOST: FINAL {Descriptor(host)} joinBailoutMax={joinBailoutMax}");
             await Shot("05_final");
@@ -308,7 +396,7 @@ internal static class CoopTest
             string lastLine = "";
             int bailoutMax = 0;
             bool playedBailout = false;
-            for (int i = 0; i < 90 && !File.Exists(hostTxt); i++)
+            for (int i = 0; i < 170 && !File.Exists(hostTxt); i++)   // 청산+재대출+room 전환이 붙어 호스트 스크립트가 길어졌다
             {
                 Step($"JOIN waiting for host (t+{i * 2}s)");
                 if (run.State == null || run.State.Players.Count == 0) break;   // dropped mid-loop → fall through to the report
@@ -384,7 +472,17 @@ internal static class CoopTest
         return $"owed(host)={owed} purchased(host)={PurchasedCount(h)} deckHasBought={DeckHasAnyPurchased(h)} "
              + $"nativeDebt={NativeDebtInDeck(h)} restructured={(rec != null ? rec.RestructuringUsed.ToString() : "n/a")} "
              + $"lev={(owed >= 0 ? (owed / 30).ToString() : "-1")} "
-             + $"draws={(rec != null ? rec.LoanDraws.ToString() : "n/a")}";   // relic SavedProperty → rides the checksum
+             + $"draws={(rec != null ? rec.LoanDraws.ToString() : "n/a")} "   // relic SavedProperty → rides the checksum
+             // ★재설계 3종. active=계약 개폐(청산해도 record 는 남으므로 이게 유일한 "빚이 있다" 신호),
+             //   paid=누적 상환액(청산해도 리셋되지 않는 런 단위 트랙 = 보상 사다리의 축),
+             //   borrowed=사이클 단위 원금(청산 후 새 대출이 옛 값과 합산되면 여기서 즉시 드러난다).
+             + $"active={(rec != null ? rec.Active.ToString() : "n/a")} "
+             + $"paid={(rec != null ? rec.TotalPaid.ToString() : "n/a")} "
+             + $"borrowed={(rec != null ? rec.Borrowed.ToString() : "n/a")} "
+             // ★신규: 수령한 보상 문턱(유물 SavedProperty → 체크섬)과 덱 장수(빚 제거·보상 카드가 다 여기 드러난다).
+             + $"claimed={(rec != null ? rec.CreditRewardsTaken.ToString() : "n/a")} "
+             + $"deck={PileType.Deck.GetPile(h)?.Cards?.Count ?? -1} "
+             + $"purges={h.ExtraFields?.CardShopRemovalsUsed ?? -1}";
     }
 
     /// <summary>How many cards this player has bought on debt (their sold-set size), or -1 if they carry no loan.

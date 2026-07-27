@@ -24,7 +24,7 @@ namespace Sts2DebtLoan;
 /// this card's <see cref="IsPlayable"/>, the shop's offer list, and <see cref="LoanService.IsPurchasable"/>.
 ///
 /// WHY IT DOESN'T TRIVIALISE THE MOD. The forgiveness is NOT a payment: it never touches
-/// <see cref="LoanRecord.TotalPaid"/>. Since 신용 회복 (Credit Restored) requires TotalPaid ≥ RewardMinPaid, clearing
+/// <see cref="LoanRecord.TotalPaid"/>. Since 신용 회복 (Credit Restored) requires TotalPaid ≥ DebtLoanConfig.CreditRewardCard, clearing
 /// your loan this way clears the debt but forfeits the reward for having actually worked it off — restructuring gets
 /// you out, it doesn't get you the medal. Three energy is also a whole turn spent on a card that deals no damage and
 /// gains no Block, so it can only be cast on a turn you were already safe.

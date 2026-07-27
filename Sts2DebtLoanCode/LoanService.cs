@@ -79,6 +79,12 @@ internal sealed class LoanRecord
     /// with the record on full repay, so a LATER loan is a new agreement and gets its own. Persisted on the relic.</summary>
     internal bool RestructuringUsed;
 
+    /// <summary>지금까지 받은 보상 단계의 <b>개수</b>(= 다음으로 받을 단계의 인덱스).
+    /// <para>★수령이 <b>순차</b>이므로 받은 집합은 항상 접두사다 → 개수 하나로 완전히 표현된다.
+    /// 비트마스크를 쓰다가 되돌렸다 — 보너스 단계가 <b>무한</b>이라 32비트로는 애초에 못 담는다.</para>
+    /// 누적 상환액은 청산해도 리셋되지 않으므로 이 값이 없으면 청산할 때마다 같은 보상을 다시 받는다. 유물에 영속화.</summary>
+    internal int CreditRewardsTaken;
+
     /// <summary>How many of the SHOP power cards have been handed out (one per shop-revisit). Drives the fixed
     /// order — 1st = 정기 납부, the rest a per-run shuffle of the power cards. Persisted.</summary>
     internal int EventGrantCount;
@@ -99,6 +105,11 @@ internal sealed class LoanRecord
     /// <see cref="DebtLoanConfig.ShopCreditLimit"/> so you can't sweep the whole offer; resets when you enter a new
     /// shop (see the visit-tracking in NoteShopVisit). Persisted so a reload mid-shop keeps the spent total.</summary>
     internal int ShopSpentThisVisit;
+
+    /// <summary>이번 상점 방문에서 <b>빚으로 카드를 이미 제거했는가</b>. ★예산(외상 한도)만으로 제약하면
+    /// 한도 슬라이더를 올린 플레이어는 한 방문에 3장까지 지울 수 있어서, "상인 제거 1회에 <b>더해</b> 한 번"
+    /// 이라는 설계가 무너진다 → 방문당 하드 1회로 고정한다. 유물에 영속화(리로드로 되살아나면 안 된다).</summary>
+    internal bool PurgedThisVisit;
 
     /// <summary>Type-names of the cards BOUGHT on debt at the shop this loan (so they drop out of the offer pool and
     /// show sold if still displayed). Persisted as a CSV on the relic. Cleared on repay/reset.</summary>
@@ -251,11 +262,13 @@ internal static class LoanService
             relic.DunningLetterGranted = rec.DunningLetterGranted;
             relic.RestructuringUsed = rec.RestructuringUsed;
             relic.LoanDraws = rec.LoanDraws;
+            relic.CreditRewardsTaken = rec.CreditRewardsTaken;
             relic.EventGrantCount = rec.EventGrantCount;
             relic.LifetimePayments = rec.LifetimePayments;
             relic.DebtShopVisits = rec.DebtShopVisits;
             relic.LastShopVisitFloor = rec.LastShopVisitFloor;
             relic.ShopSpentThisVisit = rec.ShopSpentThisVisit;
+            relic.PurgedThisVisit = rec.PurgedThisVisit;
             relic.PurchasedCardsCsv = string.Join(",", rec.PurchasedCards);
             relic.RefreshVars(DebtCardCountFor(player));   // borrowed/paid/cards into the relic's own DynamicVars (per-relic hover)
         }
@@ -290,11 +303,13 @@ internal static class LoanService
         rec.DunningLetterGranted = relic.DunningLetterGranted;
         rec.RestructuringUsed = relic.RestructuringUsed;
         rec.LoanDraws = relic.LoanDraws;
+        rec.CreditRewardsTaken = relic.CreditRewardsTaken;
         rec.EventGrantCount = relic.EventGrantCount;
         rec.LifetimePayments = relic.LifetimePayments;
         rec.DebtShopVisits = relic.DebtShopVisits;
         rec.LastShopVisitFloor = relic.LastShopVisitFloor;
         rec.ShopSpentThisVisit = relic.ShopSpentThisVisit;
+        rec.PurgedThisVisit = relic.PurgedThisVisit;
         rec.PurchasedCards.Clear();
         foreach (var s in (relic.PurchasedCardsCsv ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)) rec.PurchasedCards.Add(s);
         rec.RelicGranted = true;
@@ -310,7 +325,7 @@ internal static class LoanService
     {
         if (player?.RunState == null) return;
         var rec = For(player);
-        if (rec == null || !rec.Active) { await GrantLoanDirect(player, 200); rec = For(player); }
+        if (rec == null || !rec.Active || rec.Principal <= 0) { await GrantLoanDirect(player, 200); rec = For(player); }
         if (rec == null) return;
         rec.LoanFloor = player.RunState.TotalFloor - rooms;   // rooms-since-loan = TotalFloor − LoanFloor
         if (rec.Principal <= 0) rec.Principal = 200;
@@ -331,8 +346,11 @@ internal static class LoanService
 
     // ── Eligibility ──────────────────────────────────────────────────────────
 
-    internal static bool ActAllowsLoan(Player player)
-        => player.RunState.CurrentActIndex <= DebtLoanConfig.MaxLoanActIndex;
+    /// <summary>★막 제한 폐지 — 언제든 빌릴 수 있다. 예전엔 1막 전용이었는데, 청산이 유물을 없애지 않고
+    /// 신용도가 런 내내 쌓이는 구조가 되면서 "대출은 런 초반의 일회성 결정"이라는 전제 자체가 사라졌다.
+    /// 대출 관계는 이제 런 전체에 걸친 순환이라 후반 막에서도 빌릴 수 있어야 성립한다.
+    /// (호출부와 시그니처는 유지 — 나중에 막 제한을 되살릴 여지를 남긴다.)</summary>
+    internal static bool ActAllowsLoan(Player player) => true;
 
     internal static int RemainingRoom(Player player)
     {
@@ -364,8 +382,11 @@ internal static class LoanService
         if (shortfall <= 0) return false;                    // can already afford → not a loan
         if (RemainingRoom(player) < shortfall) return false; // over the cap
 
-        if (rec == null || !rec.RelicGranted) return true;   // FIRST loan (or fresh after a repay)
-        if (!rec.Active) return false;
+        if (rec == null || !rec.RelicGranted) return true;   // FIRST loan ever
+        // ★청산한 계약(Active=false)은 '없는 것과 같다' — 유물과 결제 카드가 남아 record 가 살아 있을 뿐이므로
+        // 다음 대출은 첫 대출과 동일하게 아무 상점에서나 시작할 수 있다. 여기서 false 를 돌려주던 예전 코드는
+        // record 가 완납 시 삭제된다는 전제였고, 재설계로 그 전제가 깨지면서 청산 후 영구 대출 불가가 됐었다.
+        if (!rec.Active) return true;
         if (DrawsLeft(rec) <= 0) return false;               // spent all draws on this loan → the merchant is done
         return player.RunState.TotalFloor == rec.LoanFloor;  // top-up ONLY at the same shop
     }
@@ -386,7 +407,8 @@ internal static class LoanService
     internal static double DebtPriceMultiplier(Player player)
     {
         var rec = For(player);
-        if (rec == null || !rec.Active) return 1.0;
+        // Principal 까지 봐야 한다 — 청산 뒤에도 record 는 남으므로, 빚이 0인 사람에게 할증이 붙으면 안 된다.
+        if (rec == null || !rec.Active || rec.Principal <= 0) return 1.0;
         if (player.RunState.TotalFloor == rec.LoanFloor) return 1.0;   // no surcharge at your own shop
         int tier = DebtCardCountFor(player);                            // 1..4
         return 1.0 + Math.Min(20, 5 + 5 * tier) / 100.0;                // 10% / 15% / 20% (capped — tier 4 bites via HP)
@@ -418,17 +440,21 @@ internal static class LoanService
         run?.RewardSynchronizer?.SyncLocalObtainedGold(amount);
 
         var existing = For(player);
-        int oldBorrowed = existing?.Borrowed ?? 0;
+        // ★청산 후의 record 는 '살아 있는 계약'이 아니다(Active=false) → 이어붙이지 말고 새 사이클로 시작한다.
+        // 이걸 놓치면 새 대출이 옛 LoanFloor 를 물려받아 **첫 방부터 최고 등급**으로 시작하고(TotalFloor −
+        // LoanFloor 가 이미 크다), Borrowed 누적 때문에 이자 표시(Borrowed×20% + 노드이자)도 부풀려진다.
+        bool topUp = existing != null && existing.Active;
+        int oldBorrowed = topUp ? existing!.Borrowed : 0;
         int borrowed  = oldBorrowed + amount;                  // lifetime borrowed (drives the cap + hover)
         // Repayable > borrowed: you owe the gold you took PLUS interest. 20% ORIGINATION is added right now on
         // this amount; the rest accrues per-room (see AccrueNodeInterest). Borrowed is what you received (drives
         // the cap); Principal is what you must repay (shop cost + badge), amortized 1:1 by payments.
         int origination = (int)Math.Round(amount * (DebtLoanConfig.BorrowOriginationPct / 100.0));
-        int principal = (existing?.Principal ?? 0) + amount + origination;
-        int totalPaid = existing?.TotalPaid ?? 0;
-        int loanFloor = (existing != null && existing.RelicGranted)
-                        ? existing.LoanFloor                   // top-up keeps the original shop floor
-                        : player.RunState.TotalFloor;          // first loan: rooms = TotalFloor − here (0 → 1 card)
+        int principal = (topUp ? existing!.Principal : 0) + amount + origination;
+        int totalPaid = existing?.TotalPaid ?? 0;              // ★신용도는 런 단위 — 사이클이 바뀌어도 이어진다
+        int loanFloor = topUp
+                        ? existing!.LoanFloor                  // top-up keeps the original shop floor
+                        : player.RunState.TotalFloor;          // 첫 대출 / 청산 후 새 대출: rooms = TotalFloor − here (0 → 1 card)
 
         if (sp) await ApplyActiveLoan(player, borrowed, principal, totalPaid, loanFloor);
         else    DebtLoanNet.BroadcastLoan(player, borrowed, principal, totalPaid, loanFloor);
@@ -445,6 +471,19 @@ internal static class LoanService
     internal static async Task ApplyActiveLoan(Player player, int borrowed, int principal, int totalPaid, int loanFloor)
     {
         var rec = GetOrCreate(player);
+        // ★계약이 닫힌 상태에서 들어왔다 = 새 대출 사이클. 전선에 실리지 않는 LOCAL 이자 회계를 여기서 리셋한다.
+        // ApplyRepay 도 같은 리셋을 하지만 이 자리가 필요한 이유 — 강제 징수/가압류(ForceRepayPrincipal)는
+        // 동기 메서드라 ApplyRepay 를 못 부르고 Active=false 만 세운다. 그 경로로 닫힌 계약 뒤에 빌리면
+        // 옛 이자가 새 대출에 그대로 얹힌다. co-op: Active 는 양 피어가 같은 재생 경로로 갱신 → 판정도 수렴.
+        if (!rec.Active)
+        {
+            rec.CardDebt = 0;
+            rec.InterestPaid = 0;
+            rec.NodeInterestGold = 0;
+            rec.InterestPctApplied = 0;
+            rec.LoanDraws = 0;                 // 아래에서 ++ → 새 사이클의 첫 인출 = 1
+            rec.RestructuringUsed = false;     // 채무 조정은 '대출당 1회'
+        }
         rec.Borrowed     = borrowed;
         rec.Principal    = principal;
         rec.TotalPaid    = totalPaid;
@@ -872,6 +911,7 @@ internal static class LoanService
         rec.LastShopVisitFloor = floor;
         rec.DebtShopVisits++;
         rec.ShopSpentThisVisit = 0;   // fresh credit line at each new shop (see DebtLoanConfig.ShopCreditLimit)
+        rec.PurgedThisVisit = false; // 제거 기회도 상점마다 새로 한 번
         rec.PurchasedCards.Clear();   // "sold" is per-VISIT now → cards can be re-bought next shop (dupes allowed), just not twice in one visit
         SyncToRelic(player);
     }
@@ -1148,7 +1188,7 @@ internal static class LoanService
         await DebtLoanGrants.RemoveDebtCardsFromCombat(player);      // stop the injected curses taxing/debuffing NOW
         if (player.Creature != null && player.Creature.GetPower<BadCreditPower>() != null)
             await PowerCmd.Remove<BadCreditPower>(player.Creature);  // kill the 강제 징수 spawner so its icon clears too
-        await ApplyRepay(player);                                   // Active=false + deck sweep + remove relic + reset record
+        await ApplyRepay(player);                                   // Active=false + 원금 0 + 네이티브 Debt sweep (유물·결제 카드는 유지)
     }
 
     /// <summary>Draws still available on this loan (∞ when <see cref="DebtLoanConfig.MaxLoanDraws"/> ≤ 0).
@@ -1185,7 +1225,8 @@ internal static class LoanService
     }
 
     /// <summary>Burn this loan's single 채무 조정 use. Called BEFORE the write-off, because a write-off that clears
-    /// the loan destroys the record (SettleLoanInCombat → ApplyRepay → ResetFor).</summary>
+    /// the loan closes the contract (SettleLoanInCombat → ApplyRepay → Active=false + RestructuringUsed 리셋),
+    /// and setting the flag afterwards would arm it against the NEXT loan instead of this one.</summary>
     internal static void MarkRestructuringUsed(Player? player)
     {
         var rec = For(player);
@@ -1197,7 +1238,7 @@ internal static class LoanService
     /// <summary>Write principal off the ledger as FORGIVENESS — no gold and no HP changed hands (채무 조정). Retires
     /// outstanding interest first, exactly like a payment, so the relic hover's "interest vs principal" split stays
     /// coherent. ★It deliberately does NOT touch <see cref="LoanRecord.TotalPaid"/>: that is the "gold you actually
-    /// paid" line the 신용 회복 reward gates on (ApplyRepay's RewardMinPaid), so escaping via restructuring clears the
+    /// paid" line the 신용 회복 reward ladder gates on (DebtLoanConfig.CreditReward*), so escaping via restructuring clears the
     /// debt but forfeits the medal for having worked it off. Clearing the principal settles the loan mid-combat (the
     /// curses lift right there) instead of leaving it for the next shop. Pure record math off a lockstep card play →
     /// co-op safe.</summary>
@@ -1226,7 +1267,10 @@ internal static class LoanService
         rec.InterestPaid += Math.Min(cut, InterestRemaining(rec));   // interest first (same order as a normal payment)
         rec.Principal = Math.Max(0, rec.Principal - cut);
         rec.TotalPaid += cut;
-        if (rec.Principal <= 0) rec.Active = false;   // spiral self-terminates; relic removed at next shop
+        // 원금이 0이면 계약을 닫는다. ★이 경로는 동기 메서드(가압류는 GainGold 프리픽스에서 호출)라
+        // await ApplyRepay 를 못 부른다 → 청산 보상·네이티브 Debt 정리는 여기서 일어나지 않는다.
+        // 대신 다음 대출이 ApplyActiveLoan 에서 사이클 회계를 리셋하므로 상태는 어긋나지 않는다.
+        if (rec.Principal <= 0) rec.Active = false;   // spiral self-terminates
         SyncToRelic(player);
     }
 
@@ -1315,11 +1359,18 @@ internal static class LoanService
         MainFile.Logger.Info($"[{MainFile.ModId}] missed payment by {debtor.NetId} → bailout{(upgraded ? "+" : "")} to {recipient.NetId} (gold {(int)recipient.Gold}).");
     }
 
-    /// <summary>Repay the outstanding principal at a shop → good credit: relic removed, borrow again later.</summary>
+    /// <summary>Repay the outstanding principal at a shop → 원금 0 · 등급 1로 리셋(유물과 결제 카드는 남는다).
+    /// <para>★<b>빌린 그 상점에서는 갚을 수 없다</b>(<see cref="CanRepayHere"/>). 청산이 인출 횟수를 되돌려주는
+    /// 구조라, 같은 상점에서 즉시 되갚기가 가능하면 "100 빌리고 120 갚기"를 무한 반복해 순 골드 200으로
+    /// 최고 보상(누적 1200)까지 갈 수 있다. 다음 상점까지 걸어가게 만들면 그 사이 노드 이자(5%/방)가 붙고
+    /// 방 수도 소모돼 사이클이 스스로 비싸진다.</para></summary>
     internal static async Task<bool> Repay(Player player)
     {
         var rec = For(player);
-        if (rec == null || !rec.Active) return false;
+        // ★Principal > 0 까지 확인해야 한다: 재설계로 청산 뒤에도 record 가 살아남으므로, 원금 0 인 상태로
+        // 다시 들어오면 0골드를 "상환"하고 ApplyRepay 를 한 번 더 돌려(보상 재판정·LoanFloor 재리셋) 버린다.
+        if (rec == null || !rec.Active || rec.Principal <= 0) return false;
+        if (!CanRepayHere(player)) return false;
         if ((int)player.Gold < rec.Principal) return false;
 
         var run = RunManager.Instance;
@@ -1327,34 +1378,268 @@ internal static class LoanService
         if (!(sp || LocalContext.IsMe(player))) return false;
 
         int tier = DebtCardCountFor(player);   // how deep in debt they were → tier-specific repay bark
-        await PlayerCmd.LoseGold(rec.Principal, player, GoldLossType.Spent);
-        run?.RewardSynchronizer?.SyncLocalGoldLost(rec.Principal);
-        MainFile.Logger.Info($"[{MainFile.ModId}] repaid principal {rec.Principal}g — credit restored.");
+        int owed = rec.Principal;
+        // ★목돈 상환도 '갚은 금액'이다 — 신용도(누적 상환액)에 반드시 더해야 한다. 예전엔 TotalPaid 가
+        // 납부 카드(1회 20골드)만 셌는데, 보상 문턱이 300/600/900/1200 인 지금 그 산식으로는 문턱 하나를
+        // 넘는 데 납부 15회가 필요해 사실상 도달 불가다. 청산이 신용을 쌓는 주된 경로가 되어야 한다.
+        // ★★단 여기서 더하지 않는다 — 이 메서드는 **구매자 피어에서만** 돈다. 로컬에서 TotalPaid 를 올리면
+        // 원격 피어는 그 증가분을 영영 못 받는다(예전엔 곧이어 새 대출이 totalPaid 를 전선에 실어 우연히
+        // 덮어써 줘서 가려져 있었다 — 청산 후 재대출을 안 하면 그대로 갈라진다). 누적 상환액은 이제 보상
+        // 사다리의 축이고 CreditRewardsTaken 은 체크섬을 타는 SavedProperty 라, 갈라지면 진짜 desync 다.
+        // → 증가는 양 피어가 재생하는 ApplyRepay 안에서 한다(금액을 와이어에 싣는다).
+        await PlayerCmd.LoseGold(owed, player, GoldLossType.Spent);
+        run?.RewardSynchronizer?.SyncLocalGoldLost(owed);
+        MainFile.Logger.Info($"[{MainFile.ModId}] repaid principal {owed}g — credit restored.");
 
-        if (sp) await ApplyRepay(player);
-        else    DebtLoanNet.BroadcastRepay(player);
+        if (sp) await ApplyRepay(player, owed);
+        else    DebtLoanNet.BroadcastRepay(player, owed);
         MerchantBark.SayRepay(tier);           // merchant reacts to being paid off (varies by how deep you were)
         return true;
     }
 
-    /// <summary>Apply the repay settle locally: stop the Debt cards, REMOVE the relic, and clear the record
-    /// so a fresh loan can be taken at a future shop. Runs on EACH peer — directly in SP, or once per peer
-    /// via the networked <c>dl_sync repaid</c> replay in co-op (RelicCmd.Remove is a local mutation).</summary>
-    internal static async Task ApplyRepay(Player player)
+    /// <summary>Apply the repay settle locally: 원금을 0 으로 지우고 계약을 닫는다(<see cref="LoanRecord.Active"/>
+    /// = false). 유물·결제 카드·누적 상환액은 남는다. Runs on EACH peer — directly in SP, or once per peer
+    /// via the networked <c>dl_sync repaid</c> replay in co-op (deck mutations are local per-peer).</summary>
+    /// <param name="paidAdd">이번 목돈 상환액(신용도에 더할 금액). ★여기서 더하는 이유 = 이 메서드만이
+    /// 양 피어가 모두 재생하는 지점이다. 전투 중 납부로 원금이 0 이 된 경우(SettleLoanInCombat)는
+    /// 이미 RecordPayment 가 낙스텝으로 TotalPaid 를 올렸으므로 0 을 넘긴다.</param>
+    internal static async Task ApplyRepay(Player player, int paidAdd = 0)
     {
         var rec = For(player);
-        // The tier the loan REACHED, computed from rooms directly (DebtCardCountFor returns 0 once Principal hits
-        // 0, so it can't be used here — the loan is being cleared). tier ≥3 earns the 신용 회복 reward card.
-        int rewardTier = (rec != null && player?.RunState != null)
-            ? DebtLoanConfig.TargetDebtCards(player.RunState.TotalFloor - rec.LoanFloor) : 0;
-        if (rec != null) { rec.Active = false; SyncToRelic(player); }   // reflect "settled" for one frame
-        await DebtLoanGrants.RemoveAllDebtLoanCards(player);            // the WHOLE debt kit evaporates with the loan
-        await DebtLoanGrants.RemoveRelic(player);                        // clean slate — no inert relic left behind
-        // Reward for genuinely working off a DEEP, BIG debt: a permanent 신용 회복 (Credit Restored) card — but ONLY
-        // if the loan hit tier 4 AND you actually PAID at least 500 gold total over its life (갚은 금액 = TotalPaid).
-        // Both gates (deep + paid-a-lot) mean it's a real achievement, not farmable. tier 4 → upgraded (신용 회복+).
-        if (rec != null && rewardTier >= DebtLoanConfig.RewardMinTier && rec.TotalPaid >= DebtLoanConfig.RewardMinPaid)
-            await DebtLoanGrants.GrantRewardCard(player, upgraded: rewardTier >= 4);
-        ResetFor(player);                                               // record gone → next loan is a fresh first loan
+        if (rec == null || player?.RunState == null) return;
+        if (!rec.Active) return;   // 이미 닫힌 계약 — 재진입 시 보상 재판정·리셋을 두 번 하지 않는다
+        if (paidAdd > 0) rec.TotalPaid += paidAdd;   // 양 피어가 같은 값을 더한다(수치는 와이어로 온다)
+
+        // ★★청산의 의미가 바뀌었다: 유물도 카드도 사라지지 않는다.
+        // 예전엔 유물 제거 + 결제 카드셋 전부 sweep + 기록 삭제였는데, 그러면 빚에서 벗어나려고 쌓아 올린
+        // 엔진이 벗어나는 순간 같이 죽었다(모드에서 가장 컸던 구조적 결함). 이제 청산은 "원금이 0이 되고
+        // 신용 등급이 1로 돌아간다"만 뜻한다 — 유물·결제 카드·누적 상환액은 그대로 남아 다음 대출로 이어진다.
+        // 이자와 저주 주입은 이미 원금 0에서 자동으로 멈춘다(AccrueNodeInterest / DebtCardCountFor)이라
+        // "돈을 빌렸을 때만 발동"은 별도 게이트 없이 성립한다.
+        int credit = CreditScore(rec);                     // 청산 시점의 신용도(누적 상환액 기준) = 보상 등급
+
+        // ★★`Active = false` 가 이 재설계의 핵심 불변식이다. 유물과 카드가 남는다고 해서 계약까지 열어두면
+        // 안 된다 — 코드 전역이 `rec.Active` 를 "빚이 있다"로 읽는다(가격 할증·빚 상점·상환 버튼·전투 중
+        // 청산 판정·톱업 게이트). 열어둔 채로 두면 그 판정이 전부 반대로 가서, 특히 CanLoanCover 의
+        // "톱업은 빌린 상점에서만" 규칙이 영구히 적용돼 **다음 상점부터 영영 대출을 못 받는다**.
+        // 남기는 것(유물·결제 카드·TotalPaid·CreditRewardsTaken)과 닫는 것(계약)은 별개다.
+        rec.Active = false;
+        rec.Principal = 0;
+        rec.CardDebt = 0;
+        rec.Borrowed = 0;                                  // 이자·한도 회계는 대출 사이클 단위 (TotalPaid 만 런 단위로 누적)
+        rec.InterestPaid = 0;                              // 다음 대출은 이자 회계를 새로 시작
+        rec.NodeInterestGold = 0;
+        rec.InterestPctApplied = 0;
+        rec.LoanFloor = player.RunState.TotalFloor;        // 등급 1로 리셋(= 여기서부터 다시 센다)
+        rec.RestructuringUsed = false;                     // 채무 조정의 "대출당 1회"도 새 대출 기준으로
+        rec.LoanDraws = 0;                                 // 청산했으니 인출 3회 회복 = 신용을 되찾았다는 뜻
+        // ★파밍 가드는 여기가 아니라 상환 지점에 있다 — 빌린 상점에서는 갚을 수 없으므로(CanRepayHere)
+        // 사이클마다 다음 상점까지 걸어가야 하고, 그 사이 노드 이자가 붙어 루프가 스스로 비싸진다.
+        SyncToRelic(player);
+
+        await DebtLoanGrants.RemoveDebtCardsFromCombat(player);   // 전투 중 청산이면 주입된 저주 즉시 정리
+        // ★네이티브 Debt 저주는 계속 쓸어낸다: 결제 카드셋(=엔진, 남긴다)과 달리 이건 '나쁜 빚'의 벌점이고
+        // 사용 불가 + 손에 있으면 턴당 -10골드인 순수 하방이라, 남겨두면 청산이 보상이 아니라 처벌이 된다.
+        await DebtLoanGrants.RemoveNativeDebtCards(player);
+        // ★보상은 여기서 지급하지 않는다 — 청산은 문턱을 '열어줄' 뿐이고, 실제 수령은 빚 상점 헤더의
+        // 수령 버튼(ClaimCreditReward)이 한다. 자동 지급이 아니라 버튼으로 바뀐 이유: ①900/1200 은 카드
+        // 선택 화면이 필요해 청산 흐름 한가운데서 열면 곤란하고, ②수령 시점이 플레이어 손에 있어야
+        // co-op 재생 경로가 단순해지며, ③사다리가 화면에 보이는 목표로 남는다.
+        MainFile.Logger.Info($"[{MainFile.ModId}] settled: credit={credit} paid={rec.TotalPaid} "
+                           + $"pendingRewards={PendingRewardCount(rec)}.");
+    }
+
+    /// <summary>신용도 = 누적 상환액 ÷ <see cref="DebtLoanConfig.GoldPerCreditPoint"/>. 청산해도 리셋되지
+    /// 않는 런 단위 진행 트랙이라 여러 대출 사이클이 하나의 신용 이력으로 쌓인다. 빚 상점 헤더에 표시된다.</summary>
+    internal static bool CanRepayHere(Player? player)
+    {
+        var rec = For(player);
+        if (rec == null || !rec.Active || player?.RunState == null) return true;
+        return player.RunState.TotalFloor != rec.LoanFloor;   // 빌린 그 상점에서는 갚을 수 없다
+    }
+
+    internal static int CreditScore(LoanRecord? rec)
+        => rec == null ? 0 : rec.TotalPaid / Math.Max(1, DebtLoanConfig.GoldPerCreditPoint);
+
+    /// <summary>Convenience overload for UI.</summary>
+    internal static int CreditScoreOf(Player? player) => CreditScore(For(player));
+
+    // ── 신용 보상 사다리 (순차 해금 + 무한 보너스) ────────────────────────────────────────────────
+    /// <summary>고정 4단계의 문턱(누적 상환액). 그 뒤로는 <see cref="RewardTierAt"/> 가 무한히 이어간다.</summary>
+    internal static int[] CreditRewardTiers => new[]
+    {
+        DebtLoanConfig.CreditRewardCard, DebtLoanConfig.CreditRewardUpgraded,
+        DebtLoanConfig.CreditRewardUpgradeAny, DebtLoanConfig.CreditRewardRemoveAny,
+    };
+
+    /// <summary>보너스 단계의 간격(골드). 신용도 2 = 200 골드.</summary>
+    internal static int BonusRewardStep => DebtLoanConfig.BonusRewardCredits * DebtLoanConfig.GoldPerCreditPoint;
+
+    /// <summary><paramref name="index"/> 번째 단계의 문턱(누적 상환액). 0..3 은 고정 사다리,
+    /// 4 부터는 <b>끝없는 보너스</b> — 마지막 고정 문턱에서 <see cref="BonusRewardStep"/> 씩 올라간다.
+    /// <para>★사다리에 끝이 없어야 하는 이유(유저 설계): 신용도는 청산해도 리셋되지 않는 런 단위 트랙이라
+    /// 후반에 계속 쌓이는데, 12 에서 멈추면 그 뒤의 상환이 아무 의미가 없어진다.</para></summary>
+    internal static int RewardTierAt(int index)
+    {
+        var fixedTiers = CreditRewardTiers;
+        if (index < 0) return 0;
+        if (index < fixedTiers.Length) return fixedTiers[index];
+        return fixedTiers[fixedTiers.Length - 1] + (index - fixedTiers.Length + 1) * BonusRewardStep;
+    }
+
+    /// <summary>이 단계가 <b>보너스</b>(= 강화/제거 중 택1)인가.</summary>
+    internal static bool IsBonusReward(int index) => index >= CreditRewardTiers.Length;
+
+    // ★상태 = 두 값이 전부다. 도달 = TotalPaid, 수령 = CreditRewardsTaken(받은 단계 수).
+    //   ★★비트마스크에서 '개수'로 되돌린 이유 = 수령이 **순차**가 됐기 때문이다(앞 단계를 받아야 다음이
+    //   열린다) → 받은 집합은 항상 접두사라 개수 하나로 완전히 표현된다. 게다가 보너스가 무한이라
+    //   32비트 마스크로는 애초에 표현할 수 없다.
+    /// <summary>지금 받을 차례인 단계의 인덱스(= 이미 받은 개수).</summary>
+    internal static int NextRewardIndex(LoanRecord? rec) => Math.Max(0, rec?.CreditRewardsTaken ?? 0);
+
+    /// <summary>지금 받을 차례인 단계의 문턱.</summary>
+    internal static int NextRewardTier(LoanRecord? rec) => RewardTierAt(NextRewardIndex(rec));
+
+    /// <summary>이 인덱스를 이미 받았는가. 순차라서 "인덱스 &lt; 받은 개수"가 곧 수령 여부다.</summary>
+    internal static bool IsRewardClaimedAt(LoanRecord? rec, int index) => index < NextRewardIndex(rec);
+
+    /// <summary>지금 누를 수 있는가 — <b>다음 차례</b>이면서 문턱에 도달했을 때만. ★앞 단계를 건너뛸 수 없다:
+    /// 사다리가 한 칸씩 열려야 600(= 300 에서 받은 카드를 강화)이 300 을 전제로 성립하고, 화면에도
+    /// "지금 할 일" 하나만 남는다.</summary>
+    internal static bool CanClaimNextReward(LoanRecord? rec)
+        => rec != null && rec.TotalPaid >= NextRewardTier(rec);
+
+    /// <summary>지금 수령 가능한 문턱(없으면 0).</summary>
+    internal static int NextClaimableReward(LoanRecord? rec)
+        => CanClaimNextReward(rec) ? NextRewardTier(rec) : 0;
+
+    /// <summary>밀린 보상 개수 — 목돈 상환 한 번에 여러 단계를 넘길 수 있다(순차라 하나씩 눌러야 한다).</summary>
+    internal static int PendingRewardCount(LoanRecord? rec)
+    {
+        if (rec == null) return 0;
+        int n = 0, i = NextRewardIndex(rec);
+        while (rec.TotalPaid >= RewardTierAt(i) && n < 64) { n++; i++; }   // 64 = 폭주 방지 상한
+        return n;
+    }
+
+    /// <summary>아직 도달하지 못한 다음 문턱 — 호버의 "앞으로 N 골드" 용. 사다리가 무한하므로 항상 값이 있다.</summary>
+    internal static int NextUnreachedTier(LoanRecord? rec)
+    {
+        int i = NextRewardIndex(rec);
+        while (rec != null && rec.TotalPaid >= RewardTierAt(i) && i < 4096) i++;
+        return RewardTierAt(i);
+    }
+
+    internal static bool HasUnclaimedCreditReward(Player? player) => CanClaimNextReward(For(player));
+
+    /// <summary>보상 수령(플레이어가 칩을 눌렀다). 로컬 게이트만 여기서 보고, 실제 적용은 co-op 이면
+    /// <c>dl_sync claim</c> 재생으로 <b>양 피어가 함께</b> 돈다.
+    /// <para>★★900/1200/보너스는 카드 선택 화면을 여는데, 그 선택의 co-op 동기화는 <b>엔진이 이미 한다</b> —
+    /// <c>CardSelectCmd.FromDeckForUpgrade/ForRemoval</c> 이 <c>ReserveChoiceId</c> → 한쪽은
+    /// <c>SyncLocalChoice</c>, 다른 쪽은 <c>WaitForRemoteChoice</c> 로 맞춘다(실 DLL 확인). 그래서 고른
+    /// 카드를 직접 와이어에 실을 필요가 없다. <b>단 전제가 하나</b>: 양 피어가 같은 큐 위치에서 그 핸드셰이크에
+    /// 들어가야 하므로 재생이 <b>detached 면 안 된다</b> → <c>dl_sync claim</c> 은 Task 를 CmdResult 에 실어
+    /// 액션이 await 하게 한다(dl_testcard 와 동형).
+    /// ⚠️테스트 하네스가 <c>CardSelectCmd.PushSelector</c> 로 셀렉터를 밀어 넣으면 그 동기화 블록이 통째로
+    /// 건너뛰어진다(각 피어가 독립 선택) — 하네스 한정 함정이지 실플 경로가 아니다.</para></summary>
+    /// <param name="removeChoice">보너스 단계에서만 의미: true = 카드 제거, false = 카드 강화.
+    /// ★이 선택은 <b>와이어에 싣는다</b> — 어느 쪽 화면을 열지는 두 피어가 반드시 같아야 한다.</param>
+    internal static async Task<bool> ClaimCreditReward(Player player, bool removeChoice = false)
+    {
+        var rec = For(player);
+        if (rec == null || !CanClaimNextReward(rec)) return false;
+
+        var run = RunManager.Instance;
+        bool sp = run?.IsSingleplayerOrFakeMultiplayer ?? true;
+        if (!(sp || LocalContext.IsMe(player))) return false;   // 남의 장부는 못 건드린다
+
+        int index = NextRewardIndex(rec);
+        if (sp) await ApplyClaimReward(player, index, removeChoice);
+        else    DebtLoanNet.BroadcastClaim(player, index, removeChoice);
+        return true;
+    }
+
+    /// <summary>보상 수령을 실제로 적용한다 — SP 는 직접, co-op 은 <c>dl_sync claim</c> 재생으로 각 피어가 1회.
+    /// 덱 변경은 피어별 로컬이고 카드 선택은 엔진이 동기화한다.</summary>
+    internal static async Task ApplyClaimReward(Player player, int index, bool removeChoice)
+    {
+        var rec = For(player);
+        if (rec == null) return;
+        // 순차 + 멱등: 지금 차례가 아닌 인덱스는 전부 무시한다(재전달·자기 재생·순서 뒤바뀜 모두 무해).
+        if (index != NextRewardIndex(rec) || rec.TotalPaid < RewardTierAt(index)) return;
+        rec.CreditRewardsTaken = index + 1;   // ★선(先)기록: 선택 화면에서 취소해도 단계는 소비된다
+        SyncToRelic(player);
+
+        if (IsBonusReward(index))
+        {
+            // 보너스: 유저가 고른 쪽만 연다(강화 또는 제거).
+            if (removeChoice) await DebtLoanGrants.RemoveChosenDeckCard(player);
+            else              await DebtLoanGrants.UpgradeChosenDeckCard(player);
+        }
+        else if (index == 0) await DebtLoanGrants.GrantRewardCard(player, upgraded: false);
+        else if (index == 1) await DebtLoanGrants.UpgradeOrGrantRewardCard(player);
+        else if (index == 2) await DebtLoanGrants.UpgradeChosenDeckCard(player);
+        else if (index == 3) await DebtLoanGrants.RemoveChosenDeckCard(player);
+
+        MainFile.Logger.Info($"[{MainFile.ModId}] credit reward #{index} claimed at {RewardTierAt(index)} "
+                           + $"(paid {rec.TotalPaid}{(IsBonusReward(index) ? (removeChoice ? ", bonus:remove" : ", bonus:upgrade") : "")}).");
+    }
+
+    // ── 빚으로 카드 제거 (상인 제거 1회에 '더해' 추가 제거 · 방문당 1회 · 외상 한도와 무관) ──────────────────────────────────────────
+    /// <summary>이 상점에서 카드 1장을 제거하는 값. ★상인의 제거 슬롯과 <b>같은 공식</b>을 쓴다
+    /// (<c>MerchantCardRemovalEntry.CalcCost</c>: 기본 75 + 25×이미 쓴 횟수, Inflation 승천이면 100 + 50×).
+    /// 같은 카운터(<c>ExtraFields.CardShopRemovalsUsed</c>)를 읽고 <b>올리기도</b> 하므로, 빚으로 한 제거가
+    /// 상인의 다음 제거값도 올린다 — "제거를 한 번 더 살 수 있다"이지 "싸게 산다"가 아니다.</summary>
+    internal static int PurgePrice(Player? player)
+    {
+        int used = player?.ExtraFields?.CardShopRemovalsUsed ?? 0;
+        int baseCost = MegaCrit.Sts2.Core.Entities.Merchant.MerchantCardRemovalEntry.PriceIncrease >= 50 ? 100 : 75;
+        return baseCost + MegaCrit.Sts2.Core.Entities.Merchant.MerchantCardRemovalEntry.PriceIncrease * used;
+    }
+
+    /// <summary>빚으로 제거를 살 수 있는가 — 유물 보유 + 이번 방문에 아직 안 썼을 것 + 제거할 카드가 있을 것.
+    /// <para>★<b>방문당 외상 한도(ShopCreditLimit)와는 무관</b>하다(유저 결정). 제거는 카드 구매와
+    /// 예산을 다투지 않고, 한도를 깎아먹지도 않는다 — 제약은 오직 <b>방문당 1회</b>와 오르는 가격뿐.</para></summary>
+    internal static bool CanPurgeOnDebt(Player? player)
+    {
+        var rec = For(player);
+        if (rec == null || !rec.RelicGranted || player?.RunState == null) return false;
+        if (rec.PurgedThisVisit) return false;                             // ★방문당 하드 1회
+        var deck = PileType.Deck.GetPile(player)?.Cards;
+        return deck != null && deck.Any(c => c.IsRemovable);
+    }
+
+    /// <summary>구매자 로컬 게이트 → co-op 이면 <c>dl_sync purge</c> 로 양 피어가 함께 적용.
+    /// 가격은 <b>와이어에 싣는다</b>: 원격 피어의 <c>CardShopRemovalsUsed</c> 가 먼저 증가해 값이 갈릴 여지를
+    /// 없앤다(<c>dl_sync buy</c> 가 가격을 싣는 것과 같은 이유).</summary>
+    internal static async Task<bool> PurgeCardOnDebt(Player player)
+    {
+        if (!CanPurgeOnDebt(player)) return false;
+        var run = RunManager.Instance;
+        bool sp = run?.IsSingleplayerOrFakeMultiplayer ?? true;
+        if (!(sp || LocalContext.IsMe(player))) return false;
+
+        int price = PurgePrice(player);
+        if (sp) await ApplyPurgeCard(player, price);
+        else    DebtLoanNet.BroadcastPurge(player, price);
+        return true;
+    }
+
+    /// <summary>제거를 적용한다: 빚을 먼저 지우고(취소해도 카드값은 안 물린다 — 아래 참고) 선택 화면을 연다.</summary>
+    internal static async Task ApplyPurgeCard(Player player, int price)
+    {
+        var rec = For(player);
+        if (rec == null) return;
+        // ★카드를 실제로 고른 뒤에 과금한다 — 취소 가능한 화면이라 먼저 물리면 "돈만 내고 아무것도 못 지움"이 된다.
+        var removed = await DebtLoanGrants.RemoveChosenDeckCard(player, cancelable: true);
+        if (removed == null) return;                       // 취소 → 빚도 카운터도 그대로
+
+        rec.CardDebt += price;
+        rec.Principal += price;
+        rec.PurgedThisVisit = true;                        // 이번 방문의 제거 기회를 썼다(양 피어가 함께 기록)
+        if (player.ExtraFields != null) player.ExtraFields.CardShopRemovalsUsed++;   // 다음 제거값이 오른다(상인과 공유)
+        SyncToRelic(player);
+        RefreshRelicDisplay(player);
+        MainFile.Logger.Info($"[{MainFile.ModId}] purged '{removed.Id.Entry}' on debt for {price} (owed now {rec.Principal}).");
     }
 }

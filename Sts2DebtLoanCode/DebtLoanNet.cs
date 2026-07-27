@@ -29,7 +29,7 @@ public sealed class DebtLoanNetCmd : AbstractConsoleCmd
     public const string Verb = "dl_sync";
 
     public override string CmdName => Verb;
-    public override string Args => "<active <borrowed> <principal> <totalPaid> <loanFloor> | buy <cardType> <price> [upgraded] | repaid>";
+    public override string Args => "<active <borrowed> <principal> <totalPaid> <loanFloor> | buy <cardType> <price> [upgraded] | repaid | claim <index> [choice] | purge <price>>";
     public override string Description =>
         "Internal (networked): replicate a player's merchant loan (Ledger relic + state) to every co-op peer.";
     public override bool IsNetworked => true;   // routes through the synchronized action queue
@@ -47,8 +47,11 @@ public sealed class DebtLoanNetCmd : AbstractConsoleCmd
         string state = args[0];
         if (state == "repaid")
         {
-            TaskHelper.RunSafely(LoanService.ApplyRepay(issuingPlayer));
-            return new CmdResult(success: true, "dl_sync repaid.");
+            // args[1] = 이번 목돈 상환액. ★전에는 더미 0 이었고 구매자 피어가 TotalPaid 를 로컬로
+            // 올렸는데, 그러면 원격 피어는 그 증가분을 못 받는다(청산 후 재대출을 안 하면 그대로 갈라졌다).
+            int.TryParse(args.Length > 1 ? args[1] : "0", NumberStyles.Integer, inv, out int repaidAmount);
+            TaskHelper.RunSafely(LoanService.ApplyRepay(issuingPlayer, repaidAmount));
+            return new CmdResult(success: true, $"dl_sync repaid {repaidAmount}.");
         }
 
         if (state == "buy")
@@ -64,6 +67,32 @@ public sealed class DebtLoanNetCmd : AbstractConsoleCmd
             bool buyUpgraded = args.Length > 3 && args[3] == "1";
             TaskHelper.RunSafely(LoanService.ApplyBuyCard(issuingPlayer, typeName, buyPrice, buyUpgraded));
             return new CmdResult(success: true, $"dl_sync buy {typeName}{(buyUpgraded ? "+" : "")} price={buyPrice}.");
+        }
+
+        if (state == "claim")
+        {
+            // 신용 보상 수령. ★★여기서만 `TaskHelper.RunSafely`(detached)를 쓰지 않고 **Task 를 CmdResult 에
+            // 실어 액션이 await 하게** 한다: 900/1200 은 카드 선택 화면을 여는데, 그 선택의 co-op 동기화를
+            // 엔진이 `ReserveChoiceId → SyncLocalChoice / WaitForRemoteChoice` 로 처리하려면 **양 피어가 같은
+            // 큐 위치에서** 그 핸드셰이크에 들어가야 하기 때문이다. detached 로 띄우면 두 피어의 진입 시점이
+            // 엇갈려 choiceId 가 어긋날 수 있다. (dl_testcard 가 쓰는 것과 같은 관용구.)
+            // args = <index> <removeChoice 0|1>. ★인덱스를 싫는 이유 = 보너스 단계가 무한이라
+            // 문턱값으로는 단계를 특정할 수 없고, 순차 검사(index == 다음 차례)가 그대로 멱등성 가드가 된다.
+            // choice 는 보너스에서 어느 화면을 열지 — 두 피어가 반드시 같아야 하므로 전선에 싱는다.
+            if (args.Length < 2) return new CmdResult(success: false, "dl_sync claim: expected <index> [choice].");
+            int.TryParse(args[1], NumberStyles.Integer, inv, out int rewardIndex);
+            bool removeChoice = args.Length > 2 && args[2] == "1";
+            return new CmdResult(LoanService.ApplyClaimReward(issuingPlayer, rewardIndex, removeChoice), success: true,
+                                 $"dl_sync claim #{rewardIndex}{(removeChoice ? " remove" : "")}.");
+        }
+
+        if (state == "purge")
+        {
+            // 빚으로 카드 제거. claim 과 같은 이유로 awaited (제거도 선택 화면을 연다). 가격은 와이어에서
+            // 받는다 — 각 피어가 자기 CardShopRemovalsUsed 로 다시 계산하면 값이 갈릴 수 있다.
+            if (args.Length < 2) return new CmdResult(success: false, "dl_sync purge: expected <price>.");
+            int.TryParse(args[1], NumberStyles.Integer, inv, out int purgePrice);
+            return new CmdResult(LoanService.ApplyPurgeCard(issuingPlayer, purgePrice), success: true, $"dl_sync purge {purgePrice}.");
         }
 
         if (args.Length < 5) return new CmdResult(success: false, "dl_sync active: expected 5 args.");
@@ -86,8 +115,14 @@ internal static class DebtLoanNet
     internal static void BroadcastBuy(Player owner, string cardTypeName, int price, bool upgraded = false)
         => Dispatch(owner, $"{DebtLoanNetCmd.Verb} buy {cardTypeName} {price} {(upgraded ? 1 : 0)}");
 
-    internal static void BroadcastRepay(Player owner)
-        => Dispatch(owner, $"{DebtLoanNetCmd.Verb} repaid 0 0 0");
+    internal static void BroadcastRepay(Player owner, int paidAdd)
+        => Dispatch(owner, $"{DebtLoanNetCmd.Verb} repaid {paidAdd}");
+
+    internal static void BroadcastClaim(Player owner, int index, bool removeChoice)
+        => Dispatch(owner, $"{DebtLoanNetCmd.Verb} claim {index} {(removeChoice ? 1 : 0)}");
+
+    internal static void BroadcastPurge(Player owner, int price)
+        => Dispatch(owner, $"{DebtLoanNetCmd.Verb} purge {price}");
 
     private static void Dispatch(Player owner, string synced)
     {
