@@ -53,7 +53,7 @@ public sealed class KitingCard : CardModel, IUsesPaymentTally
     /// <summary>Gray it out unless you can pay BOTH prices: the 영수증 cost (like 가압류) and a 빚 card in hand to
     /// burn. Without the second gate the card would play for nothing and waste the receipts.</summary>
     protected override bool IsPlayable =>
-        Owner != null && LoanService.PaymentsThisCombat(Owner) >= TallyCost && FindDebtCurseInHand() != null;
+        Owner != null && LoanService.PaymentsThisCombat(Owner) >= LoanService.EffectiveTallyCost(this, Owner) && FindDebtCurseInHand() != null;
 
     public KitingCard() : base(canonicalEnergyCost: 0, CardType.Skill, CardRarity.Event, TargetType.None) { }
 
@@ -77,7 +77,7 @@ public sealed class KitingCard : CardModel, IUsesPaymentTally
 
         await CardPileCmd.RemoveFromCombat(victim);              // the debt note is gone for THIS combat (deck copy, if any, returns)
         await PlayerCmd.GainGold(DynamicVars["gold"].IntValue, Owner, false);
-        await LoanService.SpendTally(Owner, TallyCost);          // spend the 2 영수증 (competes with 정산/청구서/가압류)
+        await LoanService.SpendTally(Owner, LoanService.EffectiveTallyCost(this, Owner));          // spend the 2 영수증 (competes with 정산/청구서/가압류)
         MainFile.Logger.Info($"[{MainFile.ModId}] kiting: burned {victim.GetType().Name} for {DynamicVars["gold"].IntValue} gold.");
     }
 

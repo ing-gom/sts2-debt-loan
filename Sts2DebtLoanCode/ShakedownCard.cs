@@ -42,7 +42,7 @@ public sealed class ShakedownCard : CardModel, IUsesPaymentTally
         new[] { HoverTipFactory.FromPower<VigorPower>() };
 
     /// <summary>Gray it out unless you actually hold the 영수증 to spend (like 가압류's tally gate).</summary>
-    protected override bool IsPlayable => Owner != null && LoanService.PaymentsThisCombat(Owner) >= TallyCost;
+    protected override bool IsPlayable => Owner != null && LoanService.PaymentsThisCombat(Owner) >= LoanService.EffectiveTallyCost(this, Owner);
 
     public ShakedownCard() : base(canonicalEnergyCost: 0, CardType.Skill, CardRarity.Event, TargetType.Self) { }
 
@@ -50,6 +50,6 @@ public sealed class ShakedownCard : CardModel, IUsesPaymentTally
     {
         if (Owner?.Creature == null) return;
         await PowerCmd.Apply<VigorPower>(choiceContext, Owner.Creature, DynamicVars["VigorPower"].IntValue, Owner.Creature, this);
-        await LoanService.SpendTally(Owner, TallyCost);   // spend the 1 영수증 (competes with 정산/청구서)
+        await LoanService.SpendTally(Owner, LoanService.EffectiveTallyCost(this, Owner));   // spend the 1 영수증 (competes with 정산/청구서)
     }
 }

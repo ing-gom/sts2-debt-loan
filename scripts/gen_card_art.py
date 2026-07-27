@@ -272,6 +272,84 @@ CARDS.update({
     'restructuring_torn': ('no humans, no hands, an old debt contract with a red wax seal torn cleanly into two '
                            'halves lying apart on a dark wooden desk, a few gold coins between the pieces, '
                            'filling the frame, purple background'),
+
+    # ── 경비 처리 (Expensing) — "이 지출은 비용으로 인정된다" = 영수증 비용 -1 ────────────────────────
+    # 읽혀야 하는 것: 영수증 자체가 주역. 이 모드에서 영수증은 이미 payment_stack 아이콘의 모티프이므로
+    # 카드아트도 "영수증 뭉치"를 중심에 두되, 그것이 *처리되었다*(꿰어짐/도장/집게)는 신호를 준다.
+    # ★'red X' 계열은 restructuring에서 이 체크포인트가 대각선/취소선을 못 그린다는 게 확인됐으므로 회피.
+    'expensing_spike': ('no humans, no hands, a tall metal receipt spike holding a thick stack of impaled paper '
+                        'receipts, a few gold coins at its base, filling the frame, purple background'),
+    'expensing_clip': ('no humans, no hands, a thick bundle of paper receipts held together by a large brass '
+                       'binder clip, a gold wax seal on the top receipt, small stacks of gold coins beside it, '
+                       'filling the frame, purple background'),
+    'expensing_stamp': ('no humans, no hands, a wooden stamp handle resting on a neat stack of paper receipts '
+                        'with a bold gold stamped mark on the top one, a few gold coins beside them, '
+                        'filling the frame, purple background'),
+    # ★1차 3종(spike/clip/stamp) 전멸. 원인이 분명하다: 이 체크포인트는 "receipt"를 양피지 두루마리로
+    #   그리고, 스파이크/집게 같은 기구는 형태가 아예 안 잡힌다(borrowing의 tap/vault도 같은 이유로 실패).
+    #   성공한 것들(모래시계·금화 박힌 검·장부책)의 공통점 = 실루엣 하나로 끝나는 단일 아이콘.
+    #   그래서 2차는 전부 "한 덩어리 물건"으로 간다. 저울은 정산과 충돌하므로 제외.
+    'expensing_abacus': ('no humans, no hands, a wooden abacus with bright gold beads on its rods, a few gold '
+                         'coins resting at its base, filling the frame, purple background'),
+    'expensing_scissors': ('no humans, no hands, a pair of iron scissors cutting through a long narrow paper '
+                           'strip covered in written numbers, gold coins scattered below, '
+                           'filling the frame, purple background'),
+    'expensing_tag': ('no humans, no hands, a large gold price tag with a punched hole hanging from a leather '
+                      'cord above a small pile of gold coins, filling the frame, purple background'),
+    # ★2차도 실패(주판=진자, 가위=형태 붕괴, 태그=동전). 성공 사례를 다시 보면 전부 **두툼한 입체 덩어리**다
+    #   — 모래시계·금화 박힌 검·리본으로 묶은 장부책·궤짝. 얇거나 여러 개로 흩어지는 물체는 이 체크포인트가
+    #   못 그린다. 3차는 전부 그 형태군으로만 간다. ★SHIPPED = expensing_bound_0 계열에서 택1.
+    'expensing_bound': ('no humans, no hands, a thick bundle of stacked paper documents bound tightly with a wide '
+                        'gold band and a red wax seal pressed on the front, small stacks of gold coins on both '
+                        'sides, filling the frame, purple background'),
+    'expensing_box': ('no humans, no hands, an open wooden cash box with a brass latch, filled with folded paper '
+                      'slips and bright gold coins spilling over its edge, filling the frame, purple background'),
+    # ★3차도 전멸. 문서/서류 개념은 이 체크포인트가 못 그린다는 게 확정(3라운드 9개 전부 실패).
+    # 반대로 tag 라운드에서 '동전'은 아주 깨끗하게 렌더됐다. 그래서 4차는 종이를 버리고 동전만 쓴다 —
+    # "쌓인 높이가 줄었다"로 비용 감소를 말한다.
+    # ★4차(동전만)도 실패. 4라운드 20장에서 성공한 것은 모래시계 하나뿐이고, 그 공통점은
+    # **닫힌 볼록 실루엣 하나**다(모래시계·궤짝·리본 묶은 책). 흩어지거나 얇거나 두 덩이인 구도는 전부 깨진다.
+    # 5차는 그 조건만 만족시키는 도장/금고 두 개로 끝낸다.
+    # ── 6차 (사용자 재요청). 5라운드 24장에서 확정된 사실:
+    #   실패 = 서류/영수증(양피지로 뭉개짐), 얇은 기구(스파이크·집게·수도꼭지), 여러 덩이 구도
+    #   성공 = 닫힌 볼록 실루엣 하나 (모래시계·리본 장부책·궤짝), 그리고 ★손(환급이 실증)
+    # 남은 자리도 확인함: 지갑=돌려막기, 저울=정산, 장부책=채무 조정 → 전부 회피.
+    'expensing_scissors_v2': ('no humans, no hands, one large pair of open iron scissors with two clear straight '
+                              'blades and two round finger holes, cutting a single big gold coin in half, '
+                              'filling the frame, purple background'),
+    'expensing_stamp_coin': ('no humans, no hands, a heavy wooden-handled stamp pressed down onto one large bright '
+                             'gold coin, leaving a glowing mark on the coin face, '
+                             'filling the frame, purple background'),
+    'expensing_coin_split': ('no humans, no hands, one very large bright gold coin cleanly split into two halves '
+                             'lying slightly apart on a dark surface, filling the frame, purple background'),
+    'expensing_hand_seal': (f'a single {HAND}, a natural well-drawn five-fingered hand with correct anatomy, '
+                            'pressing a red wax seal onto one large bright gold coin, '
+                            'filling the frame, purple background'),
+    'expensing_seal': ('no humans, no hands, a large round brass seal stamp with a turned wooden handle standing '
+                       'upright, a bright gold wax impression on the surface beneath it, '
+                       'filling the frame, purple background'),
+    'expensing_strongbox': ('no humans, no hands, a small heavy iron strongbox with a coin slot in its lid and a '
+                            'brass lock, one gold coin resting on top, filling the frame, purple background'),
+    'expensing_stacks': ('no humans, no hands, two stacks of bright gold coins side by side on a dark wooden '
+                         'surface, the left stack very tall and the right stack much shorter, '
+                         'filling the frame, purple background'),
+    'expensing_slice': ('no humans, no hands, one very large bright gold coin standing upright with a wedge '
+                        'slice cut out of it like a pie, smaller gold coins resting at its base, '
+                        'filling the frame, purple background'),
+    'expensing_quill': ('no humans, no hands, a thick open ledger book lying flat with neat rows of writing, a '
+                        'black feather quill resting in an inkpot beside it, gold coins stacked on the open page, '
+                        'filling the frame, purple background'),
+
+    # ── 차입 (Borrowing) — 매 턴 에너지. 에너지=이 게임의 시간/템포이므로 "빌린 시간"으로 읽히게 한다.
+    # 어음(promissory_note)이 이미 '종이 한 장'을 쓰고 있으므로 겹치지 않게 금고/수도꼭지 계열로 간다.
+    'borrowing_tap': ('no humans, no hands, a brass tap mounted on a stone wall pouring a bright stream of gold '
+                      'coins into a wide iron bowl below, filling the frame, purple background'),
+    'borrowing_vault': ('no humans, no hands, a heavy iron vault door standing ajar with bright golden light '
+                        'spilling out through the gap, gold coins scattered on the floor before it, '
+                        'filling the frame, purple background'),
+    'borrowing_hourglass': ('no humans, no hands, a large hourglass whose falling sand is made of bright gold '
+                            'coins, small stacks of gold coins around its wooden frame, '
+                            'filling the frame, purple background'),
 })
 
 

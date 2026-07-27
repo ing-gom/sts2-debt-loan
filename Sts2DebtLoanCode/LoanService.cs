@@ -514,6 +514,12 @@ internal static class LoanService
         // 카드를 딱 한 장만 살 수 있으므로(ShopCreditLimit), 값이 같으면 플레이어는 매번 상위 두 장만 집고
         // 나머지 넷은 영구히 팔리지 않는다. 값을 벌려야 "명세서를 95에 살까, 추심을 75에 사고 남길까"가
         // 실제 선택이 된다. 등급 근거는 BALANCE_AUDIT.md(게임 본편 548장 분포 대조).
+        // 차입: 턴당 에너지는 이 세트에서 가장 큰 효과라 최고가. 영수증 4라는 자체 관문이 이미 세지만,
+        // 골드 가격까지 최상단에 둬야 "이번 방문의 신용 한도를 통째로 여기 쓸 것인가"가 성립한다.
+        if (t == typeof(BorrowingCard)) return 95;
+        // 경비 처리: 나머지 영수증 카드를 전부 싸게 만드는 인에이블러 → 강 티어. 단독으론 전투 효과가 0이라
+        // 차입보다는 아래.
+        if (t == typeof(ExpensingCard)) return 90;
         if (t == typeof(StatementCard) || t == typeof(PaymentBenefitCard)) return 95;   // 강: 매 턴 드로우 / 판금 순 +2턴 누적
         if (t == typeof(RefundCard) || t == typeof(CounterclaimCard)) return 85;        // 중: 성실 납부 공급 / 납부마다 5피해
         if (t == typeof(CollectionCard) || t == typeof(InterestSupportCard)) return 75; // 약: 2코 선불+영수증 재지불 / 전투 효과 0
@@ -656,9 +662,61 @@ internal static class LoanService
         if (offers.Length > 1 && FreeSlotIneligible(offers[0]))
             for (int i = 1; i < offers.Length; i++)
                 if (!FreeSlotIneligible(offers[i])) { (offers[0], offers[i]) = (offers[i], offers[0]); break; }
+        // ★Publish the memo BEFORE the affordability pass. That pass asks for prices, and ShopPriceFor →
+        // SaleCardFor/UpgradedCardFor call back into THIS method — without the memo already set that is infinite
+        // recursion (it killed the whole run, not just the shop). With it set, the callbacks hit the cache and
+        // return; the pass then mutates `offers` in place, which IS rec.CurrentOffers, so both stay consistent.
         rec.CurrentOffers = offers;
         rec.OfferVisit = rec.DebtShopVisits;
+        EnsureAffordablePair(rec, offers, available);
         return offers;
+    }
+
+    /// <summary>Guarantee the shop's core promise: <b>one paid card per visit — unless you take the sale card, then
+    /// two.</b> That only holds if some PAID offer is cheap enough that sale + it fits the visit's credit line.
+    /// <para>★Why this exists: the roll is a uniform shuffle of the pool, so a visit can legitimately deal five
+    /// expensive cards and silently make the sale tag worthless. It was rare while the pool skewed cheap; adding
+    /// 경비 처리(90)/차입(95) made it common enough that solo-verify's price invariant caught it. Rather than widen
+    /// the credit line (which changes every other price relationship), swap the priciest paid offer for the cheapest
+    /// card left in the pool whenever the pair doesn't fit.</para>
+    /// Deterministic (reads only the already-shuffled list + the fixed price table) → co-op peers and a reload land
+    /// on the same row. Mutates <paramref name="offers"/> in place; slot 0 (the free gift) is never touched.
+    /// <para>⚠️★co-op 제약: 이 메서드는 <see cref="DebtLoanConfig.ShopCreditLimit"/> 을 읽는데 그건 <b>클라이언트별
+    /// ModConfig 슬라이더</b>다. 즉 오퍼 목록은 더 이상 (LoanFloor, DebtShopVisits) 만의 함수가 아니고, 슬라이더가
+    /// 다른 두 피어는 <b>다른 목록</b>을 만들 수 있다. 지금은 안전한데, 이유는 딱 하나다 — 구매가 와이어에 카드
+    /// 타입과 가격을 실어 보내고(<c>dl_sync buy</c>) 재생 경로 <see cref="ApplyBuyCard"/> 가 오퍼 목록을
+    /// <b>게이트로 쓰지 않기 때문</b>이다. 그래서 갈라지는 건 화면뿐이고 결과는 수렴한다.
+    /// <b>오퍼 목록(RevealedPurchasable / IsPurchasable)을 네트워크 재생 경로의 조건으로 쓰는 순간 진짜 desync가
+    /// 된다.</b> 그렇게 바꿔야 한다면 먼저 ShopCreditLimit 을 호스트 권위로 브로드캐스트하라(RelicForge rf_config
+    /// 패턴). 근거: coop-guard 클래스3.</para></summary>
+    private static void EnsureAffordablePair(LoanRecord rec, System.Type[] offers, List<System.Type> pool)
+    {
+        if (offers.Length < 2) return;
+        var sale = SaleCardFor(rec);
+        int limit = DebtLoanConfig.ShopCreditLimit;
+
+        int cheapestPaid = int.MaxValue, priciestIdx = -1, priciest = -1;
+        for (int i = 1; i < offers.Length; i++)
+        {
+            if (offers[i] == sale) continue;                       // the sale card is the OTHER half of the pair
+            int p = ShopPriceFor(rec, offers[i]);
+            if (p < cheapestPaid) cheapestPaid = p;
+            if (p > priciest) { priciest = p; priciestIdx = i; }
+        }
+        if (priciestIdx < 0) return;                               // nothing but the sale card among the paid slots
+
+        int salePrice = sale != null ? ShopPriceFor(rec, sale) : 0;
+        if (salePrice + cheapestPaid <= limit) return;             // the promise already holds this visit
+
+        // Find the cheapest card NOT already on the row and swap it in for the priciest one.
+        System.Type? best = null; int bestPrice = int.MaxValue;
+        foreach (var t in pool)
+        {
+            if (System.Array.IndexOf(offers, t) >= 0) continue;
+            int p = ShopPriceFor(rec, t);
+            if (p < bestPrice) { bestPrice = p; best = t; }
+        }
+        if (best != null && salePrice + bestPrice <= limit) offers[priciestIdx] = best;
     }
 
     /// <summary>An offered card is buyable if the loan is active, it's been revealed, and it hasn't been bought yet.</summary>
@@ -843,6 +901,8 @@ internal static class LoanService
         typeof(PromissoryNoteCard),                                                                        // 어음: borrow for ENERGY (the third borrow currency)
         typeof(LeverageCard),                                                                              // 레버리지: damage scaled by the principal you still owe
         typeof(RestructuringCard),                                                                         // 채무 조정: once-per-loan principal write-off
+        typeof(ExpensingCard),                                                                             // 경비 처리: 영수증 비용 -1 (지출 병목 완화)
+        typeof(BorrowingCard),                                                                             // 차입: 턴당 에너지 (영수증 4 = 엔진 초반 산출 전부)
         typeof(JobPlacementCard),                                                                          // 취업알선: income skill (moved from free grants)
         typeof(BankruptcyCard), typeof(RefinanceCard),                                                     // debt payoff: Bankruptcy(→Strength) / Refinance(→Payment cards)
     };
@@ -986,6 +1046,23 @@ internal static class LoanService
     {
         if (p != null && n != 0) SetTally(p, PaymentsThisCombat(p) + n);
     }
+
+    /// <summary>What a 영수증-costing card ACTUALLY costs right now, after 경비 처리 (ExpensingPower) discounts.
+    /// ★Single source of truth — the playable gate, the consume call and the cost badge must all read this, or the
+    /// card greys out at a price different from the one printed on it.
+    /// <para>X-cards (<see cref="IUsesPaymentTally.TallyCost"/> &lt; 0 = 청구서/정산, "spend the whole tally") are
+    /// returned unchanged: there is no fixed price to discount, and clamping their sentinel to 0 would turn them into
+    /// free no-ops.</para></summary>
+    internal static int EffectiveTallyCost(int rawCost, Player? owner)
+    {
+        if (rawCost < 0) return rawCost;                                     // X = spend-all sentinel, not a price
+        int cut = (int)(owner?.Creature?.GetPower<ExpensingPower>()?.Amount ?? 0m);
+        return Math.Max(0, rawCost - cut);
+    }
+
+    /// <summary>Convenience overload for the cards themselves (they know their own raw cost and owner).</summary>
+    internal static int EffectiveTallyCost(IUsesPaymentTally card, Player? owner)
+        => EffectiveTallyCost(card.TallyCost, owner);
 
     /// <summary>Spend the WHOLE 영수증 tally (called by 청구서/정산 after they pay out). No-op if none.</summary>
     internal static Task ConsumePaymentStack(Player? p)

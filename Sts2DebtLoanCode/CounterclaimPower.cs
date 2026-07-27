@@ -18,8 +18,6 @@ namespace Sts2DebtLoan;
 /// </summary>
 public sealed class CounterclaimPower : PowerModel
 {
-    private const int Damage = 5;
-
     public override PowerType Type => PowerType.Buff;
     public override PowerStackType StackType => PowerStackType.Single;
 
@@ -29,8 +27,12 @@ public sealed class CounterclaimPower : PowerModel
         if (combat == null) return;
         var enemies = combat.Enemies.Where(e => e != null && e.IsAlive).ToList();
         if (enemies.Count == 0) return;
+        // ★Damage comes from Amount (the card passes 5 / 8), NOT a const — the old const meant the card could not
+        // have a numeric upgrade at all, which is why its upgrade was the dead Innate. Same shape as 명세서's draw.
+        int dmg = (int)Amount;
+        if (dmg <= 0) return;
         int idx = enemies.Count == 1 ? 0
             : new Rng((uint)(player.Creature.CombatId.Value + LoanService.PaymentsThisCombat(player))).NextInt(enemies.Count);
-        await CreatureCmd.Damage(cc, enemies[idx], Damage, ValueProp.Move, player.Creature);
+        await CreatureCmd.Damage(cc, enemies[idx], dmg, ValueProp.Move, player.Creature);
     }
 }

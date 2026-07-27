@@ -21,7 +21,9 @@ public sealed class InterestSupportPower : PowerModel
     public async Task OnPayment(PlayerChoiceContext cc, Player player, int amount)
     {
         if (player == null) return;
-        int subsidy = amount / 2;
+        // Amount = 보조 비율의 분자, 분모는 항상 2. 1 ⇒ 절반, 2 ⇒ 전액(이자 지원+). 이렇게 두면 카드의 {pct}
+        // 표시와 실제 지급이 한 값에서 나온다.
+        int subsidy = amount * (int)Amount / 2;
         if (subsidy <= 0) return;
         await PlayerCmd.GainGold(subsidy, player, false);
     }

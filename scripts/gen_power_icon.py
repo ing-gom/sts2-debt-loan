@@ -33,6 +33,24 @@ ICONS = {
                          'forbidden symbol, no-money, flat vector icon, plain white background'),
     'bankruptcy_power_slash': ('a gold coin crossed out by a thick red X, cancelled money, '
                                'simple flat icon, one object centered, plain white background'),
+    # 경비 처리 (Expensing) — 영수증 비용 -1. 카드아트 5라운드에서 배운 것: 이 체크포인트는 '서류'를
+    # 못 그린다. 아이콘은 LoRA(sts2_icon)가 붙어 별개 파이프라인이지만 같은 함정을 피해 단순 도형으로 간다.
+    'expensing_power': ('a gold coin with a small downward green arrow beside it, price cut, '
+                        'discount symbol, simple flat icon, one object centered, plain white background'),
+    'expensing_power_scissor': ('a pair of scissors cutting a gold coin in half, cost cutting, '
+                                'simple flat icon, one object centered, plain white background'),
+    # 차입 (Borrowing) — 매 턴 에너지. 카드아트가 모래시계로 확정됐으니 아이콘도 같은 모티프로 묶는다.
+    'borrowing_power': ('an hourglass filled with gold coins instead of sand, '
+                        'simple flat icon, one object centered, plain white background'),
+    # ── 경비 처리 카드아트 합성용 부품. ★카드아트 파이프라인은 '영수증'을 못 그리지만(6라운드 37장 실증),
+    # 모드엔 이미 완성된 영수증 심볼(payment_stack_power.png)이 있다. 그래서 날붙이만 여기서 뽑아
+    # 그 심볼 위에 합성한다 — 플레이어가 코스트 배지에서 보는 모양과 100% 같은 영수증이 나온다.
+    'cut_scissors': ('a pair of open scissors, blades apart, simple flat icon, one object centered, '
+                     'plain white background'),
+    'cut_knife': ('a single sharp dagger knife pointing down, simple flat icon, one object centered, '
+                  'plain white background'),
+    'borrowing_power_bolt': ('a gold coin with a bright lightning bolt across it, energy from money, '
+                             'simple flat icon, one object centered, plain white background'),
 }
 
 def workflow(seed, pos):

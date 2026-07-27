@@ -2,6 +2,7 @@ using System;
 using System.Reflection;
 using Godot;
 using HarmonyLib;
+using MegaCrit.Sts2.Core.Models;        // CardModel
 using MegaCrit.Sts2.Core.Nodes.Cards;   // NCard
 
 namespace Sts2DebtLoan;
@@ -61,8 +62,19 @@ internal static class PaymentCostOverlayPatch
             float ey = energy.Size.Y > 0 ? energy.Size.Y : Size;
             badge.Position = new Vector2((ex - Size) * 0.5f, ey - 6f);
 
-            int cost = tally.TallyCost;
-            if (badge.GetNodeOrNull<Label>("txt") is { } label) label.Text = cost < 0 ? "X" : cost.ToString();
+            // ★Print the DISCOUNTED price (경비 처리), not the raw one — the playable gate and the consume call both
+            // read EffectiveTallyCost, so a raw badge would grey the card out at a price different from the printed
+            // one. Tint it the standard "reduced cost" green when a discount is actually live, same signal the engine
+            // uses for cost-reduced energy.
+            int raw = tally.TallyCost;
+            int cost = LoanService.EffectiveTallyCost(raw, (__instance.Model as CardModel)?.Owner);
+            if (badge.GetNodeOrNull<Label>("txt") is { } label)
+            {
+                label.Text = cost < 0 ? "X" : cost.ToString();
+                label.AddThemeColorOverride("font_color", cost < raw
+                    ? new Color(0.45f, 1f, 0.45f)        // discounted
+                    : new Color(1f, 0.97f, 0.75f));      // normal parchment
+            }
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] tally badge skipped: {e.Message}"); }
     }

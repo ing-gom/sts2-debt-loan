@@ -590,6 +590,53 @@ internal static class SoloTest
                     W($"  [강화명칭] 명세서 FACE='{stBaseFace}' cost={stBaseCost} / 명세서+ FACE='{stUFace}' cost={stUCost} (드로우 1→2, 코스트 1→0, 선천성 제거) -> {(stOk ? "OK" : "FAIL")}");
                     all &= stOk;
 
+                    // ── 죽은 강화 2종 교체 + 신규 2종 (경비 처리 / 차입) ──────────────────────────────
+                    // 자본 타격+ : 선천성 → 납부당 피해 5→8, 이자 지원+ : 선천성 → 보조 50%→100%.
+                    // 둘 다 선천성 키워드가 사라졌는지까지 본다(예전 강화가 남아 있으면 이중 강화가 된다).
+                    var ccB = player.RunState.CreateCard<CounterclaimCard>(player);
+                    var ccU = player.RunState.CreateCard<CounterclaimCard>(player);
+                    ccU.UpgradeInternal(); ccU.FinalizeUpgradeInternal();
+                    var isB = player.RunState.CreateCard<InterestSupportCard>(player);
+                    var isU = player.RunState.CreateCard<InterestSupportCard>(player);
+                    isU.UpgradeInternal(); isU.FinalizeUpgradeInternal();
+                    var innate = MegaCrit.Sts2.Core.Entities.Cards.CardKeyword.Innate;
+                    bool ccOk = ccB.DynamicVars["dmg"].IntValue == 5 && ccU.DynamicVars["dmg"].IntValue == 8
+                                && !ccU.Keywords.Contains(innate);
+                    bool isOk = isB.DynamicVars["pct"].IntValue == 50 && isU.DynamicVars["pct"].IntValue == 100
+                                && !isU.Keywords.Contains(innate);
+                    W($"  assert 자본 타격+ : 피해 {ccB.DynamicVars["dmg"].IntValue}->{ccU.DynamicVars["dmg"].IntValue}(5->8) 선천성제거={!ccU.Keywords.Contains(innate)} -> {(ccOk ? "OK" : "FAIL")}");
+                    W($"  assert 이자 지원+ : 보조 {isB.DynamicVars["pct"].IntValue}%->{isU.DynamicVars["pct"].IntValue}%(50->100) 선천성제거={!isU.Keywords.Contains(innate)} -> {(isOk ? "OK" : "FAIL")}");
+                    all &= ccOk && isOk;
+
+                    // 경비 처리 / 차입 — 카드 자체 스펙
+                    var exB = player.RunState.CreateCard<ExpensingCard>(player);
+                    var exU = player.RunState.CreateCard<ExpensingCard>(player);
+                    exU.UpgradeInternal(); exU.FinalizeUpgradeInternal();
+                    var boB = player.RunState.CreateCard<BorrowingCard>(player);
+                    var boU = player.RunState.CreateCard<BorrowingCard>(player);
+                    boU.UpgradeInternal(); boU.FinalizeUpgradeInternal();
+                    bool exOk = exB.TallyCost == 2 && exB.EnergyCost.GetResolved() == 1 && exU.EnergyCost.GetResolved() == 0
+                                && exB.DynamicVars["cut"].IntValue == 1;
+                    bool boOk = boB.TallyCost == 4 && boB.EnergyCost.GetResolved() == 2
+                                && boB.DynamicVars["energy"].IntValue == 1 && boU.DynamicVars["energy"].IntValue == 2;
+                    W($"  assert 경비 처리: 영수증={exB.TallyCost}(2) 코스트 {exB.EnergyCost.GetResolved()}->{exU.EnergyCost.GetResolved()}(1->0) 감소량={exB.DynamicVars["cut"].IntValue}(1) -> {(exOk ? "OK" : "FAIL")}");
+                    W($"  assert 차입: 영수증={boB.TallyCost}(4) 코스트={boB.EnergyCost.GetResolved()}(2) 에너지 {boB.DynamicVars["energy"].IntValue}->{boU.DynamicVars["energy"].IntValue}(1->2) -> {(boOk ? "OK" : "FAIL")}");
+                    all &= exOk && boOk;
+
+                    // ★영수증 할인이 실제로 먹히는가 — 경비 처리 파워를 직접 걸고 EffectiveTallyCost를 본다.
+                    // 게이트/소비/배지가 전부 이 함수를 읽으므로 여기가 맞으면 셋이 같이 맞는다.
+                    int stRaw = LoanService.EffectiveTallyCost(stBase, player);        // 할인 전 = 2
+                    int invRaw = LoanService.EffectiveTallyCost(-1, player);            // X카드 센티넬
+                    var ecc = new MegaCrit.Sts2.Core.GameActions.Multiplayer.BlockingPlayerChoiceContext();
+                    await PowerCmd.Apply<ExpensingPower>(ecc, player.Creature!, 1, player.Creature!, null);
+                    int stCut = LoanService.EffectiveTallyCost(stBase, player);         // 할인 후 = 1
+                    int boCut = LoanService.EffectiveTallyCost(boB, player);            // 4 → 3
+                    int invCut = LoanService.EffectiveTallyCost(-1, player);            // X는 그대로 -1이어야
+                    bool cutOk = stRaw == 2 && stCut == 1 && boCut == 3 && invRaw == -1 && invCut == -1;
+                    W($"  assert 경비 처리 할인: 명세서 {stRaw}->{stCut}(2->1) 차입 4->{boCut}(3) X카드 {invRaw}->{invCut}(-1 유지) -> {(cutOk ? "OK" : "FAIL")}");
+                    all &= cutOk;
+                    await PowerCmd.Remove<ExpensingPower>(player.Creature!);
+
                     bool dlOk = dlUFace.Contains(payment + "+");
                     W($"  [강화명칭] 정기 납부+ -> '{payment}+' {(dlOk ? "OK" : "MISSING")}");
 
@@ -1666,6 +1713,22 @@ internal static class SoloTest
                         W($"  assert 채무 조정 run-once gate: canRestructure={LoanService.CanRestructure(player)}(exp False) purchasable=False -> {tR2}");
                         all &= tR2;
                         await Shot("13_dopamine_cards");
+
+                        // ④ 신규 2종(경비 처리 / 차입)을 손에 올려 실제 렌더를 남긴다 — 아트·설명·영수증
+                        // 배지가 함께 찍혀야 "코드는 통과했는데 화면은 비어 있다"를 잡을 수 있다.
+                        // 영수증을 넉넉히 채워 두 장 다 회색이 아닌 상태로 보이게 한다.
+                        LoanService.GrantReceipt(player, 6);
+                        var exCard = nstate.CreateCard<ExpensingCard>(player);
+                        var boCard = nstate.CreateCard<BorrowingCard>(player);
+                        var boCardU = nstate.CreateCard<BorrowingCard>(player);
+                        boCardU.UpgradeInternal(); boCardU.FinalizeUpgradeInternal();
+                        await CardPileCmd.AddGeneratedCardsToCombat(
+                            new List<CardModel> { exCard, boCard, boCardU }, PileType.Hand, player, CardPilePosition.Random);
+                        await Task.Delay(400);
+                        W($"  신규 카드 손패 렌더: 경비 처리 영수증={LoanService.EffectiveTallyCost(exCard, player)}(2)"
+                          + $" / 차입 영수증={LoanService.EffectiveTallyCost(boCard, player)}(4)"
+                          + $" 보유영수증={LoanService.PaymentsThisCombat(player)} (14_new_cards.png 확인)");
+                        await Shot("14_new_cards");
                     }
                     else W("  도파민 3카드: no combat state / loan record — skipped");
                 }

@@ -21,7 +21,7 @@ public sealed class GarnishmentCard : CardModel, IUsesPaymentTally
     public override CardPoolModel Pool => _pool ??= ModelDb.CardPool<ColorlessCardPool>();
 
     public int TallyCost => 2;   // FIXED: spends exactly 2 영수증 (not X)
-    protected override bool IsPlayable => Owner != null && LoanService.PaymentsThisCombat(Owner) >= TallyCost;
+    protected override bool IsPlayable => Owner != null && LoanService.PaymentsThisCombat(Owner) >= LoanService.EffectiveTallyCost(this, Owner);
 
     public override int MaxUpgradeLevel => 1;   // upgrade = 0 energy
 
@@ -47,7 +47,7 @@ public sealed class GarnishmentCard : CardModel, IUsesPaymentTally
         await DamageCmd.Attack(DynamicVars.Damage.BaseValue).FromCard(this)
             .TargetingAllOpponents(CombatState)
             .Execute(choiceContext);
-        await LoanService.SpendTally(Owner, TallyCost);   // spend the fixed 영수증 cost
+        await LoanService.SpendTally(Owner, LoanService.EffectiveTallyCost(this, Owner));   // spend the fixed 영수증 cost
     }
 
     protected override void OnUpgrade()

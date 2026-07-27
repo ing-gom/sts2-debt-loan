@@ -24,7 +24,7 @@ public sealed class StatementCard : CardModel, IUsesPaymentTally
 
     /// <summary>{draw} = 납부 1회당 뽑는 장수(기본 1, 명세서+ 2). 설명이 이 값을 읽는다.</summary>
     protected override IEnumerable<DynamicVar> CanonicalVars => new[] { new DynamicVar("draw", 1) };   // costs 2 영수증 to install (card-advantage engine)
-    protected override bool IsPlayable => Owner != null && LoanService.PaymentsThisCombat(Owner) >= TallyCost;
+    protected override bool IsPlayable => Owner != null && LoanService.PaymentsThisCombat(Owner) >= LoanService.EffectiveTallyCost(this, Owner);
 
     public override int MaxUpgradeLevel => 1;   // upgrade = 1코 → 0코 + 납부당 드로우 2
 
@@ -39,7 +39,7 @@ public sealed class StatementCard : CardModel, IUsesPaymentTally
     {
         if (Owner?.Creature == null) return;
         await PowerCmd.Apply<StatementPower>(choiceContext, Owner.Creature, IsUpgraded ? 2 : 1, Owner.Creature, null);   // Amount = 뽑는 장수 (환급의 티어 전달 방식과 동형)
-        await LoanService.SpendTally(Owner, TallyCost);   // spend the 영수증 cost
+        await LoanService.SpendTally(Owner, LoanService.EffectiveTallyCost(this, Owner));   // spend the 영수증 cost
     }
 
     /// <summary>명세서+ : 1코 → [b]0코[/b] + 납부마다 카드를 [b]2[/b]장(장수는 적용된 파워의 Amount로 전달 — 환급과 동형).
