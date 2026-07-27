@@ -28,7 +28,12 @@ public sealed class WagesCard : CardModel
 
     public override IEnumerable<CardKeyword> CanonicalKeywords => new[] { CardKeyword.Exhaust };
 
-    private int Gold => IsUpgraded ? 25 : 15;
+    // ★15 → 25 (강화 25 → 35). 취업알선은 영수증 2 + 1에너지 + 빚 20을 내는데, 품삯 3장 중 2장은 뽑을
+    // 더미로 가서 짧은 전투에선 안 나온다. 15일 때 4턴 전투 실수령이 순 −5 ~ +10으로 마이너스가 날 수
+    // 있었다(같은 영수증 2를 정산에 쓰면 방어도 8이 즉시 들어온다). 25면 +5 ~ +30이 된다.
+    // ★3장 생성 구조는 건드리지 않는다 — 레전트의 무기고/창조의 기둥/초질량이 "카드 생성"을 세므로
+    // 한 번에 3장을 만드는 것 자체가 이 카드의 천장이다(CHARACTER_SYNERGY.md).
+    private int Gold => IsUpgraded ? 35 : 25;
 
     protected override IEnumerable<DynamicVar> CanonicalVars => new[] { new DynamicVar("gold", Gold) };
 
@@ -43,6 +48,6 @@ public sealed class WagesCard : CardModel
     protected override void OnUpgrade()
     {
         base.OnUpgrade();
-        DynamicVars["gold"].BaseValue = Gold;      // 15 → 30 (energy stays 0)
+        DynamicVars["gold"].BaseValue = Gold;      // 25 → 35 (energy stays 0)
     }
 }

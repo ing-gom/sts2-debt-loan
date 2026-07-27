@@ -576,6 +576,20 @@ internal static class SoloTest
                     bool rfOk = rfUFace.Contains(diligent + "+");
                     W($"  [강화명칭] 환급+ FACE='{rfUFace}' -> '{diligent}+' {(rfOk ? "OK" : "MISSING")}");
 
+                    // 명세서+ : 강화가 선천성(영수증 게이트 때문에 첫 턴에 못 내는 죽은 강화)에서
+                    // "납부마다 2장 뽑기"로 바뀌었다. 카드 얼굴의 {draw}가 1 → 2로 실제 바뀌는지 본다.
+                    var stBase = player.RunState.CreateCard<StatementCard>(player);
+                    var stU = player.RunState.CreateCard<StatementCard>(player);
+                    stU.UpgradeInternal(); stU.FinalizeUpgradeInternal();
+                    string stBaseFace = stBase.GetDescriptionForPile(PileType.Hand).Replace("\n", " | ");
+                    string stUFace = stU.GetDescriptionForPile(PileType.Hand).Replace("\n", " | ");
+                    int stBaseCost = stBase.EnergyCost.GetResolved(), stUCost = stU.EnergyCost.GetResolved();
+                    bool stOk = stBaseFace.Contains("1") && stUFace.Contains("2")
+                                && stBaseCost == 1 && stUCost == 0
+                                && !stU.Keywords.Contains(MegaCrit.Sts2.Core.Entities.Cards.CardKeyword.Innate);
+                    W($"  [강화명칭] 명세서 FACE='{stBaseFace}' cost={stBaseCost} / 명세서+ FACE='{stUFace}' cost={stUCost} (드로우 1→2, 코스트 1→0, 선천성 제거) -> {(stOk ? "OK" : "FAIL")}");
+                    all &= stOk;
+
                     bool dlOk = dlUFace.Contains(payment + "+");
                     W($"  [강화명칭] 정기 납부+ -> '{payment}+' {(dlOk ? "OK" : "MISSING")}");
 
@@ -710,12 +724,12 @@ internal static class SoloTest
                 var plating = player.Creature!.GetPower<MegaCrit.Sts2.Core.Models.Powers.PlatingPower>();
                 int platingAmt = plating != null ? (int)plating.Amount : 0;                     // 3 × 3 = 9 (if it stacks)
                 int dpGain = (PileType.Hand.GetPile(player)?.Cards.Count(c => c is DiligentPaymentCard) ?? 0) - dp0;
-                bool tP1 = pays == 3 && platingAmt >= 3 && dpGain >= 3;   // 납부 실적 counter + both reactive powers fired 3×
-                W($"  assert payment-trigger: 납부실적={pays}(3) plating={platingAmt}(>=3, exp 9) diligentCardsAdded={dpGain}(>=3) -> {tP1}");
+                bool tP1 = pays == 3 && platingAmt >= DebtLoanConfig.LeveragePlating && dpGain >= 3;   // 납부 실적 counter + both reactive powers fired 3×
+                W($"  assert payment-trigger: 납부실적={pays}(3) plating={platingAmt}(>={DebtLoanConfig.LeveragePlating}, exp {DebtLoanConfig.LeveragePlating * 3} = 판금 {DebtLoanConfig.LeveragePlating}×3납부) diligentCardsAdded={dpGain}(>=3) -> {tP1}");
 
                 // 추심(집행): 매 턴 집행 토큰 지급(0코, 1영수증→활력3). 인게임 실측은 추심 플레이 후 턴 시작 훅 필요 —
                 // 여기선 영수증 카운트만 로깅(집행 지급=CollectionPower.AfterPlayerTurnStart, 정기 납부 훅과 동형).
-                W($"  [추심 참고] 현재 영수증={LoanService.PaymentsThisCombat(player)} → 집행으로 1영수증당 활력3 (다음 공격 강화)");
+                W($"  [추심 참고] 현재 영수증={LoanService.PaymentsThisCombat(player)} → 집행으로 1영수증당 활력5 (다음 공격 강화)");
 
                 // Engine-expansion powers fired 3× too: 자본 타격 dealt damage, 이자 지원 refunded half, 명세서 applied.
                 int ccDrop = (ccHp0 >= 0 && enemy != null) ? ccHp0 - enemy.CurrentHp : -1;       // ~15 (3×5) if unblocked
@@ -815,11 +829,11 @@ internal static class SoloTest
                 int owedGain = recP.Principal - owed0;               // expect +20 (fee only; the play makes no payment)
                 int jobGoldGain = (int)player.Gold - jobGold0;       // expect 0
                 int tallyAfter = LoanService.PaymentsThisCombat(player);   // expect UNCHANGED (no receipt cost now)
-                int handWages = (PileType.Hand.GetPile(player)?.Cards.Count(c => c is WagesCard) ?? 0) - handPre;   // expect 1
-                int drawWages = (PileType.Draw.GetPile(player)?.Cards.Count(c => c is WagesCard) ?? 0) - drawPre;   // expect 2
+                int handWages = (PileType.Hand.GetPile(player)?.Cards.Count(c => c is WagesCard) ?? 0) - handPre;   // expect 0 — 품삯은 이제 전부 뽑을 더미로
+                int drawWages = (PileType.Draw.GetPile(player)?.Cards.Count(c => c is WagesCard) ?? 0) - drawPre;   // expect 3
                 bool tP4 = jobPlayable0 && owedGain == 20 && jobGoldGain == 0 && tallyAfter == tally0
-                           && handWages >= 1 && drawWages >= 2;
-                W($"  assert job-placement(skill): playable0={jobPlayable0}(no gate) owedGain={owedGain}(=20) goldGain={jobGoldGain}(=0) tally {tally0}->{tallyAfter}(unchanged) hand+{handWages}(>=1) draw+{drawWages}(>=2) -> {tP4}");
+                           && handWages == 0 && drawWages >= 3;
+                W($"  assert job-placement(skill): playable0={jobPlayable0}(no gate) owedGain={owedGain}(=20) goldGain={jobGoldGain}(=0) tally {tally0}->{tallyAfter}(unchanged) hand+{handWages}(=0, 손 지급 폐지) draw+{drawWages}(>=3) -> {tP4}");
 
                 // tP5) EMPIRICAL 골드 차감: play a real 빚 독촉 (Dunning) through the pipeline and assert the player's
                 //      ACTUAL held gold drops by the 20-gold play cost (bug report: "납부했을 때 실제 보유 골드가 안 줄어듦").

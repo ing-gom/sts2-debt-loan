@@ -31,7 +31,10 @@ public sealed class ShakedownCard : CardModel, IUsesPaymentTally
 
     public override IEnumerable<CardKeyword> CanonicalKeywords => new[] { CardKeyword.Exhaust };
 
-    private const int Vigor = 3;
+    // ★3 → 5. 추심은 2코를 선불로 내고 그 위에 매 턴 영수증 1을 또 지불하는 이중 비용 구조인데, 같은
+    // 영수증 1을 정산에 쓰면 방어도 4가 즉시 들어온다. 활력 3으로는 그 거래가 성립하지 않아 추심이
+    // 사장됐다(BALANCE_AUDIT.md). 5면 영수증 1값을 넘어서므로 "선불한 2코"의 대가가 생긴다.
+    private const int Vigor = 5;
 
     protected override IEnumerable<DynamicVar> CanonicalVars => new DynamicVar[] { new PowerVar<VigorPower>(Vigor) };
 

@@ -510,10 +510,15 @@ internal static class LoanService
         if (t == typeof(InvoiceCard) || t == typeof(GarnishmentCard) || t == typeof(BankruptcyCard) || t == typeof(RefinanceCard)
             || t == typeof(PromissoryNoteCard) || t == typeof(LeverageCard)) return 85;   // 고급: scaling attack / AoE / debt payoff / tempo / principal-scaled attack
         if (t == typeof(JobPlacementCard) || t == typeof(KitingCard)) return 75;   // 취업알선 / 돌려막기: income skills
-        if (t == typeof(RefundCard) || t == typeof(CounterclaimCard)
-            || t == typeof(StatementCard) || t == typeof(InterestSupportCard)
-            || t == typeof(PaymentBenefitCard)
-            || t == typeof(CollectionCard)) return 80;   // 파워 엔진(영구 가치)
+        // ★파워 엔진 6종을 성능에 따라 3단으로 벌린다. 예전엔 전부 80이었는데, 빚 상점은 한 방문에 유료
+        // 카드를 딱 한 장만 살 수 있으므로(ShopCreditLimit), 값이 같으면 플레이어는 매번 상위 두 장만 집고
+        // 나머지 넷은 영구히 팔리지 않는다. 값을 벌려야 "명세서를 95에 살까, 추심을 75에 사고 남길까"가
+        // 실제 선택이 된다. 등급 근거는 BALANCE_AUDIT.md(게임 본편 548장 분포 대조).
+        if (t == typeof(StatementCard) || t == typeof(PaymentBenefitCard)) return 95;   // 강: 매 턴 드로우 / 판금 순 +2턴 누적
+        if (t == typeof(RefundCard) || t == typeof(CounterclaimCard)) return 85;        // 중: 성실 납부 공급 / 납부마다 5피해
+        if (t == typeof(CollectionCard) || t == typeof(InterestSupportCard)) return 75; // 약: 2코 선불+영수증 재지불 / 전투 효과 0
+        // ⚠️약 티어를 65로 내리지 말 것: 서로 다른 두 장이 60+60=120이 되어 "유료 정가 2장은 한 방문에
+        // 들어가지 않는다"는 불변식이 깨진다(75면 최저 조합이 60+65=125로 유지). solo-verify가 잡아낸다.
         if (t == typeof(SettlementCard) || t == typeof(LoanStrikeCard) || t == typeof(MortgageCard)) return 75;   // 중급
         if (t == typeof(BloodPaymentCard)) return 65;   // 기본: HP-payment utility
         return 75;

@@ -86,10 +86,14 @@ internal static class DebtLoanConfig
     internal static int MaxLoanActIndex = 0;
 
     // ── Debt LEVERAGE (독촉장 / Dunning Letter payoff) ───────────────────────────────────────────────
-    /// <summary>Plating (판금) granted when a 빚 독촉 is played WHILE the 독촉장 (Dunning Letter) power is active.
-    /// The reward lives on the power, not the curse — a plain forced Debt card gives no Plating. The 독촉장
-    /// feeds you a 빚 독촉 each turn, so this is a repeatable defensive/repayment engine (no offense).</summary>
-    internal static int LeveragePlating = 3;
+    /// <summary>Plating (판금) that 납부 혜택 (PaymentBenefitPower) grants on every 납부. ★이름은 옛 구조
+    /// (독촉장)에서 왔지만 실제 사용처는 납부 혜택 하나뿐이다 — 정기 납부의 {plate} 변수는 loc에서 참조되지
+    /// 않는 잔재.
+    /// ★3 → 2로 하향. 판금은 매 턴 시작에 1 감소하는데 납부는 매 턴 최소 1회 나오므로, 3이면 순 +2/턴으로
+    /// 무한 누적한다(5턴 누적 방어도 35, 이후로도 계속 성장). 비교군 돌 갑옷은 1코 판금 4 일회성이라
+    /// 4→3→2→1로 감쇠해 총 10이다. 2로 내려도 순 +1/턴이라 스케일링 엔진의 정체성은 유지된다.
+    /// 근거: BALANCE_AUDIT.md (판금 동작은 실 DLL 확인).</summary>
+    internal static int LeveragePlating = 2;
 
     // ── 신용 회복 (Credit Restored) reward gate ──────────────────────────────────────────────────────────
     /// <summary>Clearing a loan grants the permanent 신용 회복 reward card ONLY if it reached at least this tier…</summary>

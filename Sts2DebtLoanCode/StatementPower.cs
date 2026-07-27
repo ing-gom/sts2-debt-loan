@@ -14,7 +14,7 @@ namespace Sts2DebtLoan;
 /// </summary>
 public sealed class StatementPower : PowerModel
 {
-    private const int DrawCount = 1;
+    // 뽑는 장수는 적용될 때 실린 Amount(명세서 1 / 명세서+ 2). 환급이 Amount로 티어를 나르는 것과 동형.
 
     public override PowerType Type => PowerType.Buff;
     public override PowerStackType StackType => PowerStackType.Single;
@@ -22,6 +22,6 @@ public sealed class StatementPower : PowerModel
     public async Task OnPayment(PlayerChoiceContext cc, Player player)
     {
         if (player?.Creature?.CombatState == null) return;
-        await CardPileCmd.Draw(cc, DrawCount, player, fromHandDraw: false);
+        await CardPileCmd.Draw(cc, (int)Amount, player, fromHandDraw: false);
     }
 }
