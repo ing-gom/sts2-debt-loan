@@ -59,6 +59,7 @@ public sealed class ForcedCollectionCard : CardModel
         await Cmd.Wait(0.25f);
         await CreatureCmd.Damage(choiceContext, Owner.Creature, HpLoss, ValueProp.Unblockable | ValueProp.Unpowered | ValueProp.Move, this);
         LoanService.ForceRepayPrincipal(Owner, PrincipalPay);
+        await LoanService.FinishForcedSettle(Owner);   // 원금이 0이 됐다면 저주까지 그 자리에서 정리
         await CardPileCmd.RemoveFromCombat(this);   // one collection per card, then gone
     }
 }

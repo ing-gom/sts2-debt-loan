@@ -698,15 +698,15 @@ internal sealed partial class NDebtCardShopPanel : Control
         }
         if (labelB != null) labelB.Visible = false;
 
-        chipA.Pressed += () => TaskHelper.RunSafely(ClaimFlow(removeChoice: false));
-        chipB.Pressed += () => TaskHelper.RunSafely(ClaimFlow(removeChoice: true));
+        chipA.Pressed += () => TaskHelper.RunSafely(ClaimFlow());
+        chipB.Pressed += () => TaskHelper.RunSafely(ClaimFlow());
         foreach (var (btn, isRemove) in new[] { (chipA, false), (chipB, true) })
         {
             var b = btn; bool rm = isRemove;
             b.MouseEntered += () =>
             {
                 NHoverTipSet.Remove(b);
-                NHoverTipSet.CreateAndShow(b, MakeRungTip(rw, rm), HoverTipAlignment.Left);
+                NHoverTipSet.CreateAndShow(b, MakeRungTip(rw), HoverTipAlignment.Left);
                 _shop?.MerchantHand?.PointAtTarget(b, Vector2.Zero);
             };
             b.MouseExited += () => { NHoverTipSet.Remove(b); _shop?.MerchantHand?.StopPointing(0.15f); };
@@ -718,7 +718,7 @@ internal sealed partial class NDebtCardShopPanel : Control
             int remaining = r != null ? LoanService.RemainingShopCredit(r) : DebtLoanConfig.ShopCreditLimit;
             label.Text = string.Format(ui.Credit, remaining, DebtLoanConfig.ShopCreditLimit);
             if (scoreLabel != null)
-                scoreLabel.Text = string.Format(scoreFmt, LoanService.CreditScore(r), r?.TotalPaid ?? 0);
+                scoreLabel.Text = string.Format(scoreFmt, LoanService.CreditScore(r), r?.CreditPaid ?? 0);   // ★신용도가 세는 값
             // Warn-tint when the line is used up (nothing more can be bought here this visit).
             label.SelfModulate = remaining <= 0 ? StsColors.red : StsColors.cream;
 
@@ -729,7 +729,7 @@ internal sealed partial class NDebtCardShopPanel : Control
             string pts = string.Format(shortFmt, tier / Math.Max(1, DebtLoanConfig.GoldPerCreditPoint));
 
             // 보너스면 두 칸(강화/제거)을 나란히, 아니면 가운데 한 칸.
-            bool two = bonus && ready;
+            bool two = false;   // ★보너스는 교대라 선택이 없다 — 칩은 항상 하나
             float w = 230f, gap = 12f;
             float totalW = two ? w * 2 + gap : w;
             float x0 = _bw / 2f - totalW / 2f;
@@ -745,7 +745,9 @@ internal sealed partial class NDebtCardShopPanel : Control
 
             if (labelA != null)
             {
-                labelA.Text = two ? $"{pts} {rw.BonusUpgrade}" : ready ? $"{pts} {rw.Claim}" : pts;
+                labelA.Text = !ready ? pts
+                            : bonus ? $"{pts} {(LoanService.BonusIsRemoval(idx) ? rw.BonusRemove : rw.BonusUpgrade)}"
+                            : $"{pts} {rw.Claim}";
                 labelA.Modulate = ready ? RewardGold : LockedGrey;
             }
             if (labelB != null && two)
@@ -761,15 +763,15 @@ internal sealed partial class NDebtCardShopPanel : Control
     /// <summary>지금 차례인 단계 하나짜리 툴팁 — 그 보상이 무엇이고 지금 어떤 상태인지. 아직 못 간 단계는
     /// <b>앞으로 몇 골드</b>가 남았는지 말해준다(사다리가 목표로 읽히게 하는 핵심 문구).
     /// 보너스 단계에서는 <paramref name="removeChoice"/> 로 갈라진 두 칩이 각자의 설명을 갖는다.</summary>
-    private IHoverTip MakeRungTip(DebtLoanLoc.RewardUiRow rw, bool removeChoice)
+    private IHoverTip MakeRungTip(DebtLoanLoc.RewardUiRow rw)
     {
         var rec = LoanService.For(_player);
-        int paid = rec?.TotalPaid ?? 0;
+        int paid = rec?.CreditPaid ?? 0;   // 사다리는 신용도 기준값으로 잰다
         int idx = LoanService.NextRewardIndex(rec);
         int tier = LoanService.RewardTierAt(idx);
         bool bonus = LoanService.IsBonusReward(idx);
         string[] fixedNames = { rw.RungCard, rw.RungUpgrade, rw.RungUpgradeAny, rw.RungRemoveAny };
-        string name = bonus ? (removeChoice ? rw.RungRemoveAny : rw.RungUpgradeAny) : fixedNames[idx];
+        string name = bonus ? (LoanService.BonusIsRemoval(idx) ? rw.RungRemoveAny : rw.RungUpgradeAny) : fixedNames[idx];
         string body = paid >= tier ? rw.Ready : string.Format(rw.ToGo, tier - paid);
         // 헤더와 같은 서식을 재사용 → "신용도 3  (누적 300 골드 상환)". 단위(신용도)와 실제 금액을 한 줄에.
         var scoreFmt = DebtLoanLoc.CreditScoreFormatFor(MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng");
@@ -780,12 +782,12 @@ internal sealed partial class NDebtCardShopPanel : Control
 
     /// <summary>수령 → 새로고침. 900/1200 은 여기서 카드 선택 화면이 열리고, co-op 이면 그 선택을 엔진이
     /// 양 피어 간에 맞춘다(<see cref="LoanService.ClaimCreditReward"/> 주석 참조).</summary>
-    private async Task ClaimFlow(bool removeChoice)
+    private async Task ClaimFlow()
     {
         if (_player == null) return;
         try
         {
-            if (!await LoanService.ClaimCreditReward(_player, removeChoice)) return;
+            if (!await LoanService.ClaimCreditReward(_player)) return;
             await Task.Delay(120);
             foreach (var f in _refreshers) f();
         }
@@ -807,7 +809,7 @@ internal sealed partial class NDebtCardShopPanel : Control
         var rw = DebtLoanLoc.RewardUiFor(lang);
         var shortFmt = DebtLoanLoc.CreditShortFormatFor(lang);
         var rec = LoanService.For(player);
-        int paid = rec?.TotalPaid ?? 0;
+        int paid = rec?.CreditPaid ?? 0;   // 사다리는 신용도 기준값으로 잰다
         int next = LoanService.NextRewardIndex(rec);
         var fixedTiers = LoanService.CreditRewardTiers;
         string[] names = { rw.RungCard, rw.RungUpgrade, rw.RungUpgradeAny, rw.RungRemoveAny };
@@ -827,6 +829,10 @@ internal sealed partial class NDebtCardShopPanel : Control
         }
         // 무한 보너스 안내 — 12 이후로도 상환이 계속 값어치를 갖는다는 것 자체가 정보다.
         sb.Append($"[gold]∞[/gold] {string.Format(rw.BonusNote, DebtLoanConfig.BonusRewardCredits)}");
+        // ★목돈 상환이 어디까지 신용이 되는지 = 사다리를 읽는 데 반드시 필요한 규칙.
+        int capPts = DebtLoanConfig.LumpSumCreditCap / Math.Max(1, DebtLoanConfig.GoldPerCreditPoint);
+        sb.Append("\n" + string.Format(DebtLoanLoc.LumpCapNoteFor(lang),
+                                       string.Format(DebtLoanLoc.CreditShortFormatFor(lang), capPts)));
         return sb.ToString();
     }
 

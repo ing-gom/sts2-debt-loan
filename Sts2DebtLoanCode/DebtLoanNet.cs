@@ -29,7 +29,7 @@ public sealed class DebtLoanNetCmd : AbstractConsoleCmd
     public const string Verb = "dl_sync";
 
     public override string CmdName => Verb;
-    public override string Args => "<active <borrowed> <principal> <totalPaid> <loanFloor> | buy <cardType> <price> [upgraded] | repaid | claim <index> [choice] | purge <price>>";
+    public override string Args => "<active <borrowed> <principal> <totalPaid> <loanFloor> | buy <cardType> <price> [upgraded] | repaid | claim <index> | purge <price>>";
     public override string Description =>
         "Internal (networked): replicate a player's merchant loan (Ledger relic + state) to every co-op peer.";
     public override bool IsNetworked => true;   // routes through the synchronized action queue
@@ -76,14 +76,13 @@ public sealed class DebtLoanNetCmd : AbstractConsoleCmd
             // 엔진이 `ReserveChoiceId → SyncLocalChoice / WaitForRemoteChoice` 로 처리하려면 **양 피어가 같은
             // 큐 위치에서** 그 핸드셰이크에 들어가야 하기 때문이다. detached 로 띄우면 두 피어의 진입 시점이
             // 엇갈려 choiceId 가 어긋날 수 있다. (dl_testcard 가 쓰는 것과 같은 관용구.)
-            // args = <index> <removeChoice 0|1>. ★인덱스를 싫는 이유 = 보너스 단계가 무한이라
-            // 문턱값으로는 단계를 특정할 수 없고, 순차 검사(index == 다음 차례)가 그대로 멱등성 가드가 된다.
-            // choice 는 보너스에서 어느 화면을 열지 — 두 피어가 반드시 같아야 하므로 전선에 싱는다.
-            if (args.Length < 2) return new CmdResult(success: false, "dl_sync claim: expected <index> [choice].");
+            // args = <index>. ★인덱스를 싣는 이유 = 보너스 단계가 무한이라 문턱값으로는 단계를
+            // 특정할 수 없고, 순차 검사(index == 다음 차례)가 그대로 멱등 가드가 된다. 보너스의 보상
+            // 종류(제거/강화)는 인덱스에서 교대로 결정되므로 전선에 실을 필요가 없다.
+            if (args.Length < 2) return new CmdResult(success: false, "dl_sync claim: expected <index>.");
             int.TryParse(args[1], NumberStyles.Integer, inv, out int rewardIndex);
-            bool removeChoice = args.Length > 2 && args[2] == "1";
-            return new CmdResult(LoanService.ApplyClaimReward(issuingPlayer, rewardIndex, removeChoice), success: true,
-                                 $"dl_sync claim #{rewardIndex}{(removeChoice ? " remove" : "")}.");
+            return new CmdResult(LoanService.ApplyClaimReward(issuingPlayer, rewardIndex), success: true,
+                                 $"dl_sync claim #{rewardIndex}.");
         }
 
         if (state == "purge")
@@ -118,8 +117,8 @@ internal static class DebtLoanNet
     internal static void BroadcastRepay(Player owner, int paidAdd)
         => Dispatch(owner, $"{DebtLoanNetCmd.Verb} repaid {paidAdd}");
 
-    internal static void BroadcastClaim(Player owner, int index, bool removeChoice)
-        => Dispatch(owner, $"{DebtLoanNetCmd.Verb} claim {index} {(removeChoice ? 1 : 0)}");
+    internal static void BroadcastClaim(Player owner, int index)
+        => Dispatch(owner, $"{DebtLoanNetCmd.Verb} claim {index}");
 
     internal static void BroadcastPurge(Player owner, int price)
         => Dispatch(owner, $"{DebtLoanNetCmd.Verb} purge {price}");

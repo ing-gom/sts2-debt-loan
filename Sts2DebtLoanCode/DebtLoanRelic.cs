@@ -128,6 +128,16 @@ public sealed class DebtLoanRelic : RelicModel
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public bool PurgedThisVisit { get => _purgedThisVisit; set { AssertMutable(); _purgedThisVisit = value; } }
 
+    private int _creditPaid;
+    /// <summary>신용도로 인정된 상환액(목돈은 상한까지만). See <see cref="LoanRecord.CreditPaid"/>.</summary>
+    [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
+    public int CreditPaid { get => _creditPaid; set { AssertMutable(); _creditPaid = value; } }
+
+    private bool _pendingSettleCleanup;
+    /// <summary>강제 청산 뒷정리 대기(리로드로 유실되면 저주가 영영 남는다). See <see cref="LoanRecord.PendingSettleCleanup"/>.</summary>
+    [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
+    public bool PendingSettleCleanup { get => _pendingSettleCleanup; set { AssertMutable(); _pendingSettleCleanup = value; } }
+
     private string _purchasedCardsCsv = "";
     /// <summary>CSV of non-power card type-names BOUGHT on debt at the shop this loan (so it shows them sold-out and
     /// won't re-sell). Persisted; cleared on repay.</summary>
@@ -363,6 +373,11 @@ internal static class DebtLoanGrants
             var prefs = new CardSelectorPrefs(CardSelectorPrefs.UpgradeSelectionPrompt, 1) { Cancelable = false };
             var picked = (await CardSelectCmd.FromDeckForUpgrade(player, prefs)).FirstOrDefault();
             if (picked == null) { MainFile.Logger.Info($"[{MainFile.ModId}] upgrade reward: nothing upgradable."); return; }
+            // ★★FromDeckForUpgrade 는 **고르기만 하고 강화는 하지 않는다**(실 DLL 확인: 선택을 돌려주고
+            // 끝). 이걸 놓쳐서 신용도 9 보상과 보너스 강화가 **단계만 소모하고 아무 일도 안 했다**.
+            // 제거 쪽은 CardPileCmd.RemoveFromDeck 을 명시적으로 불러 멀젖했다.
+            picked.UpgradeInternal();
+            picked.FinalizeUpgradeInternal();
             MainFile.Logger.Info($"[{MainFile.ModId}] credit reward upgraded '{picked.Id.Entry}'.");
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] deck-upgrade reward failed: {e.Message}"); }

@@ -244,6 +244,33 @@ internal static class CoopTest
             W($"HOST: ⑦ claim pending {pendingBefore}→{LoanService.PendingRewardCount(LoanService.For(me))} "
               + $"claimed {claimedBefore}→{LoanService.For(me)?.CreditRewardsTaken} paid={LoanService.For(me)?.TotalPaid}");
 
+            // ⑦-b ★★엔진 choice 핸드셰이크 실측 — 지금까지 유일하게 남아 있던 미검증 구간.
+            //   하네스 셀렉터를 양 피어에서 끄고(dl_testsel 0), 신용 상태를 900/taken=2 로 맞춘 뒤
+            //   (dl_testcredit) 수령하면 엔진이 실제 덱 강화 화면을 띄운다. 호스트가 그 화면을 확정하면
+            //   SyncLocalChoice → 조인의 WaitForRemoteChoice 가 풀린다. 양 피어가 **같은 카드**를 강화했는지가
+            //   FINAL 의 upg= 서명으로 드러난다.
+            Step("HOST 엔진 choice 핸드셰이크");
+            run.ActionQueueSynchronizer.RequestEnqueue(new ConsoleCmdGameAction(me, "dl_testsel 0", inCombat: false));
+            await Task.Delay(2500);
+            run.ActionQueueSynchronizer.RequestEnqueue(new ConsoleCmdGameAction(me, "dl_testcredit 900 2", inCombat: false));
+            await Task.Delay(2500);
+            var recHs = LoanService.For(me);
+            W($"HOST: ⑦b before — creditPaid={recHs?.CreditPaid} taken={recHs?.CreditRewardsTaken} "
+              + $"nextTier={LoanService.NextRewardTier(recHs)}(900) claimable={LoanService.CanClaimNextReward(recHs)}");
+            TaskHelper.RunSafely(LoanService.ClaimCreditReward(me));   // 화면이 뜰 때까지 기다려야 하므로 detach
+            string picked = "(none)";
+            for (int i = 0; i < 20 && picked == "(none)"; i++)
+            {
+                await Task.Delay(1000);
+                string r = DriveCardSelectScreen();
+                if (!r.StartsWith("(")) picked = r;
+            }
+            await Task.Delay(5000);   // SyncLocalChoice → 상대 WaitForRemoteChoice 해소까지
+            W($"HOST: ⑦b engine-handshake picked={picked} taken={LoanService.For(me)?.CreditRewardsTaken}(3)");
+            run.ActionQueueSynchronizer.RequestEnqueue(new ConsoleCmdGameAction(me, "dl_testsel 1", inCombat: false));
+            await Task.Delay(2500);
+            await Shot("03d_handshake");
+
             await LoanService.GrantLoanDirect(me, 100);
             await Task.Delay(4000);
             var recNew = LoanService.For(me);
@@ -396,7 +423,7 @@ internal static class CoopTest
             string lastLine = "";
             int bailoutMax = 0;
             bool playedBailout = false;
-            for (int i = 0; i < 170 && !File.Exists(hostTxt); i++)   // 청산+재대출+room 전환이 붙어 호스트 스크립트가 길어졌다
+            for (int i = 0; i < 220 && !File.Exists(hostTxt); i++)   // 엔진 핸드셰이크 단계가 추가돼 또 길어졌다   // 청산+재대출+room 전환이 붙어 호스트 스크립트가 길어졌다
             {
                 Step($"JOIN waiting for host (t+{i * 2}s)");
                 if (run.State == null || run.State.Players.Count == 0) break;   // dropped mid-loop → fall through to the report
@@ -482,7 +509,20 @@ internal static class CoopTest
              // ★신규: 수령한 보상 문턱(유물 SavedProperty → 체크섬)과 덱 장수(빚 제거·보상 카드가 다 여기 드러난다).
              + $"claimed={(rec != null ? rec.CreditRewardsTaken.ToString() : "n/a")} "
              + $"deck={PileType.Deck.GetPile(h)?.Cards?.Count ?? -1} "
-             + $"purges={h.ExtraFields?.CardShopRemovalsUsed ?? -1}";
+             + $"purges={h.ExtraFields?.CardShopRemovalsUsed ?? -1} "
+             // ★엔진 choice 핸드셰이크의 산출물 — 두 피어가 **같은 카드**를 강화했는지가 핵심.
+             + $"upg={UpgradedSignature(h)}";
+    }
+
+    /// <summary>덱에서 강화된 카드의 서명(개수 + 첫 카드 id). 엔진이 동기화한 선택이 양 피어에서 같은
+    /// 카드였는지를 이 문자열 하나로 비교한다.</summary>
+    private static string UpgradedSignature(Player p)
+    {
+        // ★전투 중엔 PileType.Deck.GetPile 이 전투 파일을 가리켜 마스터 덱의 강화가 안 보인다 —
+        // solo 가 쓰는 player.Deck(마스터 덱)을 그대로 써야 두 피어를 같은 기준으로 비교할 수 있다.
+        var up = p.Deck?.Cards?.Where(c => c.IsUpgraded).Select(c => c.Id.Entry).OrderBy(x => x).ToList();
+        if (up == null || up.Count == 0) return "0:-";
+        return $"{up.Count}:{up[0]}";
     }
 
     /// <summary>How many cards this player has bought on debt (their sold-set size), or -1 if they carry no loan.
@@ -562,6 +602,9 @@ internal static class CoopTest
     private static readonly HashSet<string> _pumpIgnore = new();
     private const int PumpGraceMs = 4000;
     private static IDisposable? _selectorScope;
+    /// <summary>엔진 핸드쉐이크 실측 중엔 펌프가 셀렉터를 다시 밀지 못하게 막는다 —
+    /// PumpLoop 가 매 반복 EnsureSelector() 를 부르므로 이 게 없으면 끄자마자 부활한다(실측으로 확인).</summary>
+    private static bool _selectorSuspended;
     private static bool _pumpRunning;
 
     private static void StartAutomation()
@@ -574,8 +617,61 @@ internal static class CoopTest
         W($"selection automation on (selector + {handlers} screen handler(s), grace {PumpGraceMs}ms)");
     }
 
+    /// <summary>하네스 셀렉터를 끈다/켠다. ★엔진 핸드셰이크를 실측하려면 반드시 꺼야 한다 —
+    /// <c>CardSelectCmd.Selector</c> 가 살아 있으면 엔진이 ReserveChoiceId 블록을 통째로 건너뛴다.
+    /// 두 피어가 <b>동시에</b> 꺼져 있어야 하므로 networked 커맨드로 토글한다.</summary>
+    internal static void SetSelector(bool on)
+    {
+        try
+        {
+            if (on) { _selectorSuspended = false; EnsureSelector(); W("  [selector] ON (하네스 자동 선택)"); }
+            else    { _selectorSuspended = true; _selectorScope?.Dispose(); _selectorScope = null; CardSelectCmd.Reset();
+                      W($"  [selector] OFF (엔진 실경로 사용) selector={(CardSelectCmd.Selector == null ? "null" : "STILL SET")}"); }
+        }
+        catch (Exception e) { W("selector toggle failed: " + e.Message); }
+    }
+
+    /// <summary>열려 있는 카드 선택 화면을 찾아 첫 카드로 확정한다(= 마우스 클릭 대신).
+    /// 화면의 <c>_completionSource</c> 를 채우면 <c>await screen.CardsSelected()</c> 가 풀리고, 엔진이
+    /// 이어서 <c>SyncLocalChoice</c> 를 호출한다 — 그게 상대 피어의 WaitForRemoteChoice 를 푼다.</summary>
+    internal static string DriveCardSelectScreen()
+    {
+        if (Engine.GetMainLoop() is not SceneTree tree) return "(no tree)";
+        var screen = FindSelectScreen(tree.Root);
+        if (screen == null) return "(no screen)";
+        try
+        {
+            var t = screen.GetType();
+            FieldInfo? cardsF = null, srcF = null;
+            for (var ty = t; ty != null && (cardsF == null || srcF == null); ty = ty.BaseType)
+            {
+                cardsF ??= ty.GetField("_cards", BindingFlags.NonPublic | BindingFlags.Instance);
+                srcF   ??= ty.GetField("_completionSource", BindingFlags.NonPublic | BindingFlags.Instance);
+            }
+            if (cardsF?.GetValue(screen) is not IReadOnlyList<CardModel> cards || cards.Count == 0) return "(no cards)";
+            var pick = cards[0];   // ★결정적: 항상 첫 카드
+            var src = srcF?.GetValue(screen);
+            var trySet = src?.GetType().GetMethod("TrySetResult");
+            trySet?.Invoke(src, new object[] { new List<CardModel> { pick } });
+            return pick.Id.Entry;
+        }
+        catch (Exception e) { return "(drive failed: " + e.Message + ")"; }
+    }
+
+    private static Node? FindSelectScreen(Node root)
+    {
+        if (root.GetType().Name.Contains("SelectScreen") || root.GetType().Name.Contains("SelectionScreen"))
+        {
+            for (var ty = root.GetType(); ty != null; ty = ty.BaseType)
+                if (ty.Name == "NCardGridSelectionScreen") return root;
+        }
+        foreach (var c in root.GetChildren()) { var hit = FindSelectScreen(c); if (hit != null) return hit; }
+        return null;
+    }
+
     private static void EnsureSelector()
     {
+        if (_selectorSuspended) return;   // ★핸드쉐이크 실측 구간에선 절대 되살리지 않는다
         try { if (CardSelectCmd.Selector == null) _selectorScope = CardSelectCmd.PushSelector(new AutoSelector()); }
         catch (Exception e) { W("selector push failed: " + e.Message); }
     }
@@ -789,6 +885,48 @@ public sealed class DebtLoanTestMissCmd : MegaCrit.Sts2.Core.DevConsole.ConsoleC
 ///
 /// The created Task rides the CmdResult (like the built-in CardConsoleCmd) so the action AWAITS it — no detached
 /// RunSafely inside a mid-command hook (coop-guard class 1). Position is Top, not Random, so no RNG is consumed.</summary>
+/// <summary>TEST(networked): 신용 상태를 양 피어에 동일하게 세팅한다. ★로컬로 rec 를 만지면 유물
+/// SavedProperty 가 갈라져 그 자체로 desync 다 — 반드시 두 피어가 함께 적용해야 한다.</summary>
+public sealed class DebtLoanTestCreditCmd : MegaCrit.Sts2.Core.DevConsole.ConsoleCommands.AbstractConsoleCmd
+{
+    public override string CmdName => "dl_testcredit";
+    public override string Args => "<creditPaid> <taken>";
+    public override string Description => "TEST: set credit-paid + claimed-count on both peers.";
+    public override bool IsNetworked => true;
+    public override bool DebugOnly => false;
+
+    public override CmdResult Process(Player? issuingPlayer, string[] args)
+    {
+        var rec = issuingPlayer != null ? LoanService.For(issuingPlayer) : null;
+        if (rec == null) return new CmdResult(success: false, "dl_testcredit: no loan record.");
+        if (args.Length < 2) return new CmdResult(success: false, "dl_testcredit: <creditPaid> <taken>");
+        int.TryParse(args[0], out int paid);
+        int.TryParse(args[1], out int taken);
+        rec.CreditPaid = paid;
+        rec.CreditRewardsTaken = taken;
+        LoanService.SyncToRelicForTest(issuingPlayer!);
+        return new CmdResult(success: true, $"dl_testcredit paid={paid} taken={taken}.");
+    }
+}
+
+/// <summary>TEST(networked): 하네스 셀렉터를 양 피어에서 동시에 끄고/켠다. 엔진의 choice 핸드셰이크를
+/// 실측하려면 두 피어 모두 셀렉터가 없어야 한다(있으면 엔진이 동기화 블록을 건너뛴다).</summary>
+public sealed class DebtLoanTestSelectorCmd : MegaCrit.Sts2.Core.DevConsole.ConsoleCommands.AbstractConsoleCmd
+{
+    public override string CmdName => "dl_testsel";
+    public override string Args => "<0|1>";
+    public override string Description => "TEST: toggle the harness card-selector on both peers.";
+    public override bool IsNetworked => true;
+    public override bool DebugOnly => false;
+
+    public override CmdResult Process(Player? issuingPlayer, string[] args)
+    {
+        bool on = args.Length > 0 && args[0] == "1";
+        CoopTest.SetSelector(on);
+        return new CmdResult(success: true, $"dl_testsel {(on ? "on" : "off")}.");
+    }
+}
+
 public sealed class DebtLoanTestCardCmd : MegaCrit.Sts2.Core.DevConsole.ConsoleCommands.AbstractConsoleCmd
 {
     public override string CmdName => "dl_testcard";
