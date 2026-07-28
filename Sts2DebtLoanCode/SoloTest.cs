@@ -155,7 +155,6 @@ internal static class SoloTest
             // Deterministic config for the scenario.
             DebtLoanConfig.MaxLoan = 300;
             DebtLoanConfig.PrincipalRepayShare = 0.2;
-            DebtLoanConfig.MaxLoanActIndex = 2;   // allow loans in every act for the test
 
             bool all = true;
 

@@ -81,9 +81,9 @@ internal static class DebtLoanConfig
     /// Debt-shop CARD buys don't count here; they have their own per-visit credit line (ShopCreditLimit).</summary>
     internal static int MaxLoanDraws = 3;
 
-    /// <summary>Highest act (0-based) where the merchant still lends: 0 = Act 1 only (default), 1 = through
-    /// Act 2, 2 = through Act 3. Compared against <c>RunState.CurrentActIndex</c>.</summary>
-    internal static int MaxLoanActIndex = 0;
+    // ⚠️MaxLoanActIndex 는 제거됐다. 막 제한이 폐지되면서(LoanService.ActAllowsLoan → 항상 true) 이 설정이
+    // 아무 일도 하지 않는 죽은 슬라이더가 됐고, 유저가 조정해도 반응이 없어 오히려 오해를 만들었다.
+    // 막 제한을 되살리려면 ActAllowsLoan 이 다시 설정을 읽게 하고 여기에 필드를 복원할 것.
 
     // ── Debt LEVERAGE (독촉장 / Dunning Letter payoff) ───────────────────────────────────────────────
     /// <summary>Plating (판금) that 납부 혜택 (PaymentBenefitPower) grants on every 납부. ★이름은 옛 구조
