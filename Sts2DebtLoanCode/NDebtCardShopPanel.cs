@@ -7,7 +7,7 @@ using MegaCrit.Sts2.Core.Entities.Cards;       // PileType, CardPreviewMode
 using MegaCrit.Sts2.Core.Entities.Players;     // Player
 using MegaCrit.Sts2.Core.Helpers;              // TaskHelper, StsColors
 using MegaCrit.Sts2.Core.Assets;               // PreloadManager (repay icon fallback)
-using MegaCrit.Sts2.Core.HoverTips;            // HoverTip, IHoverTip, HoverTipAlignment
+using MegaCrit.Sts2.Core.HoverTips;            // HoverTip, IHoverTip, HoverTipAlignment, HoverTipFactory
 using MegaCrit.Sts2.Core.Models;               // CardModel, ModelDb
 using MegaCrit.Sts2.Core.Nodes;                // NGame (card inspect screen)
 using MegaCrit.Sts2.Core.Nodes.Cards;          // NCard
@@ -48,6 +48,20 @@ internal sealed partial class NDebtCardShopPanel : Control
     private static readonly Color FreeGold = new(1.00f, 0.84f, 0.35f);     // the slot-0 gift's "FREE" word (gold, not the debt green)
     private static readonly Color RewardGold = new(1.00f, 0.78f, 0.28f);   // 수령 가능한 보상 칩 (금색 — 빚 초록/상환 크림과 구분)
     private static readonly Color ClaimedGreen = new(0.46f, 0.62f, 0.44f);  // 이미 받은 단계 — 있지만 끝난 일
+    /// <summary>보상 칩 가로폭. ★보상 '이름'까지 싣게 되면서 230 → 620 으로 넓혔다 — 잠긴 단계도
+    /// 무엇이 오는지 보여야 사다리가 목표로 읽히기 때문(유저 요청).</summary>
+    private const float ChipW = 620f;
+    /// <summary>CardScale 로 렌더된 카드의 대략적인 절반 높이(px). 카드는 Node2D 라 Position 이
+    /// <b>중심</b>이므로, 툴팁 아래에 붙이려면 이만큼 내려야 한다.</summary>
+    /// <summary>미리보기 카드는 진열 오퍼보다 작게 그린다 — 툴팁+카드 스택이 오퍼 줄과 하단 액션 줄
+    /// 사이의 빈 띄에 들어가야 하기 때문(0.55 로는 상환 버튼을 덮고 화면 밖으로 나간다 — 실측).</summary>
+    /// <summary>미리보기 카드 배율 — ★진열 오퍼와 <b>같은 크기</b>(CardScale). 0.35 로 줄였더니
+    /// 카드 설명 글씨가 뭉개져 "무슨 카드인지"를 알 수 없었다(유저 지적). 상단 띄는 오퍼 줄(y≈400)까지
+    /// 300px 가량 비어 있어 이 크기가 들어간다.</summary>
+    private const float PreviewScale = CardScale;
+    private const float CardHalfH = 118f;
+    private const float CardHalfW = 85f;
+
     private static readonly Color LockedGrey = new(0.52f, 0.50f, 0.47f);    // 아직 못 간 단계 — 보이되 가라앉지 않게
 
     private NMerchantInventory _shop = null!;
@@ -676,28 +690,29 @@ internal sealed partial class NDebtCardShopPanel : Control
         {
             Name = "dl_reward_chip",   // solo-verify 가 이름으로 찾아 클릭/호버를 재현한다
             Flat = true, Text = "", FocusMode = FocusModeEnum.None,
-            Size = new Vector2(230f, 44f),
+            Size = new Vector2(ChipW, 44f),
         };
         var chipB = new Button
         {
             Name = "dl_reward_chip_alt",
             Flat = true, Text = "", FocusMode = FocusModeEnum.None, Visible = false,
-            Size = new Vector2(230f, 44f),
+            Size = new Vector2(ChipW, 44f),
         };
         board.AddChild(chipA);
         board.AddChild(chipB);
-        var labelA = MakeLabel("", 26, RewardGold);
-        var labelB = MakeLabel("", 26, RewardGold);
+        var labelA = MakeLabel("", 24, RewardGold);
+        var labelB = MakeLabel("", 24, RewardGold);
         foreach (var l in new[] { labelA, labelB })
         {
             if (l == null) continue;
             l.HorizontalAlignment = HorizontalAlignment.Center;
             l.VerticalAlignment = VerticalAlignment.Center;
-            l.Size = new Vector2(230f, 44f);
+            l.Size = new Vector2(ChipW, 44f);
             board.AddChild(l);
         }
         if (labelB != null) labelB.Visible = false;
 
+        _rewardChipLabel = labelA;
         chipA.Pressed += () => TaskHelper.RunSafely(ClaimFlow());
         chipB.Pressed += () => TaskHelper.RunSafely(ClaimFlow());
         foreach (var (btn, isRemove) in new[] { (chipA, false), (chipB, true) })
@@ -706,10 +721,13 @@ internal sealed partial class NDebtCardShopPanel : Control
             b.MouseEntered += () =>
             {
                 NHoverTipSet.Remove(b);
-                NHoverTipSet.CreateAndShow(b, MakeRungTip(rw), HoverTipAlignment.Left);
+                // ★★커스텀 버튼은 게임이 위치를 안 잡아준다 — alignment 만 넘기면 툴팁이 (0,0),
+                //   즉 좌상단 HUD 뒤에 깔린다(실측). 만든 뒤 **직접 GlobalPosition** 을 준다.
+                PlaceTip(NHoverTipSet.CreateAndShow(b, MakeRungTips(rw), HoverTipAlignment.None), b);
+                ShowRewardCardPreview();
                 _shop?.MerchantHand?.PointAtTarget(b, Vector2.Zero);
             };
-            b.MouseExited += () => { NHoverTipSet.Remove(b); _shop?.MerchantHand?.StopPointing(0.15f); };
+            b.MouseExited += () => { NHoverTipSet.Remove(b); HideRewardCardPreview(); _shop?.MerchantHand?.StopPointing(0.15f); };
         }
 
         void Refresh()
@@ -730,7 +748,7 @@ internal sealed partial class NDebtCardShopPanel : Control
 
             // 보너스면 두 칸(강화/제거)을 나란히, 아니면 가운데 한 칸.
             bool two = false;   // ★보너스는 교대라 선택이 없다 — 칩은 항상 하나
-            float w = 230f, gap = 12f;
+            float w = ChipW, gap = 12f;
             float totalW = two ? w * 2 + gap : w;
             float x0 = _bw / 2f - totalW / 2f;
             chipA.Position = new Vector2(x0, 148f);
@@ -745,9 +763,12 @@ internal sealed partial class NDebtCardShopPanel : Control
 
             if (labelA != null)
             {
-                labelA.Text = !ready ? pts
-                            : bonus ? $"{pts} {(LoanService.BonusIsRemoval(idx) ? rw.BonusRemove : rw.BonusUpgrade)}"
-                            : $"{pts} {rw.Claim}";
+                // ★칩은 이제 '무엇을 받는가'를 항상 말한다. 잠긴 단계도 이름을 보여줘야 "다음에 뭐가
+                //   오는지"를 알고 언제 청산할지 계획할 수 있다(유저 요청). 수령 가능할 때만 행동 문구를 덧붙인다.
+                string[] fixedNames = { rw.RungCard, rw.RungUpgrade, rw.RungUpgradeAny, rw.RungRemoveAny };
+                string rname = bonus ? (LoanService.BonusIsRemoval(idx) ? rw.RungRemoveAny : rw.RungUpgradeAny)
+                                     : fixedNames[Math.Min(idx, fixedNames.Length - 1)];
+                labelA.Text = ready ? $"{pts} · {rname} — {rw.Claim}" : $"{pts} · {rname}";
                 labelA.Modulate = ready ? RewardGold : LockedGrey;
             }
             if (labelB != null && two)
@@ -763,6 +784,178 @@ internal sealed partial class NDebtCardShopPanel : Control
     /// <summary>지금 차례인 단계 하나짜리 툴팁 — 그 보상이 무엇이고 지금 어떤 상태인지. 아직 못 간 단계는
     /// <b>앞으로 몇 골드</b>가 남았는지 말해준다(사다리가 목표로 읽히게 하는 핵심 문구).
     /// 보너스 단계에서는 <paramref name="removeChoice"/> 로 갈라진 두 칩이 각자의 설명을 갖는다.</summary>
+    /// <summary>solo-verify 전용: 지금 칩의 호버 본문(제목+설명)을 문자열로. 네이티브 호버 노드는
+    /// 자동화 스크린샷에 안 잡히므로 텍스트로 검증한다.</summary>
+    /// <summary>solo-verify 전용: 지금 칩의 호버 묶음을 실제로 띄운다(네이티브 경로 그대로).
+    /// 반환값 = "팁개수:타입,타입,…" — 카드 미리보기가 실제로 붙었는지 문자열로 검증한다.</summary>
+    internal static string ShowRungTipsForTest(Player player)
+    {
+        var p = _open;
+        if (p == null) return "(no panel)";
+        var rw = DebtLoanLoc.RewardUiFor(MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng");
+        var tips = p.MakeRungTips(rw).ToList();
+        var chip = p.FindChild("dl_reward_chip", true, false) as Control;
+        if (chip != null)
+        {
+            NHoverTipSet.Remove(chip);   // 재호출 시 중복키 throw 방지
+            p.PlaceTip(NHoverTipSet.CreateAndShow(chip, tips, HoverTipAlignment.None), chip);
+            p.ShowRewardCardPreview();
+        }
+        if (chip != null)
+        {
+        }
+        // ★진단: 호버 노드가 실제로 씬 트리에 붙었는지 / 어디에 그려지는지. 스크린샷에 안 잡히는 원인이
+        //   "안 만들어짐"인지 "화면 밖·크기 0"인지 "다른 레이어"인지 구분해야 한다.
+        string diag = "(none)";
+        if (Engine.GetMainLoop() is SceneTree st)
+        {
+            var sets = new List<Node>();
+            CollectByTypeName(st.Root, "NHoverTipSet", sets);
+            diag = sets.Count == 0 ? "no-node"
+                 : string.Join(" ; ", sets.Select(n => n is Control c
+                        ? $"vis={c.Visible} rect={c.GetGlobalRect()} kids={c.GetChildCount()} layer={FindLayer(c)}"
+                        : $"{n.GetType().Name}(non-Control)"));
+        }
+        return $"{tips.Count}:{string.Join(",", tips.Select(t => t.GetType().Name))} || preview={(p._rewardPreview != null ? "shown" : "none")} || {diag}";
+    }
+
+    private static void CollectByTypeName(Node root, string typeName, List<Node> into)
+    {
+        for (var ty = root.GetType(); ty != null; ty = ty.BaseType)
+            if (ty.Name == typeName) { into.Add(root); break; }
+        foreach (var c in root.GetChildren()) CollectByTypeName(c, typeName, into);
+    }
+
+    private static string FindLayer(Node n)
+    {
+        for (var p = n.GetParent(); p != null; p = p.GetParent())
+            if (p is CanvasLayer cl) return $"CanvasLayer{cl.Layer}";
+        return "default2D";
+    }
+
+    internal static string RungTipTextForTest(Player player)
+    {
+        var p = _open;
+        if (p == null) return "(no panel)";
+        var rw = DebtLoanLoc.RewardUiFor(MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng");
+        var tip = p.MakeRungTip(rw);
+        return (tip is HoverTip h) ? h.Title + "\n" + h.Description : tip.ToString() ?? "";
+    }
+
+    /// <summary>지금 차례인 단계의 호버 묶음. ★단계가 <b>구체적인 카드</b>를 주는 경우(신용도 3의 신용 회복
+    /// 카드, 6의 그 카드 강화)에는 <b>카드 자체를 미리보기로 붙인다</b> — 이름만 적혀 있으면 "신용 회복 카드가
+    /// 대체 뭔데?"에 답이 없다(유저 지적). 장부 유물이 빚 카드를 미리 보여주는 것과 같은 방식
+    /// (<c>HoverTipFactory.FromCardWithCardHoverTips</c>: 카드 렌더 + 그 카드가 쓰는 키워드 툴팁까지).
+    /// <para>'덱의 카드 1장 강화/제거' 같은 단계는 대상이 정해져 있지 않으므로 미리보기가 없다.</para></summary>
+    /// <summary>커스텀 버튼용 툴팁 배치. 칩 <b>아래</b>에 가로 중앙을 맞춰 놓고 화면 밖으로 나가지 않게
+    /// 클램프한다. ★게임의 HoverTipAlignment 는 <b>수평 정렬만</b> 하고 커스텀 owner 에는 좌표를 안 준다
+    /// (메모: 커스텀버튼=None+직접 GlobalPosition). 안 하면 (0,0) 에 그려져 HUD 뒤로 숨는다.</summary>
+    private NCard? _rewardPreview;
+    /// <summary>보상 칩의 글자 노드. ★칩 Control 은 620px 로 넓어서 그 오른쪽 끝에 붙이면 툴팁이
+    /// 글자에서 멀리 떨어진다 — <b>실제 글자 폭</b>을 재서 그 끝에 붙이려고 들고 있는다.</summary>
+    private MegaLabel? _rewardChipLabel;
+
+    /// <summary>보상이 <b>구체적인 카드</b>인 단계(신용도 3의 신용 회복 카드, 6의 그 카드 강화)에서 카드 실물을
+    /// 띄운다. 진열 오퍼와 같은 <c>NCard.Create + UpdateVisuals</c> 경로라 모양·크기가 일관된다.
+    /// <para>자리는 카드 줄 <b>아래</b>의 빈 러그 띠 — 칩 바로 밑에 두면 진열대를 통째로 가려 무엇을 살지
+    /// 비교할 수 없다(실측 스크린샷에서 오퍼 한 장이 완전히 덮였다).</para></summary>
+    private void ShowRewardCardPreview()
+    {
+        HideRewardCardPreview();
+        int idx = LoanService.NextRewardIndex(LoanService.For(_player));
+        if (idx != 0 && idx != 1) return;   // 그 외 단계는 대상이 정해져 있지 않아 미리볼 카드가 없다
+        try
+        {
+            var model = ModelDb.GetByIdOrNull<CardModel>(ModelDb.GetId(typeof(CreditRestoredCard)));
+            if (model == null) return;
+            var display = model.ToMutable();                       // ★ModelDb 정규 모델을 직접 건드리지 않는다
+            if (idx == 1) { display.UpgradeInternal(); display.FinalizeUpgradeInternal(); }   // 6단계는 강화판을 보여준다
+            var card = NCard.Create(display);
+            if (card == null) return;
+            _grid.AddChild(card);
+            // 초기 위치 = 툴팁 기본 높이를 가정한 자리. 진짜 높이는 ApplyTipPlacement 에서 재보정한다.
+            card.Position = new Vector2(_bw / 2f + ChipW / 2f + 12f + CardHalfW, 170f);   // 재보정 전 임시 위치
+            card.Scale = new Vector2(PreviewScale, PreviewScale);
+            card.ZIndex = 4050; card.ZAsRelative = false;          // 러그 위로 (상인 손과 같은 처리)
+            card.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
+            _rewardPreview = card;
+        }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] reward preview failed: {e.Message}"); }
+    }
+
+    private void HideRewardCardPreview()
+    {
+        if (_rewardPreview != null && GodotObject.IsInstanceValid(_rewardPreview)) _rewardPreview.QueueFree();
+        _rewardPreview = null;
+    }
+
+    private void PlaceTip(NHoverTipSet? set, Control owner)
+    {
+        if (set == null || !GodotObject.IsInstanceValid(set)) return;
+        // ★★배치는 **한 프레임 뒤에** 한다. 만들자마자 좌표를 넣으면 세트가 아직 자기 크기를 모르고
+        //   (실측 Size=(360,116) — 카드 한 장도 못 담는 값), 그 잘못된 크기로 자식들을 늘어놓아
+        //   카드 미리보기가 옆 키워드 상자를 덮어 글자가 잘렸다. 레이아웃이 끝난 뒤 실제 Size 로 옮긴다.
+        Callable.From(() => ApplyTipPlacement(set, owner)).CallDeferred();
+    }
+
+    /// <summary>보상 툴팁이 놓이는 y — 오퍼 카드 줄 <b>아래</b>의 빈 러그 띠. 칩 바로 밑에 두면 진열대를
+    /// 가려 무엇을 살지 비교할 수 없다(실측 확인).</summary>
+    private float TipTopY() => _gridTop + _rowPitch + 12f;
+
+    private void ApplyTipPlacement(NHoverTipSet? set, Control owner)
+    {
+        if (set == null || !GodotObject.IsInstanceValid(set) || !GodotObject.IsInstanceValid(owner)) return;
+        try
+        {
+            var vp = GetViewportRect().Size;
+            var sz = set.GetGlobalRect().Size;
+            if (sz.X < 8f || sz.Y < 8f) sz = new Vector2(340f, 420f);   // 아직도 모르면 카드 한 장 크기로 가정
+            var org = owner.GetGlobalRect();
+
+            // ★오퍼 카드를 가리지 않는 자리 = 카드 줄 **아래**의 빈 러그 띠. 칩 바로 밑에 두면 진열대를
+            //   통째로 덮어 "무엇을 살지" 비교가 불가능해진다(실측 스크린샷에서 청구서가 완전히 가려졌다).
+            // ★★배치 = 칩 오른쪽, 상단 띠에 가로로 나란히 [칩] [카드] [툴팁] (유저 선택).
+            //   세로로 쌓는 안은 전부 실패했다 — 칩 아래는 오퍼 진열대, 그 아래 여백은 200px 뿐인데
+            //   스택은 322px 이 필요해 하단 액션 행(빚 갚기/카드 제거)을 덮었다. 상단 띠는 오퍼 위라
+            //   아무것도 가리지 않고, 호버한 칩 바로 옆이라 시선도 이어진다.
+            bool hasCard = _rewardPreview != null && GodotObject.IsInstanceValid(_rewardPreview);
+            float chipCy = org.Position.Y + org.Size.Y / 2f;
+            // ★글자 끝에서 시작한다 — 칩 Control(620px)의 오른쪽 끝을 쓰면 툴팁이 호버한 글자에서
+            //   한참 떨어져 뜬다(실측). 라벨의 실제 최소폭이 곧 글자 폭이다.
+            float textW = _rewardChipLabel != null && GodotObject.IsInstanceValid(_rewardChipLabel)
+                          ? _rewardChipLabel.GetMinimumSize().X : 0f;
+            float textRight = textW > 8f ? org.Position.X + org.Size.X / 2f + textW / 2f
+                                         : org.Position.X + org.Size.X;
+            float cursor = textRight + 16f;
+            if (hasCard)
+            {
+                float cardCx = Mathf.Min(cursor + CardHalfW, vp.X - CardHalfW - 8f);
+                _rewardPreview!.Position = new Vector2(cardCx, chipCy);
+                cursor = cardCx + CardHalfW + 12f;
+            }
+            float x = Mathf.Clamp(cursor, 8f, Mathf.Max(8f, vp.X - sz.X - 8f));
+            float y = Mathf.Clamp(chipCy - sz.Y / 2f, 8f, Mathf.Max(8f, vp.Y - sz.Y - 8f));
+            set.GlobalPosition = new Vector2(x, y);
+            // 이 패널은 전체화면 러그를 default 2D 에 그린다 — 올려주지 않으면 툴팁이 러그 뒤로 깔린다
+            // (노드는 살아 있는데 화면엔 안 보임). 상인 손을 4000 으로 올린 것과 같은 처리.
+            set.ZIndex = 4050;
+            set.ZAsRelative = false;
+            // ★카드는 툴팁 **바로 아래**에 붙인다 — 둘이 겹치면 안 된다(유저 요청). 툴팁의 실제 높이를
+            //   알게 된 지금 재보정한다(생성 시점엔 세트가 자기 크기를 모른다).
+            MainFile.Logger.Info($"[{MainFile.ModId}] reward tip at {set.GlobalPosition} size {sz}; "
+                               + $"card at {_rewardPreview?.Position}.");
+        }
+        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] tip placement failed: {e.Message}"); }
+    }
+
+    private IEnumerable<IHoverTip> MakeRungTips(DebtLoanLoc.RewardUiRow rw)
+    {
+        // ★카드 미리보기는 여기(HoverTipSet)에 넣지 않는다 — CardHoverTip 을 태우면 세트가 자기 크기를
+        //   (360,116) 으로 잡은 채 자식을 배치해 카드가 옆 키워드 상자를 덮고 글자가 잘린다(실측).
+        //   대신 ShowRewardCardPreview() 가 진짜 NCard 노드를 띄운다(오퍼 렌더와 같은 경로).
+        return new List<IHoverTip> { MakeRungTip(rw) };
+    }
+
     private IHoverTip MakeRungTip(DebtLoanLoc.RewardUiRow rw)
     {
         var rec = LoanService.For(_player);

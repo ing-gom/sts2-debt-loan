@@ -479,6 +479,34 @@ internal static class SoloTest
             all &= tF5;
             LoanService.ResetFor(player);
 
+            // F3a2) ★★6단계는 '3단계에서 받은 그 카드'를 강화한다 — 그런데 플레이어가 모닥불 등으로 **이미
+            //       강화해 버렸다면** 대상이 없다. 예전엔 강화판을 한 장 더 줘서 쓸모없는 중복이 됐다.
+            //       이제는 '덱의 아무 카드 1장 강화'로 돌려준다(먼저 강화한 선택을 벌하지 않는다).
+            Step("6단계 대체 처리 (이미 강화된 경우)");
+            LoanService.ResetFor(player);
+            await LoanService.GrantLoanDirect(player, 100);
+            var recAlt = LoanService.For(player)!;
+            recAlt.CreditPaid = DebtLoanConfig.CreditRewardCard; recAlt.CreditRewardsTaken = 0;
+            await LoanService.ClaimCreditReward(player); await Task.Delay(250);      // 3단계: 카드 획득
+            // ★앞 구간에서 받은 **이미 강화된** 복사본이 덱에 남아 있다(청산이 결제 카드를 안 쓸어낸다)
+            // → 반드시 강화 안 된 것을 집어야 한다. 그냥 First 로 잡으면 MaxUpgradeLevel 초과로 throw.
+            var altCard = player.Deck.Cards.FirstOrDefault(c => c is CreditRestoredCard && !c.IsUpgraded);
+            bool got = altCard != null;
+            if (altCard != null) { altCard.UpgradeInternal(); altCard.FinalizeUpgradeInternal(); }  // 플레이어가 먼저 강화
+            int creditCopies = player.Deck.Cards.Count(c => c is CreditRestoredCard);
+            int upgBefore2 = player.Deck.Cards.Count(c => c.IsUpgraded);
+            recAlt.CreditPaid = DebtLoanConfig.CreditRewardUpgraded;
+            await LoanService.ClaimCreditReward(player); await Task.Delay(400);      // 6단계 → 대체 경로
+            int creditAfter = player.Deck.Cards.Count(c => c is CreditRestoredCard);
+            int upgAfter2 = player.Deck.Cards.Count(c => c.IsUpgraded);
+            bool noDup = creditAfter == creditCopies;          // 중복 지급이 없어야 하고
+            bool otherUpgraded = upgAfter2 == upgBefore2 + 1;  // 대신 다른 카드가 강화돼야 한다
+            bool tAlt = got && noDup && otherUpgraded;
+            W($"  assert 6단계 대체: 3단계획득={got} 신용회복 장수 {creditCopies}→{creditAfter}(중복없음={noDup})"
+              + $" 강화 {upgBefore2}→{upgAfter2}(다른카드={otherUpgraded}) -> {tAlt}");
+            all &= tAlt;
+            LoanService.ResetFor(player);
+
             // F3b) ★★목돈 상환은 신용도 6까지만 인정된다. 그 위로는 납부(및 강제 징수)만 신용을 올린다.
             //      근거: 인출 3회 + 금액 상한 없음이면 유물 3개를 한 번에 질러 한 번의 청산으로 고정 사다리를
             //      통째로 건너뛴다(825 빌리면 이자 포함 925 → 신용도 9). 사이클을 도는 쪽이 손해가 됐었다.
@@ -1383,6 +1411,35 @@ internal static class SoloTest
                     {
                         var hit = FindHoverHit(NDebtCardShopPanel.OpenPanel);
                         if (hit != null) { hit.EmitSignal("mouse_entered"); await Task.Delay(500); await Shot("6e2_credit_ladder"); }
+                        // ★★보상이 '구체적인 카드'인 단계(신용도 3)는 호버에 카드 자체가 붙어야 한다 —
+                        //   이름만으로는 "신용 회복 카드가 뭔데?"에 답이 없다. 실제로 띄운 뒤 팁 구성을 검사한다.
+                        string tipSet = NDebtCardShopPanel.ShowRungTipsForTest(player);
+                        await Task.Delay(1200);   // 배치가 CallDeferred → 레이아웃+이동에 프레임이 필요
+                        await Shot("6e5_reward_card_hover");
+                        W("  reward hover tips: " + tipSet);
+                        // ★이젠 카드는 HoverTipSet 이 아니라 진짜 NCard 노드로 뜨므로 preview=shown 을 본다.
+                        bool hasCardTip = tipSet.Contains("preview=shown");
+                        W($"  assert 보상 호버에 카드 미리보기: {hasCardTip}");
+                        all &= hasCardTip;
+
+                        // ★잠긴 다음 단계도 '무엇이 오는지' 보여야 한다(유저 요청) — 도달하지 않은
+                        //   단계로 만들어 회색 미리보기 상태를 스크린샷으로 남긴다.
+                        recVis.CreditRewardsTaken = 3;                       // 3단계까지 받은 셈
+                        recVis.CreditPaid = DebtLoanConfig.CreditRewardUpgradeAny;   // 900 → 1200 은 미도달
+                        foreach (var f in typeof(NDebtCardShopPanel)
+                                 .GetField("_refreshers", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+                                 .GetValue(NDebtCardShopPanel.OpenPanel) as System.Collections.Generic.List<Action> ?? new System.Collections.Generic.List<Action>())
+                            f();
+                        await Task.Delay(500);
+                        await Shot("6e4_locked_preview");
+                        string lockedTip = NDebtCardShopPanel.RungTipTextForTest(player);
+                        W("  locked-rung hover: " + lockedTip.Replace("\n", " | "));
+                        bool tipNames = lockedTip.Contains(DebtLoanLoc.RewardUiFor(
+                            MegaCrit.Sts2.Core.Localization.LocManager.Instance?.Language ?? "eng").RungRemoveAny);
+                        W($"  assert 잠긴 단계 호버가 보상 이름을 말하는가: {tipNames}");
+                        all &= tipNames;
+                        recVis.CreditRewardsTaken = 0;   // 뒤 구간을 위해 되돌린다
+
                         string ladder = NDebtCardShopPanel.CreditLadderText(player);
                         W("  credit ladder tip:\n" + ladder);
                         var recLad = LoanService.For(player);

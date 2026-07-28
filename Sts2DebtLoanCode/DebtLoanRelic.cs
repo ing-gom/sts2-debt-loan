@@ -354,12 +354,26 @@ internal static class DebtLoanGrants
     {
         try
         {
-            var existing = PileType.Deck.GetPile(player)?.Cards?
-                .FirstOrDefault(c => c is CreditRestoredCard && !c.IsUpgraded);
-            if (existing == null) { await GrantRewardCard(player, upgraded: true); return; }
-            existing.UpgradeInternal();
-            existing.FinalizeUpgradeInternal();
-            MainFile.Logger.Info($"[{MainFile.ModId}] upgraded the existing 신용 회복 reward card in the deck.");
+            var deck = PileType.Deck.GetPile(player)?.Cards;
+            var target = deck?.FirstOrDefault(c => c is CreditRestoredCard && !c.IsUpgraded);
+            if (target != null)
+            {
+                target.UpgradeInternal();
+                target.FinalizeUpgradeInternal();
+                MainFile.Logger.Info($"[{MainFile.ModId}] upgraded the existing 신용 회복 reward card in the deck.");
+                return;
+            }
+
+            // ★★대상이 없을 때가 두 가지인데, 플레이어에게 이로운 쪽이 서로 다르다.
+            //   ① 카드가 아예 없다(3단계를 건너뛰었거나 제거했다) → 강화판으로 '복구'해 주는 게 맞다.
+            //   ② 카드는 있는데 **플레이어가 이미 스스로 강화**했다(모닥불 등) → 여기서 또 한 장을 주면
+            //      쓸모없는 중복이 된다. 대신 '덱의 아무 카드 1장 강화'로 돌려준다 — 보상의 가치를 지키면서
+            //      플레이어가 먼저 강화한 선택을 벌하지 않는다.
+            //   두 피어가 같은 덱 상태를 보고 같은 분기를 타므로 co-op 에서도 갈라지지 않는다.
+            bool hasAny = deck?.Any(c => c is CreditRestoredCard) ?? false;
+            if (!hasAny) { await GrantRewardCard(player, upgraded: true); return; }
+            MainFile.Logger.Info($"[{MainFile.ModId}] 신용 회복 already upgraded — falling back to 'upgrade any card'.");
+            await UpgradeChosenDeckCard(player);
         }
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] reward upgrade failed: {e.Message}"); }
     }
