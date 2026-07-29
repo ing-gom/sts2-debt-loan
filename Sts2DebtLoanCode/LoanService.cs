@@ -1093,9 +1093,10 @@ internal static class LoanService
     /// <summary>A payment drained gold toward the loan. INTEREST FIRST: the payment retires outstanding interest
     /// before it eats into the borrowed principal (tracked via <see cref="LoanRecord.InterestPaid"/>); the total owed
     /// (<see cref="LoanRecord.Principal"/> = shop repay cost) always drops by the full amount. Pure record math; runs
-    /// deterministically on both co-op peers in the lockstep combat. (principalShareOverride is now ignored — kept
-    /// for signature compatibility with existing callers.)</summary>
-    internal static async Task AccrueInterest(Player player, int drained, double? principalShareOverride = null)
+    /// deterministically on both co-op peers in the lockstep combat. ★분할 비율 같은 건 없다 — 옛
+    /// principalShareOverride 인자와 DebtLoanConfig.PrincipalRepayShare 는 둘 다 읽히지 않은 채 "원금/이자
+    /// 분할"이라는 없는 규칙만 문서에 퍼뜨려서 제거했다.</summary>
+    internal static async Task AccrueInterest(Player player, int drained)
     {
         var rec = For(player);
         if (rec == null || !rec.Active || drained <= 0) return;
@@ -1224,7 +1225,8 @@ internal static class LoanService
     }
 
     /// <summary>The unified 납부 (Payment) entry: pay the loan's PRINCIPAL down 1:1 (the whole payment goes to
-    /// principal — the interest is the up-front 50% surcharge baked in at loan time, not a per-payment cut),
+    /// principal — the interest is the origination surcharge (<see cref="DebtLoanConfig.BorrowOriginationPct"/>,
+    /// 20%) plus node interest, both baked into what you owe at loan/room time, not a per-payment cut),
     /// bump the per-combat payment counter, then fire the payment-reactive powers (납부 혜택 → Plating, 환급 → a
     /// 성실 납부 card). Called by the Debt cards after the gold is taken (or, for the HP-payment card, after the
     /// HP loss). The AccrueInterest math is deterministic on both peers; the power effects are self-appliers →
@@ -1233,7 +1235,7 @@ internal static class LoanService
     {
         var rec0 = For(player);
         bool wasOwing = rec0 != null && rec0.Active && rec0.Principal > 0;   // did this payment have a debt to clear?
-        await AccrueInterest(player, amount, principalShareOverride: 1.0);   // 100% to principal (interest = the surcharge)
+        await AccrueInterest(player, amount);   // 낸 금액 전액이 owed 에서 빠진다(이자는 대출 시 선취 할증)
         if (player?.Creature == null) return;
         SetTally(player, PaymentsThisCombat(player) + 1);   // 영수증 +1 → HUD counter updates
         // NOTE: 성실 납부's block counter (_paymentCount) is NOT bumped here — it counts only 납부 CARDS actually

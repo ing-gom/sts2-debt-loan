@@ -18,7 +18,7 @@ Once you owe, a dedicated **debt shop** lets you buy payoff cards **on credit** 
 
 ## The payment engine
 
-Every payment you make banks a **Receipt**, a combat resource with its own counter. The payoff cards you collect then cash Receipts in:
+Every payment you make banks **Receipts**, a combat resource with its own counter — a *Payment* card banks one, or two if you had the gold to repay with. The payoff cards you collect then cash Receipts in:
 
 - **Payoff powers** — *Payment Benefit*, *Refund*, *Interest Support* and more react to each payment, handing back block, cards, or gold.
 - **Receipt-spenders** scale with the Receipts you've banked: *Settlement* converts them to block, *Invoice* to a multi-hit attack.

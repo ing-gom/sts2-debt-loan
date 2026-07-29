@@ -51,10 +51,10 @@ internal static class DebtLoanConfig
     internal static int ShopCreditLimit = 120;
 
 
-    /// <summary>Share of every Debt-card payment that goes toward paying DOWN the principal (the rest is
-    /// interest). At 0.2, a 10-gold drain retires 2 gold of the loan and 8 counts as interest — so the debt
-    /// slowly amortizes and the shop repay cost shrinks over time.</summary>
-    internal static double PrincipalRepayShare = 0.2;
+    // ⚠️PrincipalRepayShare(0.2) 는 제거됐다. 납부는 **낸 금액 전액이 빚에서 빠진다**(LoanService.AccrueInterest:
+    // 내부 장부에서 이자를 먼저 채우지만 rec.Principal 은 drained 만큼 감소). 이 필드는 프로덕션에서 한 번도
+    // 읽히지 않았는데 "원금/이자 분할"이라는 없는 규칙을 문서·주석·툴팁에 퍼뜨렸다.
+    // 분할을 되살리려면 AccrueInterest 가 실제로 이 값을 읽게 만든 뒤 필드를 복원할 것.
 
     // ── Interest (all of it is baked into the owed Principal = shop repay cost / badge / hover) ──────────
     /// <summary>Origination interest added the MOMENT you borrow (per borrow, on that amount). 20% → borrowing

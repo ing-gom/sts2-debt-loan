@@ -79,8 +79,24 @@
   에너지 옆 커스텀 HUD 카운터(`NPaymentTallyCounter`). 카드 코스트 배지 = `IUsesPaymentTally`
   (`PaymentCostOverlayPatch`, `_energyIcon` 자식으로 부착).
 - **정기 납부(DunningLetterCard/Power = Standing Order)**: 대출 시 지급되는 파워. 매턴 **납부(DebtCurseCard
-  = Payment)** 카드를 손에 공급. 납부 카드를 내면 골드로 원금을 깎고(`PrincipalRepayShare`=0.2 만큼
-  원금 상환, 나머지는 이자), **영수증 +1**.
+  = Payment)** 카드를 손에 공급. 납부 카드를 내면 **낸 만큼 빚(`rec.Principal`)이 전액 줄고**, **영수증 +1**.
+- **★"원금과 이자에 나뉘어 들어간다"는 규칙은 존재한 적이 없다** — `AccrueInterest`는 내부 장부에서 이자
+  (`InterestPaid`)를 먼저 채우지만 **총 빚(`rec.Principal`)은 낸 금액 전액이 감소**한다. 이자는 대출 시
+  선취 할증(`BorrowOriginationPct` 20%) + 방당 노드 이자로 **미리 빚에 얹히는 것**이지 납부마다 떼는 몫이 아니다.
+  - **제거함**: `DebtLoanConfig.PrincipalRepayShare`(0.2)와 `AccrueInterest`의 `principalShareOverride` 인자.
+    **둘 다 프로덕션에서 한 번도 읽히지 않았는데**(전자는 호출자가 `SoloTest`뿐, 후자는 본문이 무시)
+    "분할"이라는 없는 규칙을 이 문서·`DebtCurseCard` 주석 4곳·`RecordPayment` 주석("50% surcharge")에
+    퍼뜨렸고, 그걸 믿고 납부 툴팁에 분할 문장을 배포 직전까지 썼다가 되돌렸다.
+  - **교훈: 회계 서술은 `AccrueInterest` 본문으로만 확인할 것.** 읽히지 않는 노브를 "호환용"으로 남겨두면
+    주석이 그 노브를 설명하고, 그 주석이 다시 유저 문구가 된다. 분할을 되살리려면 **먼저 코드가 값을 읽게** 할 것.
+- **★영수증 장수는 경로마다 다르다 — 2장은 납부 카드뿐**. `RecordPayment`가 어느 경로든 기본 +1을 주고
+  (골드 0이어도 — 부트스트랩 교착 방지), 납부 카드가 **실제로 골드를 냈을 때만** `GrantReceipt`로 1을 더
+  얹는다(`DebtCurseCard.OnPlay`). 강제 징수(강제)·대납(아군의 골드)·혈납(HP 지불)은 전부 **1**.
+  - **표기 규칙**: 숫자는 **각 카드 얼굴**이 말하고, 공용 툴팁(`DEBT_PAYMENT`/`DEBT_RECEIPT`/
+    `DEBT_RECEIPT_COUNT`)은 **숫자를 쓰지 않는다** — 경로마다 다르므로 공용 문구에 숫자를 박으면
+    어느 쪽으로 고쳐도 거짓이 된다. 새 납부 경로를 추가하면 그 카드 얼굴에 장수를 직접 적을 것.
+  - ⚠️`PAYMENT_STACK_POWER.*` loc 14언어는 **죽은 키**다(그 이름의 파워 클래스가 없음 — tally가 Power였던
+    시절의 잔재). "납부할 때마다 1"이라는 옛 문구가 남아 있으나 렌더되지 않는다.
 - **결제셋 카드**(빚 상점 구매 또는 지급):
   - *반응 파워* — 납부혜택/환급/이자지원/상계(Counterclaim)/명세서(Statement): 납부 때마다 방어도·카드·골드 등 환급.
   - *영수증 소비* — **정산(Settlement)** = 방어도 4×X, **청구서(Invoice)** = 다단 히트(둘 다 보유 영수증 전량 소비).

@@ -154,7 +154,6 @@ internal static class SoloTest
 
             // Deterministic config for the scenario.
             DebtLoanConfig.MaxLoan = 300;
-            DebtLoanConfig.PrincipalRepayShare = 0.2;
 
             bool all = true;
 
@@ -700,7 +699,7 @@ internal static class SoloTest
             await Task.Delay(150);
             await LoanService.GrantLoanDirect(player, 100);   // borrowed 100 → owed 120 (20% origination)
             await Task.Delay(150);
-            for (int i = 0; i < 5; i++) await LoanService.AccrueInterest(player, 10, principalShareOverride: 1.0);   // 5 × 10 principal
+            for (int i = 0; i < 5; i++) await LoanService.AccrueInterest(player, 10);   // 5 × 10 principal
             await Task.Delay(200);
             var rh = LoanService.For(player);
             var hRelic = LoanService.LedgerRelicOf(player);

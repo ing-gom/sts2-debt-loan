@@ -20,7 +20,7 @@ namespace Sts2DebtLoan;
 ///   • It is ETHEREAL — if you leave it in hand it simply exhausts at end of turn, costing nothing.
 ///     There is no automatic collection any more (the old end-of-turn 10-gold drain was removed).
 ///   • You may PLAY it (energy cost 1). If you can afford the full 20 gold it pays that (all-or-nothing — never a
-///     partial drain), split 50/50 principal/interest; if you can't, it pays 0. Either way it plays and banks a
+///     partial drain) and what you owe drops by that full amount; if you can't, it pays 0. Either way it plays and banks a
 ///     영수증 (receipt) — paying the full amount banks a 2nd. No gold gate: even broke you run the payment engine,
 ///     you just retire no principal that turn. It's gone after (Exhaust).
 ///     While the 독촉장 (Dunning Letter) power is active, playing it also grants Plating (판금) — the power is
@@ -53,7 +53,7 @@ public sealed class DebtCurseCard : CardModel
         new[] { new DynamicVar("play", PlayCost) };
 
     // Hover tips: 휘발(Ethereal) + 소멸(Exhaust) keywords, and a custom 납부 (Payment) tip explaining the
-    // 50% principal / 50% interest split. (Plating is no longer granted by the card — see the 납부 혜택 power.)
+    // term itself. (Plating is no longer granted by the card — see the 납부 혜택 power.)
     protected override IEnumerable<IHoverTip> ExtraHoverTips => new IHoverTip[]
     {
         HoverTipFactory.FromKeyword(CardKeyword.Ethereal),
@@ -83,7 +83,7 @@ public sealed class DebtCurseCard : CardModel
         await LoanService.GrantBailoutForMissedPayment(Owner, IsUpgraded);
     }
 
-    /// <summary>Playing it: pay PlayCost gold at a 50% principal split (voluntary FAST repayment). If the 독촉장
+    /// <summary>Playing it: pay PlayCost gold straight off what you owe (voluntary FAST repayment). If the 독촉장
     /// (Dunning Letter) power is active, ALSO gain Plating (판금) — the power is what turns playing your debt
     /// cards into a defensive engine (the reward lives on the power, not on the curse itself). The Exhaust
     /// keyword removes it afterward. IsPlayable already guaranteed the gold. Self-applier → co-op re-entry safe.</summary>
@@ -94,7 +94,7 @@ public sealed class DebtCurseCard : CardModel
         // card still plays and banks the base 영수증; paying the full amount grants the bonus receipt below.
         int drain = (int)Owner.Gold >= PlayCost ? PlayCost : 0;
         if (drain > 0) await PlayerCmd.LoseGold(drain, Owner);
-        // Payment: 50/50 split + counter + fire the payment-reactive powers (납부 혜택 → Plating, 환급 → card…).
+        // Payment: owed drops by the full amount + counter + fire the payment-reactive powers (납부 혜택 → Plating, 환급 → card…).
         // RecordPayment banks a 영수증 and fires the reactive powers EVEN at drain 0 (engine runs on energy); it just
         // retires no principal when you paid nothing.
         // The 판금 reward no longer lives here — it moved to the 납부 혜택 power (fired via RecordPayment).

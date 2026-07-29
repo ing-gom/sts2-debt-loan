@@ -3,7 +3,7 @@
   "name": "The Red Ledger",
   "author": "inggom",
   "description": "Borrow gold at the merchant — in any act — to afford what you can't quite pay for. Taking a loan grants the Debt Ledger relic, which tracks what you owe — an origination fee plus interest that accrues each room you carry the debt. Fall behind and escalating Debt curses (Delinquency, then Seizure, then Bad Credit and its Forced Collection) seep into your combats. The Standing Order power feeds you Payment cards to whittle the debt down; every payment banks Receipts that payoff cards (bought on credit at a dedicated debt shop, which also sells card removal) cash in for block, cards, gold, energy, or offense. Repay the principal at a LATER shop (never the one you borrowed from) to settle: the Ledger and your payment cards stay, only your debt tier resets. Everything you repay builds a Credit score that never resets, unlocking rewards one rung at a time — and past the top rung it keeps paying out, letting you upgrade or remove a card again and again. In co-op the debt is contagious, interest scales with how many players owe, and a Bailout card lets you pay down a teammate's debt. — PLAYTEST BUILD.",
-  "version": "v0.18.1-playtest",
+  "version": "v0.18.2-playtest",
   "has_pck": true,
   "has_dll": true,
   "dependencies": [],
