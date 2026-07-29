@@ -184,8 +184,10 @@ internal static class LoanService
 
     /// <summary>Inject the DISTINCT Debt curse cards for EVERY active loan in the run into one player's draw
     /// pile — the run-wide contagion (a partner's loan seeps into your combat too; multiple loans stack).
-    /// Each loan contributes an escalating SET by rooms-since-loan: 빚 독촉 (Dunning, upgraded to '+' once
-    /// that loan is over the soft cap) always; +연체 (Delinquency) at 10 rooms; +차압 (Seizure) at 20. The
+    /// Each loan contributes an escalating SET by rooms-since-loan (<see cref="DebtLoanConfig.Schedule"/> is the
+    /// single source): 빚 독촉 (Dunning) always; +연체 (Delinquency) at 13 rooms; +차압 (Seizure) at 17;
+    /// +신용 불량 (Bad Credit) at 22. ★The injected Dunning is never upgraded — the over-cap '+' rule is gone,
+    /// and 빚 독촉+ now comes exclusively from the 독촉장+ power's card. The
     /// cards are SHUFFLED into the draw pile (random positions) BEFORE the opening hand is dealt (this runs at
     /// BeforeHandDraw), so the normal draw pulls them in naturally from turn 1 — sometimes several land in the
     /// opening hand, sometimes they trickle in over the next turns, but they're never all forced onto turn 1.

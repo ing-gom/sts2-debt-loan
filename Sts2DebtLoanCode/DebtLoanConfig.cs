@@ -19,9 +19,12 @@ internal static class DebtLoanConfig
     internal static int MinLoan = 100;
 
     /// <summary>How much you may borrow BEYOND <see cref="MaxLoan"/> (the soft cap) to afford a purchase.
-    /// Total borrowing is allowed up to MaxLoan + this (the hard cap), but once your lifetime borrowed
-    /// exceeds the soft cap the per-combat Debt-card count starts one higher (2 instead of 1). Spec: 100
-    /// (so 300 soft / 400 hard).</summary>
+    /// Total borrowing is allowed up to MaxLoan + this (the hard cap). Spec: 100 (so 300 soft / 400 hard).
+    /// <para>⚠️Inert while <see cref="MaxLoan"/> is 0 (the default) — RemainingBorrowRoom short-circuits to
+    /// int.MaxValue before <see cref="HardCap"/> is ever read. Only a positive MaxLoan brings this back.</para>
+    /// <para>⚠️The old "over the soft cap → the per-combat Debt-card count starts one higher (2 instead of 1)"
+    /// rule is GONE: the count comes from <see cref="Schedule"/> (rooms) alone, and no over-cap flag survives
+    /// anywhere in the product code. Don't restore that sentence without restoring the behavior.</para></summary>
     internal static int OverCapAllowance = 100;
 
     /// <summary>Absolute hard cap on lifetime borrowing = soft cap + over-cap allowance.</summary>
@@ -35,8 +38,9 @@ internal static class DebtLoanConfig
 
     /// <summary>Per-shop-VISIT credit limit for buying cards on debt at the debt shop — SEPARATE from the initial
     /// loan's <see cref="HardCap"/>. Each shop visit gives a fresh line; card purchases that visit may total at most
-    /// this. Cards are 40–70 gold, so 100 ≈ 2 cards per shop — you can't sweep the whole 5-card offer. Resets on
-    /// entering a new shop. Spec: 150.</summary>
+    /// this. Paid cards are 45–95 gold, so at 120 a visit fits two cards whose listed prices sum to ≤120, otherwise
+    /// one premium card — you can't sweep the whole 5-card offer. Resets on entering a new shop. Spec: 120.
+    /// ★Card REMOVAL does not draw on this line (LoanService.CanPurgeOnDebt — it's a hard once-per-visit).</summary>
     // ★120 유지, 밴드만 60~95 → 45~95 로 내렸다. 그래서 이 한도의 의미가 바뀐다:
     //   예전 = "방문당 유료 1장" (최저쌍 60+65 = 125 > 120)
     //   지금 = "합이 120 이하면 두 장" (45+75 = 120 ✓ / 65+65 = 130 ✗ / 85·95 는 최저가와 묶어도 130·140 ✗)

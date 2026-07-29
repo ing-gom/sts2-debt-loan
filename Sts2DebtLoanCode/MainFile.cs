@@ -69,11 +69,14 @@ public class MainFile
                 .Description("How many separate times you may draw gold on ONE loan (the first borrow plus each top-up). With the default 3, a run's borrowing has to be split across three decisions instead of nibbled away. 0 = unlimited. Repaying the loan in full restores a fresh set. Debt-shop card purchases don't count — they have their own per-visit credit line.");
             Loc(b, "대출당 인출 횟수", "한 대출에서 골드를 나눠 받을 수 있는 횟수 (최초 대출 + 추가 인출 각각 1회). 기본 3이면 빌릴 기회를 세 번의 결정으로 나눠 써야 합니다. 0 = 무제한. 빚을 완납하면 다시 3회로 회복됩니다. 빚 상점 카드 구매는 별도 한도라 여기 포함되지 않습니다.");
 
+            // ★step 은 10 이어야 한다 — RitsuLib 은 Godot Mathf.Snapped(value, step) 로 0 기준 격자에 스냅한다.
+            // step 25 면 격자가 25의 배수라 기본값 120 이 125 로 스냅돼, 슬라이더를 한 번 건드린 유저는 기본값으로
+            // 영영 못 돌아온다(밸런스 기준선인 "합 120" 규칙이 깨진다). 격자에 기본값이 올라와 있는지 항상 확인할 것.
             b.Slider(KeyShopCredit, "Debt-shop credit per visit (gold)", defaultValue: 120.0,
                     onChanged: v => DebtLoanConfig.ShopCreditLimit = (int)v)
-                .Range(50f, 400f, 25f, format: "F0")
-                .Description("The most debt you may take on CARD purchases at the debt shop per shop visit (cards cost 60–95; the leftmost offer is FREE). At the default 120 a visit buys one paid card — or two if you take the discounted one. Resets each new shop. Separate from the loan cap above.");
-            Loc(b, "상점당 외상 한도 (골드)", "빚 상점에서 카드 구매로 한 상점 방문당 질 수 있는 빚 상한 (카드 60~95골드, 맨 왼쪽 1장은 무료). 기본 120이면 한 방문에 유료 1장 — 할인 카드를 집으면 2장까지. 새 상점마다 초기화. 위 대출 한도와는 별개.");
+                .Range(50f, 400f, 10f, format: "F0")
+                .Description("The most debt you may take on CARD purchases at the debt shop per shop visit. Paid cards run 45–95 gold; the leftmost offer is FREE and one other is discounted. At the default 120 the rule is: TWO cards if their listed prices add up to 120 or less, otherwise one premium card. Resets each new shop. Card removal is bought on credit too, but it has its own once-per-visit limit and does not touch this line. Separate from the loan cap above.");
+            Loc(b, "상점당 외상 한도 (골드)", "빚 상점에서 카드 구매로 한 상점 방문당 질 수 있는 빚 상한. 유료 카드는 45~95골드이고, 맨 왼쪽 1장은 무료·다른 1장은 할인입니다. 기본 120이면 규칙은 이렇습니다 — 표시된 두 값을 더해 120 이하면 두 장, 아니면 고급 한 장. 새 상점마다 초기화. 카드 제거도 외상으로 사지만 방문당 1회라는 별도 제한이라 이 한도를 쓰지 않습니다. 위 대출 한도와는 별개.");
 
             b.Slider(KeyGarnish, "Garnishment at max interest (%)", defaultValue: 40.0,
                     onChanged: v => DebtLoanConfig.GarnishMaxPct = (int)v)
