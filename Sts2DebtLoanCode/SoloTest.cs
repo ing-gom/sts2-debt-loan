@@ -426,6 +426,45 @@ internal static class SoloTest
 
             // F4) 빚으로 카드 제거 — 상인의 제거 슬롯과 같은 가격 공식(75 + 25×이미 쓴 횟수)이고, 값은
             //     골드가 아니라 빚으로 문다. 같은 카운터를 올리므로 다음 제거값이 오른다.
+            // F3e) ★원금 스케일링 3종 — 이 세트가 오랫동안 '갚기'에만 보상을 걸고 있었다는 구조 문제를
+            //      메우려고 넣은 축이다. 셋 다 **원금/손패를 읽어 수치가 살아 움직이는** 카드라, "덱에 들어갔다"
+            //      만 봐서는 아무것도 증명하지 못한다 — 실제 계산값을 재야 한다.
+            //      ★CANONICAL 모델(도감·상점 미리보기)에서 Owner 게터가 던지는 걸 try/catch 로 0 처리하는데,
+            //      그 catch 가 **런 안에서도** 삼켜버리면 카드가 조용히 0 이 된다(레버리지가 밟았던 함정).
+            //      그래서 런 안에서 0 이 아님을 확인하는 게 이 테스트의 핵심이다.
+            // F3e-1) 원금 스케일링 3종 — **전투 밖**에서 검증 가능한 것만. 수치는 여기서 못 잰다:
+            //   엔진의 CalculatedVar.Calculate 가
+            //     num = (CombatManager.IsInProgress && card.CombatState != null) ? multiplier(...) : 0
+            //   이라 **전투 밖에서는 곱셈기를 아예 호출하지 않고 0 으로 강제**한다(실 DLL 확인). 그래서 전투 밖
+            //   측정값은 항상 base 뿐이고, 이걸 모르고 재면 멀쩡한 카드가 0 으로 보인다 — 실제로 이미 배포된
+            //   레버리지를 대조군으로 넣었더니 똑같이 0 이 나와서 "패턴 전체가 깨졌다"고 오진할 뻔했다.
+            //   진짜 수치는 아래 F3e-2(전투 중)에서 잰다.
+            Step("원금 스케일링 3종 (등록/가격)");
+            {
+                var collateral = player.RunState.CreateCard<CollateralCard>(player);
+                var defRisk    = player.RunState.CreateCard<DefaultRiskCard>(player);
+                var badDebt    = player.RunState.CreateCard<BadDebtCard>(player);
+                foreach (var c in new CardModel[] { collateral, defRisk, badDebt })
+                    await CardPileCmd.Add(c, PileType.Deck);
+                await Task.Delay(300);
+
+                var deck = player.Deck.Cards;
+                bool inDeck = deck.Any(c => c is CollateralCard) && deck.Any(c => c is DefaultRiskCard)
+                              && deck.Any(c => c is BadDebtCard);
+                // 가격 = 6단 재편 표와 일치 (풀 등록 여부까지 함께 증명된다)
+                bool okPrices = LoanService.CardDebtPrice(typeof(DefaultRiskCard)) == 85
+                                && LoanService.CardDebtPrice(typeof(CollateralCard)) == 65
+                                && LoanService.CardDebtPrice(typeof(BadDebtCard)) == 55;
+                // 부도 위기는 파워라 CalculatedVar 를 안 쓴다 → 전투 밖에서도 원금만으로 값이 정해진다.
+                int principal = LoanService.PrincipalOf(player);
+                bool okRiskFormula = DefaultRiskCard.StrengthGainFor(defRisk) == principal / 250;
+
+                bool tF3e = inDeck && okPrices && okRiskFormula;
+                W($"  assert 원금 스케일링 3종 등록 (원금 {principal}): 덱진입={inDeck} 가격 85/65/55={okPrices}"
+                  + $" 부도위기 힘={DefaultRiskCard.StrengthGainFor(defRisk)}(기대 {principal / 250})={okRiskFormula} -> {tF3e}");
+                all &= tF3e;
+            }
+
             Step("빚으로 카드 제거");
             int usedBefore = player.ExtraFields?.CardShopRemovalsUsed ?? 0;
             int expPrice = 75 + 25 * usedBefore;
@@ -681,7 +720,10 @@ internal static class SoloTest
             LoanService.ResetFor(player);
             await DebtLoanGrants.RemoveRelic(player);
             await Task.Delay(150);
-            await LoanService.GrantLoanDirect(player, 60);
+            // ★대출액 60 → 600: 저주 티어는 '방 수' 라 이 변경에 영향받지 않지만, **압류품은 '금액' 계단**
+            //   (250/500/750)이라 60 으로는 0장만 검증된다 — 주입이 실제로 일어나는 경로를 지나려면 계단
+            //   위로 올려야 한다. 0 케이스만 맞추고 통과하면 '주입이 아예 안 되는' 회귀를 못 잡는다.
+            await LoanService.GrantLoanDirect(player, 600);
             var recI = LoanService.For(player); if (recI != null) recI.LoanFloor = player.RunState.TotalFloor - 13;   // tier 2 → 연체 injected
             await Task.Delay(150);
             bool tI = false;
@@ -699,6 +741,53 @@ internal static class SoloTest
                 bool inCombat = MegaCrit.Sts2.Core.Combat.CombatManager.Instance?.IsInProgress ?? false;
                 tI = inCombat && debtInCombat >= 1;
                 W($"  assert combat inject (tier2): inCombat={inCombat} delinquencyInCombat={debtInCombat}(>=1) inOpeningHand={debtInHand}(random, may be 0) -> {tI}");
+
+                // F3e-2) ★원금 스케일링의 **실측** — 곱셈기는 전투 중에만 돈다(위 F3e-1 주석 참조).
+                //   여기서 0 이 나오면 그건 진짜 버그다.
+                if (inCombat)
+                {
+                    var col = player.RunState.CreateCard<CollateralCard>(player);
+                    var bad = player.RunState.CreateCard<BadDebtCard>(player);
+                    await CardPileCmd.AddGeneratedCardToCombat(col, PileType.Hand, player, CardPilePosition.Bottom);
+                    await CardPileCmd.AddGeneratedCardToCombat(bad, PileType.Hand, player, CardPilePosition.Bottom);
+                    await Task.Delay(400);
+
+                    int prin = LoanService.PrincipalOf(player);
+                    int expBlock = prin / 45;
+                    int seenBlock = (int)col.DynamicVars.CalculatedBlock.Calculate(null);
+                    // 손의 저주 수는 드로우 운에 따라 달라지므로 **그 시점 손패를 세어** 기대값을 만든다.
+                    int cursesNow = PileType.Hand.GetPile(player)?.Cards.Count(c => c.Type == CardType.Curse) ?? 0;
+                    int expDmg = 5 + 5 * cursesNow;
+                    int seenDmg = (int)bad.DynamicVars.CalculatedDamage.Calculate(null);
+
+                    // ★저주 0장에서만 맞추면 곱셈기가 실제로 도는지 증명되지 않는다(base 5 만 봐도 통과).
+                    //   손에 저주를 한 장 넣어 **정확히 +5** 오르는지까지 본다.
+                    var curse = player.RunState.CreateCard<DelinquencyCard>(player);
+                    await CardPileCmd.AddGeneratedCardToCombat(curse, PileType.Hand, player, CardPilePosition.Bottom);
+                    await Task.Delay(400);
+                    int cursesAfter = PileType.Hand.GetPile(player)?.Cards.Count(c => c.Type == CardType.Curse) ?? 0;
+                    int seenDmg2 = (int)bad.DynamicVars.CalculatedDamage.Calculate(null);
+                    bool okRise = cursesAfter == cursesNow + 1 && seenDmg2 == seenDmg + 5;
+
+                    // ★압류품 — 전투 시작 주입이 **남은 빚 계단**(250/500/750 → 1/2/3)을 따르는가.
+                    //   주입 자체는 BeforeHandDraw 에서 이미 일어났으므로 전투 파일 전체를 세면 된다.
+                    //   ⚠️손패만 세면 안 된다 — 드로우 더미에 '섞어' 넣으므로 손에 없을 수 있다.
+                    int seizedInCombat = 0;
+                    foreach (var pt in new[] { PileType.Draw, PileType.Hand, PileType.Discard })
+                        seizedInCombat += PileType.Draw.GetPile(player) == null ? 0
+                            : (pt.GetPile(player)?.Cards.Count(c => c is SeizedGoodsCard) ?? 0);
+                    int expSeized = LoanService.SeizedGoodsFor(player);
+                    bool okSeizedTable = LoanService.SeizedGoodsFor(player) == (prin >= 750 ? 3 : prin >= 500 ? 2 : prin >= 250 ? 1 : 0);
+                    // ★expSeized >= 1 을 함께 요구한다 — 0 == 0 은 주입 경로를 지나지 않고도 통과한다.
+                    bool okSeized = seizedInCombat == expSeized && okSeizedTable && expSeized >= 1;
+                    W($"  assert 압류품 주입(빚 {prin}): 전투 내 {seizedInCombat}장(기대 {expSeized}) 계단표={okSeizedTable} -> {okSeized}");
+
+                    bool okScale = seenBlock == expBlock && seenDmg == expDmg && okRise && okSeized;
+                    W($"  assert 원금 스케일링 실측(전투 중, 원금 {prin}): 담보 방어도={seenBlock}(기대 {expBlock})"
+                      + $" 부실채권 피해={seenDmg}(기대 {expDmg}, 손의 저주 {cursesNow})"
+                      + $" 저주+1 → 피해 {seenDmg}→{seenDmg2}(기대 +5, 저주 {cursesNow}→{cursesAfter})={okRise} -> {okScale}");
+                    all &= okScale;
+                }
                 await Shot("4_combat");
             }
             all &= tI;
@@ -2138,28 +2227,49 @@ internal static class SoloTest
                         W($"  assert slot0 shape: card={free.Name} price={LoanService.ShopPriceFor(frec, free)}(exp 0) notRestructuring={free != typeof(RestructuringCard)} notSale={LoanService.SaleCardFor(frec) != free} -> {tF0}");
                         all &= tF0;
 
-                        // ★가격/한도 불변식: 유료는 한 방문에 1장, 할인 카드를 집으면 2장. Checked against the LIVE
-                        // prices this visit rolled, so a later tweak to the band / sale depth / credit line that
-                        // breaks the intent fails here instead of in someone's run.
+                        // ★가격/한도 불변식 (2026-07-28 재정의): 예전엔 "유료는 한 방문에 1장"이었는데, 밴드를
+                        // 45~95 로 내리면서 **합이 한도 이하면 2장**으로 바뀌었다. 규칙이 뒤집혔으므로 이 assert 도
+                        // 뒤집는다 — 안 그러면 의도된 설계 변경이 회귀로 잡힌다(반대로, 고치지 않은 채 두면
+                        // 배포 게이트가 막힌다). LIVE 가격으로 검사하므로 밴드/세일/한도를 나중에 건드려
+                        // 의도가 깨지면 남의 런이 아니라 여기서 먼저 터진다.
                         var saleT = LoanService.SaleCardFor(frec);
                         int salePrice = saleT != null ? LoanService.ShopPriceFor(frec, saleT) : -1;
-                        // ★The "two at full price" check must EXCLUDE the sale card — that discounted offer is exactly
-                        // the thing that is supposed to let a second card through, so counting it here would assert
-                        // the opposite of the design.
+                        // 세일 카드는 제외하고 정가만 본다 — 할인은 '한 장 더'를 사주는 별도 레버라서,
+                        // 정가 규칙에 섞으면 설계와 반대되는 걸 검사하게 된다.
                         var fullPrices = new List<int>();
                         for (int i = 1; i < offers.Length; i++)
                             if (offers[i] != saleT) fullPrices.Add(LoanService.ShopPriceFor(frec, offers[i]));
                         fullPrices.Sort();
-                        int cheapestNonSale = fullPrices.Count > 0 ? fullPrices[0] : -1;
                         int lim = DebtLoanConfig.ShopCreditLimit;
-                        bool twoFullPriceBlocked = fullPrices.Count < 2 || fullPrices[0] + fullPrices[1] > lim;
-                        bool saleLetsYouBuyTwo = salePrice < 0 || cheapestNonSale < 0 || salePrice + cheapestNonSale <= lim;
+
+                        // ★검사를 두 층으로 나눈다. 방문 초반엔 3장만 공개되므로(1회차 3장 → 2회차 5장 → 이후 전부),
+                        //   "최저 2장이 한도에 들어온다" 같은 **구조 주장**을 그 방문의 공개분으로 재면 비싼 카드만
+                        //   뜬 방문에서 엉뚱하게 실패한다. 구조는 가격 **표**로, 방문별 안전성은 **라이브 가격**으로 잰다.
+
+                        // ── 구조(가격표): 공개 운에 좌우되지 않는다 ─────────────────────────────────────
+                        int pMin  = LoanService.CardDebtPrice(typeof(BloodPaymentCard));      // 45 — 밴드 최저
+                        int pMin2 = LoanService.CardDebtPrice(typeof(BankruptcyCard));        // 55 — 그 다음 티어
+                        int pMax  = LoanService.CardDebtPrice(typeof(BorrowingCard));         // 95 — 밴드 최고
+                        int pMid  = LoanService.CardDebtPrice(typeof(LoanStrikeCard));        // 65 — 중가
+                        bool twoFit      = pMin + pMin2 <= lim;      // 두 장이 실제로 가능한 선택이다
+                        bool threeBlocked= pMin + pMin2 + pMin2 > lim; // 세 장은 정가로 불가
+                        bool topIsSolo   = pMax + pMin > lim;        // 최고가는 한 장으로 방문을 통째로 쓴다
+                        bool midPairsOut = pMid + pMid > lim;        // 중가 두 장은 안 된다(= 조합에 값이 의미를 갖는다)
+
+                        // ── 방문별(라이브): 이 방문의 실제 가격이 한도를 존중하는가 ─────────────────────
+                        int trio = fullPrices.Count >= 3 ? fullPrices[0] + fullPrices[1] + fullPrices[2] : -1;
+                        bool liveThreeBlocked = trio < 0 || trio > lim;   // 어떤 방문에서도 정가 3장은 못 산다
                         int upgMax = 0;
                         var upgT = LoanService.UpgradedCardFor(frec);
                         if (upgT != null && !LoanService.IsFreeOffer(frec, upgT)) upgMax = LoanService.ShopPriceFor(frec, upgT);
-                        bool upgReachable = upgMax <= lim;
-                        bool tFP = twoFullPriceBlocked && saleLetsYouBuyTwo && upgReachable;
-                        W($"  assert 가격/한도 불변식 (limit {lim}): 정가={string.Join(",", fullPrices)} 세일={salePrice} | 정가2장={(fullPrices.Count >= 2 ? fullPrices[0] + fullPrices[1] : -1)}(must be >{lim}) 세일+최저정가={(salePrice >= 0 && cheapestNonSale >= 0 ? salePrice + cheapestNonSale : -1)}(must be <={lim}) 강화판={upgMax}(<={lim}) -> {tFP}");
+                        bool upgReachable = upgMax <= lim;                // 강화판 offer 는 여전히 닿는다
+
+                        bool tFP = twoFit && threeBlocked && topIsSolo && midPairsOut && liveThreeBlocked && upgReachable;
+                        W($"  assert 가격/한도 불변식 (limit {lim}): 표[{pMin}/{pMin2}/{pMid}/{pMax}]"
+                          + $" 2장={pMin + pMin2}(<={lim}) 3장={pMin + pMin2 + pMin2}(>{lim})"
+                          + $" 최고+최저={pMax + pMin}(>{lim}) 중가2장={pMid * 2}(>{lim})"
+                          + $" | 라이브 정가={string.Join(",", fullPrices)} 세일={salePrice} 최저3장={trio}(>{lim})"
+                          + $" 강화판={upgMax}(<={lim}) -> {tFP}");
                         all &= tFP;
 
                         int fp0 = frec.Principal, fc0 = frec.CardDebt, fs0 = frec.ShopSpentThisVisit;

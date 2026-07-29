@@ -190,6 +190,21 @@ internal static class LoanService
     /// BeforeHandDraw), so the normal draw pulls them in naturally from turn 1 — sometimes several land in the
     /// opening hand, sometimes they trickle in over the next turns, but they're never all forced onto turn 1.
     /// Temporary — gone at combat end.</summary>
+    /// <summary>전투 시작에 섞어 넣을 <see cref="SeizedGoodsCard"/> 장수 — <b>남은 빚</b> 계단이다
+    /// (250/500/750 → 1/2/3). 최소 대출(100)로는 0장: 압류품은 감수한 사람에게만 나온다.
+    /// <para>★<see cref="LoanRecord.Borrowed"/>(이번 사이클에 빌린 총액)가 아니라 <b>Principal(지금 남은 빚)</b>
+    /// 을 읽는다. Borrowed 로 하면 빌리고 곧바로 갚아도 압류품은 그대로라, 갚기 빌드가 빚 빌드의 보상까지
+    /// 공짜로 챙기는 구멍이 생긴다. 카드 4종(담보·부도 위기·부실채권·레버리지)이 읽는 값과도 같아야
+    /// 플레이어가 숫자 하나만 보면 된다.</para></summary>
+    internal static int SeizedGoodsFor(Player? player)
+    {
+        int owed = PrincipalOf(player);
+        if (owed >= 750) return 3;
+        if (owed >= 500) return 2;
+        if (owed >= 250) return 1;
+        return 0;
+    }
+
     internal static async Task InjectAllDebtsForCombat(Player injectee, IRunState run)
     {
         var combat = injectee?.Creature?.CombatState;
@@ -221,6 +236,16 @@ internal static class LoanService
                 if (tier >= 3) { var s = combat.CreateCard<SeizureCard>(injectee); if (s != null) cards.Add(s); }
             }
         }
+        // ★압류품은 **자기 빚에만** 반응한다 — 위 저주 루프가 run.Players 전체를 도는 건 co-op 전염(동료의
+        // 빚이 내 전투에도 스며든다)이라 그렇지만, 보상까지 전염시키면 빌리지도 않은 동료가 공짜 방어도를
+        // 받는다. 그래서 injectee 본인의 기록만 본다.
+        int seized = SeizedGoodsFor(injectee);
+        for (int i = 0; i < seized; i++)
+        {
+            var g = combat.CreateCard<SeizedGoodsCard>(injectee);
+            if (g != null) cards.Add(g);
+        }
+
         if (cards.Count == 0) return;
 
         // Random positions → shuffled into the draw pile before the opening deal, so how many land in the
@@ -228,7 +253,8 @@ internal static class LoanService
         // uses the lockstep combat RNG → deterministic across co-op peers.
         var results = await CardPileCmd.AddGeneratedCardsToCombat(cards, PileType.Draw, injectee, CardPilePosition.Random);
         CardCmd.PreviewCardPileAdd(results);
-        MainFile.Logger.Info($"[{MainFile.ModId}] shuffled {cards.Count} Debt curse card(s) into the draw pile.");
+        MainFile.Logger.Info($"[{MainFile.ModId}] shuffled {cards.Count} card(s) into the draw pile "
+                             + $"({cards.Count - seized} debt curse, {seized} 압류품).");
     }
 
     /// <summary>True if the player already carries the Merchant's Ledger relic.</summary>
@@ -555,39 +581,65 @@ internal static class LoanService
     /// <summary>Debt price of a purchasable card, by strength tier. owed is a SOFT cost (it only raises the repay
     /// total — not shop inflation, node interest, or curse tiers), so the real limiter is the per-visit reveal
     /// count × how many shops a run has; the price is the relative signal + a repay-build tax.</summary>
-    // Price band (before sale). Raised 40/70 → 60/95 when slot 0 became a FREE gift: two paid offers must NOT fit
-    // inside one visit's credit line (2 × 60 = 120 > 120 is false by 0 — see ShopCreditLimit's note, the min pair is
-    // 60+65 = 125 once the cheapest tier is 65), while a SALE card plus one more must fit.
-    private const int PriceMin = 60, PriceMax = 95;   // shop price band (before sale)
+    // Price band (before sale). ★60/95 → 45/95: 방문당 유료를 1장에서 **합이 한도 이하면 2장**으로 연다.
+    // 가격이 그대로 규칙이 되는 게 핵심 — 플레이어가 두 값을 더해 120 이하인지 화면에서 바로 읽는다
+    // (예전엔 "왜 한 장밖에 못 사지?"가 숨은 규칙이었다). 티어는 45/55/65/75/85/95 등간이라
+    //   · 45+75 = 120, 55+65 = 120 → 두 장
+    //   · 65+65 = 130, 85+45 = 130, 95+45 = 140 → 한 장
+    // 즉 매 방문이 "고급 1장이냐, 중저가 2장이냐"의 선택이 된다. 3장은 어떤 조합으로도 안 들어가고
+    // (최저 3장 45+45+55 = 145 > 120), 세일 카드가 그 3장째를 사준다.
+    private const int PriceMin = 45, PriceMax = 95;   // shop price band (before sale)
 
     /// <summary>Base tier price (centre of the band; the shown base is this ± variance, clamped to [40,70]).
     /// Tiers lowered ~10 so card debt piles up more slowly (paired with the tighter per-shop credit limit).</summary>
     internal static int CardDebtPrice(System.Type t)
     {
-        // ★Prices were lifted ~20 when slot 0 became a FREE gift: one offer per visit is now given away, so the paid
-        // slots must cost enough that the per-visit credit line buys ONE of them (see the band + ShopCreditLimit).
-        if (t == typeof(RestructuringCard)) return 90;   // 채무 조정: once-per-loan write-off — the priciest offer (eats a whole visit's credit line)
-        if (t == typeof(InvoiceCard) || t == typeof(GarnishmentCard) || t == typeof(BankruptcyCard) || t == typeof(RefinanceCard)
-            || t == typeof(PromissoryNoteCard) || t == typeof(LeverageCard)) return 85;   // 고급: scaling attack / AoE / debt payoff / tempo / principal-scaled attack
-        if (t == typeof(JobPlacementCard) || t == typeof(KitingCard)) return 75;   // 취업알선 / 돌려막기: income skills
-        // ★파워 엔진 6종을 성능에 따라 3단으로 벌린다. 예전엔 전부 80이었는데, 빚 상점은 한 방문에 유료
-        // 카드를 딱 한 장만 살 수 있으므로(ShopCreditLimit), 값이 같으면 플레이어는 매번 상위 두 장만 집고
-        // 나머지 넷은 영구히 팔리지 않는다. 값을 벌려야 "명세서를 95에 살까, 추심을 75에 사고 남길까"가
-        // 실제 선택이 된다. 등급 근거는 BALANCE_AUDIT.md(게임 본편 548장 분포 대조).
-        // 차입: 턴당 에너지는 이 세트에서 가장 큰 효과라 최고가. 영수증 4라는 자체 관문이 이미 세지만,
-        // 골드 가격까지 최상단에 둬야 "이번 방문의 신용 한도를 통째로 여기 쓸 것인가"가 성립한다.
-        if (t == typeof(BorrowingCard)) return 95;
-        // 경비 처리: 나머지 영수증 카드를 전부 싸게 만드는 인에이블러 → 강 티어. 단독으론 전투 효과가 0이라
-        // 차입보다는 아래.
-        if (t == typeof(ExpensingCard)) return 90;
-        if (t == typeof(StatementCard) || t == typeof(PaymentBenefitCard)) return 95;   // 강: 매 턴 드로우 / 판금 순 +2턴 누적
-        if (t == typeof(RefundCard) || t == typeof(CounterclaimCard)) return 85;        // 중: 성실 납부 공급 / 납부마다 5피해
-        if (t == typeof(CollectionCard) || t == typeof(InterestSupportCard)) return 75; // 약: 2코 선불+영수증 재지불 / 전투 효과 0
-        // ⚠️약 티어를 65로 내리지 말 것: 서로 다른 두 장이 60+60=120이 되어 "유료 정가 2장은 한 방문에
-        // 들어가지 않는다"는 불변식이 깨진다(75면 최저 조합이 60+65=125로 유지). solo-verify가 잡아낸다.
-        if (t == typeof(SettlementCard) || t == typeof(LoanStrikeCard) || t == typeof(MortgageCard)) return 75;   // 중급
-        if (t == typeof(BloodPaymentCard)) return 65;   // 기본: HP-payment utility
-        return 75;
+        // ★티어 재편(2026-07-28). 예전엔 21장 중 15장(71%)이 85 아니면 75에 몰려 있었다 — 파워 6종을
+        // 벌리며 고쳤던 "값이 같으면 상위만 팔린다" 문제가 풀 전체 규모로 재발한 상태였다. 45~95 를
+        // 10 간격 6단으로 벌려 최대 버킷을 8장(38%) → 6장(29%)으로 낮췄다. 서열 근거는 BALANCE_AUDIT.md
+        // (게임 본편 548장 분포 대조: 1코 피해 중앙 8/Q3 10/max 30, 1코 방어도 중앙 6/Q3 8/max 15 —
+        //  ★방어도가 피해보다 희소해서 같은 숫자면 더 비싼 값이다).
+
+        // ── 95: 전투를 통째로 바꾸는 엔진 ────────────────────────────────────────────────────
+        // 차입=턴당 에너지(세트 최대 효과) · 명세서=납부마다 드로우 · 납부 혜택=판금 순 +2/턴 무한 누적
+        if (t == typeof(BorrowingCard) || t == typeof(StatementCard) || t == typeof(PaymentBenefitCard)) return 95;
+
+        // ── 85: 한 방문을 통째로 쓸 값어치 ───────────────────────────────────────────────────
+        // 채무 조정=한 대출당 1회 250 원금 탕감 · 경비 처리=나머지 영수증 카드를 전부 싸게 만드는 인에이블러
+        // 어음=0코 순 +2 에너지(세트 최고 템포) · 레버리지=원금÷30, 2코 max 28 을 넘는 상한 + **비소멸 반복**
+        if (t == typeof(RestructuringCard) || t == typeof(ExpensingCard)
+            || t == typeof(PromissoryNoteCard) || t == typeof(LeverageCard)
+            || t == typeof(DefaultRiskCard)) return 85;   // 부도 위기: 빚 빌드의 곱셈 축(레버리지·부실채권이 힘을 탄다)
+
+        // ── 75: 영수증을 전량 태우는 X 스케일러 + 광역 ────────────────────────────────────────
+        // 청구서·정산은 같은 4×X 쌍이라 **같은 값**이어야 한다(예전엔 85/75 로 갈려 있었다 — BALANCE_AUDIT
+        // 이 "균형, 조정 불필요"로 판정한 쌍인데 가격만 어긋나 있던 모순). 영수증 8이면 32 로 1코 상한 초과.
+        if (t == typeof(InvoiceCard) || t == typeof(SettlementCard) || t == typeof(GarnishmentCard)) return 75;
+
+        // ── 65: 즉시 효과가 확실한 기본기 ────────────────────────────────────────────────────
+        // 대출 강타 14(1코 중앙의 1.75배) / 저당 방어도 12(중앙의 2.0배) — 감사가 "오차 범위"라 판정한
+        // 쌍이므로 같은 칸에 둔다. 환급·자본 타격·추심=납부 트리거 엔진, 취업알선=순 55골드.
+        if (t == typeof(LoanStrikeCard) || t == typeof(MortgageCard) || t == typeof(RefundCard)
+            || t == typeof(CounterclaimCard) || t == typeof(CollectionCard) || t == typeof(JobPlacementCard)
+            || t == typeof(CollateralCard)) return 65;   // 담보: 저당과 같은 즉시 방어 기본기(이쪽은 원금 스케일)
+
+        // ── 55: 조건부이거나 전투 기여가 없는 것 ─────────────────────────────────────────────
+        // 파산·차환·돌려막기는 **손에 native Debt** 를 요구하는데 native Debt 는 유료 구매 1회당 1장뿐 →
+        // 발동 빈도가 세트 최하. 이자 지원은 전투 효과가 0(골드만 준다).
+        // ⚠️감사의 "이자 지원을 60으로" 는 구조상 불가능하다 — 45 미만으로는 못 가고, 45 자리는 한 장뿐이다.
+        //   이 카드는 값이 아니라 효과 이중화로 풀어야 한다.
+        if (t == typeof(BankruptcyCard) || t == typeof(RefinanceCard)
+            || t == typeof(KitingCard) || t == typeof(InterestSupportCard)
+            // 부실채권을 65 가 아니라 55 에 둔 이유: 65 버킷이 이미 6장이라 8장이 되면 방금 고친
+            // '한 티어에 몰려 값이 신호가 아니게 되는' 문제로 되돌아간다. 55 는 5장이 된다.
+            || t == typeof(BadDebtCard)) return 55;
+
+        // ── 45: 밴드 최저 — 여기 앉을 수 있는 건 한 장뿐이다 ─────────────────────────────────
+        // 45 가 둘이면 45+45+45 = 135 는 넘지만 두 장이 90 이라 세일까지 겹칠 때 3장이 들어온다. 혈납은
+        // 전투 효과가 0인 부팅용 유틸이라 이 자리의 주인이다.
+        if (t == typeof(BloodPaymentCard)) return 45;
+
+        return 65;
     }
 
     /// <summary>The pre-sale shown price: tier base ± a deterministic variance (−10..+10 in 5s), clamped to the
@@ -597,7 +649,9 @@ internal static class LoanService
     {
         int idx = System.Array.IndexOf(PurchasablePool, t);
         var rng = new System.Random(unchecked(rec.LoanFloor * 911 + rec.DebtShopVisits * 277 + idx * 53 + 7));
-        int variance = rng.Next(-2, 3) * 5;   // −10, −5, 0, +5, +10
+        // ★분산 ±10 → ±5: 티어 간격이 10이라 ±10 이면 인접 티어가 통째로 겹쳐(65 티어가 75까지 올라간다)
+        // "합 120 이하면 두 장" 규칙이 값마다 뒤집힌다. ±5 여야 티어 경계가 유지된다.
+        int variance = rng.Next(-1, 2) * 5;   // −5, 0, +5
         return Math.Clamp(CardDebtPrice(t) + variance, PriceMin, PriceMax);
     }
 
@@ -968,6 +1022,11 @@ internal static class LoanService
         typeof(BorrowingCard),                                                                             // 차입: 턴당 에너지 (영수증 4 = 엔진 초반 산출 전부)
         typeof(JobPlacementCard),                                                                          // 취업알선: income skill (moved from free grants)
         typeof(BankruptcyCard), typeof(RefinanceCard),                                                     // debt payoff: Bankruptcy(→Strength) / Refinance(→Payment cards)
+        // ★원금 스케일링 축(2026-07-28). 이 세트는 오랫동안 **갚기에만** 보상을 걸고 있었다 — 영수증에
+        // 비례해 강해지는 카드가 10장인데 원금에 비례하는 건 레버리지 하나뿐이라, 저주 티어·상점 할증·
+        // HP 압박이라는 대가를 다 치르고도 '빚을 안고 간다'가 전략이 아니라 그냥 손해였다. 이 3장이
+        // 그 반대편을 만든다: 담보=생존, 부도 위기=곱셈(힘), 부실채권=막힌 손패를 탄약으로.
+        typeof(CollateralCard), typeof(DefaultRiskCard), typeof(BadDebtCard),
     };
     private const int ShopOfferCount = 5;   // cards displayed per shop visit (rotating), like the merchant's card row
 

@@ -83,10 +83,17 @@ public sealed class LeverageCard : CardModel
 
     /// <summary>Inject {per} = the gold-per-damage divisor so the description can state the exchange rate and change
     /// with the upgrade (Description is non-virtual — same arg-injection route as 차환's {card}).</summary>
+    /// <summary>{amount} = 지금 이 카드를 내면 나오는 **실제 수치**. ★<c>{Calculated*}</c> 를 쓰면 안 된다 —
+    /// 엔진의 <c>CalculatedVar.Calculate</c> 가
+    ///   <c>num = (CombatManager.IsInProgress &amp;&amp; card.CombatState != null) ? multiplier(...) : 0</c>
+    /// 이라 <b>전투 밖에서는 곱셈기를 아예 호출하지 않고 0 을 돌려준다</b>. 그러면 빚 상점·덱 화면에서
+    /// "현재 0" 이 떠서, 카드를 사는 바로 그 순간에 가장 중요한 숫자가 거짓말을 한다. 직접 계산해 주입하면
+    /// 전투 안팎 모두 정확하다.</summary>
     protected override void AddExtraArgsToDescription(MegaCrit.Sts2.Core.Localization.LocString description)
     {
         base.AddExtraArgsToDescription(description);
         description.Add("per", (IsUpgraded ? DivisorUpgraded : DivisorBase).ToString());
+        description.Add("amount", PrincipalSteps(this).ToString());
     }
 
     public LeverageCard() : base(canonicalEnergyCost: 2, CardType.Attack, CardRarity.Event, TargetType.AnyEnemy) { }

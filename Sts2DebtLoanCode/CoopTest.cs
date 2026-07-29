@@ -183,6 +183,25 @@ internal static class CoopTest
                     await LoanService.BuyCardOnDebt(me, type);
                     await Task.Delay(5000);
                     W($"HOST: after PAID buy, owed={LedgerPrincipalOf(me)} nativeDebt={NativeDebtInDeck(me)} purchased={PurchasedCount(me)} deckHasBought={DeckHasAnyPurchased(me)}");
+
+                    // ★★같은 방문에서 **유료 2장째** — 가격 재편(밴드 45~95)으로 새로 열린 경로다. 예전엔
+                    //   최저쌍이 125 > 120 이라 도달 자체가 불가능했고, 따라서 co-op 에서 한 번도 지나본 적이
+                    //   없다: 같은 방문에 dl_sync buy 가 두 번 재생되고 ShopSpentThisVisit 이 누적되며 두 번째
+                    //   구매의 신용 게이트가 첫 구매의 지출을 반영해야 한다. 한도를 넘겨 거절되는 것도 정상
+                    //   결과이므로(고급 카드만 남은 방문), 거절/성공 **양쪽 다 양 피어가 같아야** 한다는 게 핵심.
+                    if (offers.Length > 2)
+                    {
+                        var t2 = offers[2];
+                        int price2 = LoanService.ShopPriceFor(rec, t2);
+                        bool affordable = LoanService.CanAffordCredit(rec, t2);
+                        int owedPre2 = LedgerPrincipalOf(me), spentPre = rec.ShopSpentThisVisit;
+                        W($"HOST: 2nd PAID {t2.Name} price={price2} spent={spentPre}/{DebtLoanConfig.ShopCreditLimit} "
+                          + $"affordable={affordable} (합이 한도 이하일 때만 통과하는 게 정상)");
+                        bool bought2 = affordable && await LoanService.BuyCardOnDebt(me, t2);
+                        await Task.Delay(5000);
+                        W($"HOST: after 2nd PAID, bought={bought2} owed {owedPre2}→{LedgerPrincipalOf(me)} "
+                          + $"spent={LoanService.For(me)?.ShopSpentThisVisit} purchased={PurchasedCount(me)}");
+                    }
                 }
             }
             else W("HOST: no debt-shop offers to buy (skipping purchase step)");
@@ -244,6 +263,29 @@ internal static class CoopTest
             W($"HOST: ⑦ claim pending {pendingBefore}→{LoanService.PendingRewardCount(LoanService.For(me))} "
               + $"claimed {claimedBefore}→{LoanService.For(me)?.CreditRewardsTaken} paid={LoanService.For(me)?.TotalPaid}");
 
+            await LoanService.GrantLoanDirect(me, 100);
+            await Task.Delay(4000);
+            var recNew = LoanService.For(me);
+            W($"HOST: ⑥ re-borrow borrowed={recNew?.Borrowed}(100, 옛 사이클과 합산 아님) owed={LedgerPrincipalOf(me)}(120) "
+              + $"draws={recNew?.LoanDraws}(1) active={recNew?.Active}(True)");
+            UpgTrace("재대출 후(아직 강화 전)");
+
+            // ⑧ 빚으로 카드 제거 — 제거 화면 + 빚 증가 + 제거 카운터를 양 피어가 함께 재생해야 한다.
+            Step("HOST purge a card on debt");
+            int deckBeforePurge = PileType.Deck.GetPile(me)?.Cards?.Count ?? -1;
+            int owedBeforePurge = LedgerPrincipalOf(me);
+            int purgePrice = LoanService.PurgePrice(me);
+            bool purgeOk = await LoanService.PurgeCardOnDebt(me);
+            await Task.Delay(5000);
+            W($"HOST: ⑧ purge={purgeOk} price={purgePrice} deck {deckBeforePurge}→{PileType.Deck.GetPile(me)?.Cards?.Count} "
+              + $"owed {owedBeforePurge}→{LedgerPrincipalOf(me)} removalsUsed={me.ExtraFields?.CardShopRemovalsUsed}");
+            UpgTrace("빚 제거 후(아직 강화 전)");
+            await Shot("03c_purged");
+
+            // ★★순서 주의: 엔진 핸드셰이크(강화)는 **빚 제거 뒤**에 와야 한다. 앞에 두면 하네스의
+            //   제거 셀렉터가 덱의 "첫 카드"를 집는데 그게 방금 강화한 바로 그 카드라, 강화가 사라진
+            //   것처럼 보인다(실측: upgraded=STRIKE_IRONCLAD → 곧바로 removed 'STRIKE_IRONCLAD').
+            //   지금 순서면 강화가 전투 진입 + 방 전환을 실제로 건너므로 생존 assert 가 의미를 갖는다.
             // ⑦-b ★★엔진 choice 핸드셰이크 실측 — 지금까지 유일하게 남아 있던 미검증 구간.
             //   하네스 셀렉터를 양 피어에서 끄고(dl_testsel 0), 신용 상태를 900/taken=2 로 맞춘 뒤
             //   (dl_testcredit) 수령하면 엔진이 실제 덱 강화 화면을 띄운다. 호스트가 그 화면을 확정하면
@@ -266,27 +308,16 @@ internal static class CoopTest
                 if (!r.StartsWith("(")) picked = r;
             }
             await Task.Delay(5000);   // SyncLocalChoice → 상대 WaitForRemoteChoice 해소까지
-            W($"HOST: ⑦b engine-handshake picked={picked} taken={LoanService.For(me)?.CreditRewardsTaken}(3)");
+            _hsPicked = picked;
+            // ★강화가 **지금** 붙었는지와 **전투·방 전환을 건너 살아남는지**는 서로 다른 질문이라 둘 다 찍는다.
+            //   (전자만 재면 소실을 놓치고, 후자만 재면 "애초에 안 붙은 것"과 구별할 수 없다.)
+            _hsUpgNow = UpgradedSignature(me);
+            W($"HOST: ⑦b engine-handshake picked={picked} taken={LoanService.For(me)?.CreditRewardsTaken}(3) "
+              + $"upgNow={_hsUpgNow} diag={DebtLoanGrants.LastUpgradeDiag}");
             run.ActionQueueSynchronizer.RequestEnqueue(new ConsoleCmdGameAction(me, "dl_testsel 1", inCombat: false));
             await Task.Delay(2500);
             await Shot("03d_handshake");
 
-            await LoanService.GrantLoanDirect(me, 100);
-            await Task.Delay(4000);
-            var recNew = LoanService.For(me);
-            W($"HOST: ⑥ re-borrow borrowed={recNew?.Borrowed}(100, 옛 사이클과 합산 아님) owed={LedgerPrincipalOf(me)}(120) "
-              + $"draws={recNew?.LoanDraws}(1) active={recNew?.Active}(True)");
-
-            // ⑧ 빚으로 카드 제거 — 제거 화면 + 빚 증가 + 제거 카운터를 양 피어가 함께 재생해야 한다.
-            Step("HOST purge a card on debt");
-            int deckBeforePurge = PileType.Deck.GetPile(me)?.Cards?.Count ?? -1;
-            int owedBeforePurge = LedgerPrincipalOf(me);
-            int purgePrice = LoanService.PurgePrice(me);
-            bool purgeOk = await LoanService.PurgeCardOnDebt(me);
-            await Task.Delay(5000);
-            W($"HOST: ⑧ purge={purgeOk} price={purgePrice} deck {deckBeforePurge}→{PileType.Deck.GetPile(me)?.Cards?.Count} "
-              + $"owed {owedBeforePurge}→{LedgerPrincipalOf(me)} removalsUsed={me.ExtraFields?.CardShopRemovalsUsed}");
-            await Shot("03c_purged");
 
             // 3) Combat → run-wide debt injection still fires; 4) room jump → checksum boundary.
             Step("HOST enter combat");
@@ -391,8 +422,10 @@ internal static class CoopTest
                 await Shot("04c_bailout_used");
 
                 // Exit combat → checksum boundary (a divergent owed / deck / sold-set drops the JOIN here).
+                UpgTrace("전투 중(방 나가기 전)");
                 run.ActionQueueSynchronizer.RequestEnqueue(new ConsoleCmdGameAction(me, "room rest", inCombat: true));
                 await Task.Delay(8000);
+                UpgTrace("휴식처 도착(방 전환 후)");
             }
             else W("HOST: combat did not start (room monster jump failed)");
 
@@ -400,9 +433,17 @@ internal static class CoopTest
 
             var host = run.State.Players.OrderBy(p => p.NetId).First();
             W($"HOST: FINAL {Descriptor(host)} joinBailoutMax={joinBailoutMax}");
+
+            // ★★핸드셰이크 강화의 **생존** 판정 — 이걸 assert 로 걸지 않아 v0.15.1 은 FINAL 에 upg=0:- 을
+            //   버젓이 찍고도 RESULT: OK 로 통과했다. 보상이 아무것도 안 하는 회귀가 배포까지 갔다.
+            bool hsRan = _hsPicked != "(none)";
+            bool upgSurvived = UpgradedSignature(host) != "0:-";
+            W($"  assert 엔진 핸드셰이크: 화면구동={hsRan}({_hsPicked}) 강화즉시={_hsUpgNow} "
+              + $"강화생존={upgSurvived}({UpgradedSignature(host)}) -> {hsRan && upgSurvived}");
+
             await Shot("05_final");
             W("=== coop host done ===");
-            Flush(true);
+            Flush(hsRan && upgSurvived);
         }
         catch (Exception e) { W("HOST exception: " + e); Flush(false); }
     }
@@ -466,9 +507,13 @@ internal static class CoopTest
             }
             var host = run.State.Players.OrderBy(p => p.NetId).First();
             W($"JOIN: FINAL {Of(host)} myBailout={bailoutMax} played={playedBailout}");
+            // ★조인 쪽도 독립적으로 판정해야 한다 — 강화는 호스트의 choice 를 WaitForRemoteChoice 로 받아
+            //   **각 피어가 자기 덱에 로컬 적용**하므로, 한쪽만 살아남는 경우가 실제로 가능하다.
+            bool joinUpg = UpgradedSignature(host) != "0:-";
+            W($"  assert 조인 강화생존: {joinUpg}({UpgradedSignature(host)})");
             await Shot("02_final");          // ★mandatory: what the client actually SEES after replication
             W("=== coop join done ===");
-            Flush(true);
+            Flush(joinUpg);
         }
         catch (Exception e) { W("JOIN exception: " + e); Flush(false); }
 
@@ -511,7 +556,11 @@ internal static class CoopTest
              + $"deck={PileType.Deck.GetPile(h)?.Cards?.Count ?? -1} "
              + $"purges={h.ExtraFields?.CardShopRemovalsUsed ?? -1} "
              // ★엔진 choice 핸드셰이크의 산출물 — 두 피어가 **같은 카드**를 강화했는지가 핵심.
-             + $"upg={UpgradedSignature(h)}";
+             // ★두 파일을 함께 찍는다 — 전투 중엔 PileType.Deck.GetPile 이 전투 파일을 가리킬 수 있어,
+             //   "강화가 사라졌다"와 "다른 파일을 보고 있다"를 이것 없이는 구별할 수 없다.
+             + $"upg={UpgradedSignature(h)} upgPile={PileUpgradedSignature(h)}"
+             // ★강화 시도의 실제 경로(셀렉터 유무·후보 수·결과) — role 태그가 붙어야 두 인스턴스를 가른다.
+             + $" updiag={DebtLoanGrants.LastUpgradeDiag}";
     }
 
     /// <summary>덱에서 강화된 카드의 서명(개수 + 첫 카드 id). 엔진이 동기화한 선택이 양 피어에서 같은
@@ -521,6 +570,25 @@ internal static class CoopTest
         // ★전투 중엔 PileType.Deck.GetPile 이 전투 파일을 가리켜 마스터 덱의 강화가 안 보인다 —
         // solo 가 쓰는 player.Deck(마스터 덱)을 그대로 써야 두 피어를 같은 기준으로 비교할 수 있다.
         var up = p.Deck?.Cards?.Where(c => c.IsUpgraded).Select(c => c.Id.Entry).OrderBy(x => x).ToList();
+        if (up == null || up.Count == 0) return "0:-";
+        return $"{up.Count}:{up[0]}";
+    }
+
+    /// <summary>같은 서명을 <c>PileType.Deck.GetPile</c> 기준으로 — 강화 코드가 보는 파일과 동일하다.
+    /// 이것과 <see cref="UpgradedSignature"/> 가 갈리면 '강화 소실'이 아니라 '측정 대상 불일치'다.</summary>
+    /// <summary>강화 서명을 단계마다 찍는다. "언제 사라졌나"는 FINAL 한 번만 봐서는 절대 알 수 없다 —
+    /// 실측에서 강화는 적용 직후엔 살아 있었고 FINAL 에선 없었다.</summary>
+    private static void UpgTrace(string when)
+    {
+        var run = RunManager.Instance;
+        var p = run?.State?.Players?.OrderBy(x => x.NetId).FirstOrDefault();
+        if (p == null) { W($"  [upg] {when}: (no player)"); return; }
+        W($"  [upg] {when}: deck={UpgradedSignature(p)} pile={PileUpgradedSignature(p)} diag={DebtLoanGrants.LastUpgradeDiag}");
+    }
+
+    private static string PileUpgradedSignature(Player p)
+    {
+        var up = PileType.Deck.GetPile(p)?.Cards?.Where(c => c.IsUpgraded).Select(c => c.Id.Entry).OrderBy(x => x).ToList();
         if (up == null || up.Count == 0) return "0:-";
         return $"{up.Count}:{up[0]}";
     }
@@ -605,6 +673,11 @@ internal static class CoopTest
     /// <summary>엔진 핸드쉐이크 실측 중엔 펌프가 셀렉터를 다시 밀지 못하게 막는다 —
     /// PumpLoop 가 매 반복 EnsureSelector() 를 부르므로 이 게 없으면 끄자마자 부활한다(실측으로 확인).</summary>
     private static bool _selectorSuspended;
+
+    /// <summary>엔진 choice 핸드셰이크에서 고른 카드와, 고른 직후의 강화 서명. FINAL 에서 "그 강화가 방
+    /// 전환을 넘어 살아남았는가"를 판정하는 데 쓴다.</summary>
+    private static string _hsPicked = "(none)";
+    private static string _hsUpgNow = "(n/a)";
     private static bool _pumpRunning;
 
     private static void StartAutomation()

@@ -37,10 +37,13 @@ internal static class DebtLoanConfig
     /// loan's <see cref="HardCap"/>. Each shop visit gives a fresh line; card purchases that visit may total at most
     /// this. Cards are 40–70 gold, so 100 ≈ 2 cards per shop — you can't sweep the whole 5-card offer. Resets on
     /// entering a new shop. Spec: 150.</summary>
-    // ★Raised 100 → 120 alongside the FREE slot-0 gift and the higher price band (60~95). The line is tuned so a
-    // visit buys exactly ONE paid offer normally (cheapest pair 60+65 = 125 > 120), but the discounted card plus one
-    // more DOES fit (deep sale ≈ 33~52, + 60 = 93~112 ≤ 120) — the sale is what buys you a second card.
-    // The visit's 강화판 offer stays reachable too (95 × 1.20 = 114 ≤ 120).
+    // ★120 유지, 밴드만 60~95 → 45~95 로 내렸다. 그래서 이 한도의 의미가 바뀐다:
+    //   예전 = "방문당 유료 1장" (최저쌍 60+65 = 125 > 120)
+    //   지금 = "합이 120 이하면 두 장" (45+75 = 120 ✓ / 65+65 = 130 ✗ / 85·95 는 최저가와 묶어도 130·140 ✗)
+    // 즉 매 방문이 '고급 1장 vs 중저가 2장' 의 선택이 된다. 3장은 어떤 정가 조합으로도 안 들어가고
+    // (최저 3장 45+45+55 = 145 > 120), 세일 카드(−45%)가 그 3장째를 사준다.
+    // 강화판은 여전히 닿는다 (95 × 1.20 = 114 ≤ 120).
+    // ⚠️한도를 내리면 두 장 규칙이 저가 조합으로만 좁아진다 — 가격표(LoanService.CardDebtPrice)와 한 세트로 볼 것.
     internal static int ShopCreditLimit = 120;
 
 

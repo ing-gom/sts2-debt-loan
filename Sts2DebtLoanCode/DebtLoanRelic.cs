@@ -10,6 +10,7 @@ using MegaCrit.Sts2.Core.Entities.Relics;         // RelicRarity
 using MegaCrit.Sts2.Core.HoverTips;               // HoverTipFactory, IHoverTip (Debt-card preview in tooltip)
 using MegaCrit.Sts2.Core.Localization.DynamicVars; // DynamicVar (per-relic hover values)
 using MegaCrit.Sts2.Core.Models;                  // RelicModel, ModelDb
+using MegaCrit.Sts2.Core.Nodes.CommonUi;          // CardPreviewStyle (CardCmd.Upgrade)
 using MegaCrit.Sts2.Core.Saves.Runs;              // SavedProperty, SerializationCondition
 
 namespace Sts2DebtLoan;
@@ -358,8 +359,11 @@ internal static class DebtLoanGrants
             var target = deck?.FirstOrDefault(c => c is CreditRestoredCard && !c.IsUpgraded);
             if (target != null)
             {
-                target.UpgradeInternal();
-                target.FinalizeUpgradeInternal();
+                // ★★덱 카드 강화는 반드시 CardCmd.Upgrade 로 — raw UpgradeInternal 은 강화를 **맵포인트
+                // 히스토리에 기록하지 않는다**(CurrentMapPointHistoryEntry.UpgradedCards). 바닐라 모루
+                // (SmithRestSiteOption)가 쓰는 정규 경로가 이것이고, 그 기록이 co-op 리플리카 재구축·세이브
+                // 복원이 덱을 되짚을 때의 근거가 된다.
+                CardCmd.Upgrade(target, CardPreviewStyle.None);
                 MainFile.Logger.Info($"[{MainFile.ModId}] upgraded the existing 신용 회복 reward card in the deck.");
                 return;
             }
@@ -380,21 +384,38 @@ internal static class DebtLoanGrants
 
     /// <summary>900 문턱: 덱의 아무 카드 1장을 강화한다. 선택은 엔진의 덱 강화 화면
     /// (<see cref="CardSelectCmd.FromDeckForUpgrade"/>)이 처리하고 <b>co-op 동기화도 엔진이 한다</b>.</summary>
+    /// <summary>마지막 강화 보상 시도의 진단 문자열. co-op 은 **두 인스턴스의 로그가 같은 파일에 뒤섞여**
+    /// 어느 쪽이 무엇을 했는지 로그만으로는 못 가른다 — 테스트가 이 값을 role 태그와 함께 찍어 가른다.</summary>
+    internal static string LastUpgradeDiag = "(not attempted)";
+
     internal static async Task UpgradeChosenDeckCard(Player player)
     {
         try
         {
             var prefs = new CardSelectorPrefs(CardSelectorPrefs.UpgradeSelectionPrompt, 1) { Cancelable = false };
+            int cand = PileType.Deck.GetPile(player)?.Cards?.Count(c => c.IsUpgradable) ?? -1;
+            bool hadSelector = CardSelectCmd.Selector != null;
+            int upBefore = PileType.Deck.GetPile(player)?.Cards?.Count(c => c.IsUpgraded) ?? -1;
+            LastUpgradeDiag = $"start(sel={hadSelector} cand={cand} up={upBefore})";
             var picked = (await CardSelectCmd.FromDeckForUpgrade(player, prefs)).FirstOrDefault();
+            LastUpgradeDiag = $"picked={picked?.Id.Entry ?? "null"} sel={hadSelector} cand={cand} up={upBefore}";
             if (picked == null) { MainFile.Logger.Info($"[{MainFile.ModId}] upgrade reward: nothing upgradable."); return; }
             // ★★FromDeckForUpgrade 는 **고르기만 하고 강화는 하지 않는다**(실 DLL 확인: 선택을 돌려주고
             // 끝). 이걸 놓쳐서 신용도 9 보상과 보너스 강화가 **단계만 소모하고 아무 일도 안 했다**.
-            // 제거 쪽은 CardPileCmd.RemoveFromDeck 을 명시적으로 불러 멀젖했다.
-            picked.UpgradeInternal();
-            picked.FinalizeUpgradeInternal();
+            // 제거 쪽은 CardPileCmd.RemoveFromDeck 을 명시적으로 불러 멀쩡했다.
+            // ★★그리고 강화는 raw UpgradeInternal 이 아니라 **CardCmd.Upgrade** 여야 한다 — 바닐라 모루
+            // (SmithRestSiteOption)가 쓰는 정규 경로로, UpgradeInternal 앞에 강화 사실을 맵포인트 히스토리
+            // (UpgradedCards)에 남긴다. 그 기록이 co-op 리플리카 재구축·세이브 복원의 근거다.
+            CardCmd.Upgrade(picked, CardPreviewStyle.None);
+            int upAfter = PileType.Deck.GetPile(player)?.Cards?.Count(c => c.IsUpgraded) ?? -1;
+            LastUpgradeDiag = $"upgraded={picked.Id.Entry} sel={hadSelector} cand={cand} up={upBefore}→{upAfter}";
             MainFile.Logger.Info($"[{MainFile.ModId}] credit reward upgraded '{picked.Id.Entry}'.");
         }
-        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] deck-upgrade reward failed: {e.Message}"); }
+        catch (Exception e)
+        {
+            LastUpgradeDiag = "threw: " + e.Message;
+            MainFile.Logger.Warn($"[{MainFile.ModId}] deck-upgrade reward failed: {e.Message}");
+        }
     }
 
     /// <summary>1200 문턱 / 빚 제거: 덱의 카드 1장을 제거한다. 선택 화면 + co-op 동기화는 엔진이 한다.
