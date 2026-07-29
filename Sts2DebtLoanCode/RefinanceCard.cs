@@ -91,7 +91,7 @@ public sealed class RefinanceCard : CardModel
 
         // THE PRICE OF THE SWAP: refinancing does not erase the debt, it rolls it over. One native 빚 (Debt) curse
         // joins the DECK permanently — the clog you cleared this fight follows you home, and only repaying the loan
-        // sweeps it (RemoveAllDebtLoanCards). Deck adds do NOT enter the current combat's piles (CardPileCmd.Add
+        // sweeps it (RemoveNativeDebtCards). Deck adds do NOT enter the current combat's piles (CardPileCmd.Add
         // targets PileType.Deck only), so the card text "전투가 끝나면" is literally true: this fight stays clean,
         // every future one is one card deeper. Runs only when something was actually converted (see the early
         // return above) → a whiffed play costs nothing.

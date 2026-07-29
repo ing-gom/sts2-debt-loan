@@ -311,7 +311,7 @@ internal static class DebtLoanGrants
     /// <summary>Every debt-shop VISIT leaves ONE native Debt curse in the deck (the price of leaning on the credit
     /// line) — dropped once per visit by <see cref="LoanService.ApplyBuyCard"/>. Uses the game's own Debt card, so
     /// it Unplayable-clogs the deck and bleeds 10 gold/turn if held (compounding the debt). Swept on repay by
-    /// <see cref="RemoveAllDebtLoanCards"/>. Same deck-pile path as GrantCard.</summary>
+    /// <see cref="RemoveNativeDebtCards"/>. Same deck-pile path as GrantCard.</summary>
     internal static async Task GrantNativeDebt(Player player, string reason = "debt-shop visit")
     {
         try
@@ -326,7 +326,8 @@ internal static class DebtLoanGrants
 
     /// <summary>Reward for clearing a tier-3+ loan: add the 신용 회복 (Credit Restored) card PERMANENTLY to the
     /// deck (upgraded at tier 4). If this happens mid-combat, also drop a temporary copy into hand so it helps
-    /// THIS fight too. The deck copy survives future debt-kit sweeps (it's exempt in RemoveAllDebtLoanCards).
+    /// THIS fight too. The deck copy is permanent — repay only sweeps native Debt (RemoveNativeDebtCards), so no
+    /// later loan's settle can strip a reward you already earned.
     /// Local per-peer mutation, applied inside the settle path → co-op safe (⚠️ verify with coop-verify).</summary>
     internal static async Task GrantRewardCard(Player player, bool upgraded)
     {
@@ -446,30 +447,19 @@ internal static class DebtLoanGrants
         catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] Dunning Letter remove failed: {e.Message}"); }
     }
 
-    /// <summary>Repay path: strip EVERY DebtLoan card (독촉장 + 취업알선 + 납부 혜택 + 환급 + 정산 + 청구서 + 혈납 + any
-    /// future deck-granted card) from the deck — the whole debt kit evaporates when you clear the loan. Matches
-    /// by declaring assembly so new cards are covered automatically. Local per-peer mutation (like the relic
-    /// remove), applied inside the settle path → co-op safe.</summary>
-    internal static async Task RemoveAllDebtLoanCards(Player player)
-    {
-        try
-        {
-            var own = typeof(DebtLoanGrants).Assembly;
-            foreach (var card in new List<CardModel>(player.Deck.Cards))
-                // Sweep the whole debt kit — but NOT the 신용 회복 reward (a permanent keepsake; a later loan's
-                // repay must not strip a reward you already earned) — PLUS the native Debt curses the debt shop
-                // left in the deck (our consequence, cleared when the loan clears → clean slate).
-                if ((card.GetType().Assembly == own && card is not CreditRestoredCard)
-                    || card is MegaCrit.Sts2.Core.Models.Cards.Debt) await CardPileCmd.RemoveFromDeck(card);
-        }
-        catch (Exception e) { MainFile.Logger.Warn($"[{MainFile.ModId}] DebtLoan card sweep failed: {e.Message}"); }
-    }
+    // ⚠️RemoveAllDebtLoanCards(결제셋까지 전부 제거)는 v0.14 재설계에서 아래 RemoveNativeDebtCards 로 갈라진 뒤
+    // 호출부가 하나도 없는 사문으로 남아 있다가 제거됐다. 되살리지 말 것 — 아래 <para>가 그 이유다.
+    // ★한 번 덱에 들어온 모드 카드는 청산해도 제거하지 않는다(빚 0이면 담보·레버리지처럼 효과가 0이 되는
+    // 카드라도 그대로 남긴다). 재대출하면 다시 살아나므로 사이클 설계와 일관된다.
 
     /// <summary>청산 시 덱에서 <b>네이티브 Debt 저주만</b> 쓸어낸다 — 모드의 결제 카드셋은 남긴다.
-    /// <para>★<see cref="RemoveAllDebtLoanCards"/>(전부 제거)와 갈라진 이유: 청산이 더는 대출의 끝이 아니라
-    /// 사이클의 마디가 됐다. 빚에서 벗어나려고 쌓아 올린 엔진이 벗어나는 순간 같이 죽는 게 이 모드의 가장 큰
-    /// 구조적 결함이었으므로 결제 카드는 남긴다. 반대로 네이티브 Debt 는 '나쁜 빚'의 벌점이고 사용 불가 +
-    /// 손에 있으면 턴당 -10골드인 순수 하방이라, 남겨두면 청산이 보상이 아니라 처벌이 된다.</para></summary>
+    /// <para>★결제 카드를 남기는 이유: 청산이 더는 대출의 끝이 아니라 사이클의 마디가 됐다. 빚에서 벗어나려고
+    /// 쌓아 올린 엔진이 벗어나는 순간 같이 죽는 게 이 모드의 가장 큰 구조적 결함이었으므로 결제 카드는 남긴다.
+    /// 반대로 네이티브 Debt 는 '나쁜 빚'의 벌점이고 사용 불가 + 손에 있으면 턴당 -10골드인 순수 하방이라,
+    /// 남겨두면 청산이 보상이 아니라 처벌이 된다.</para>
+    /// <para>덱에 영구히 들어가는 저주는 네이티브 Debt <b>하나뿐</b>이다(빚 상점 유료 구매·차환). 티어 저주
+    /// (연체/차압/신용 불량/강제 징수)는 전투 파일에만 주입되므로 <see cref="RemoveDebtCardsFromCombat"/>가
+    /// 맡는다 — 둘을 합치면 "빚을 지는 동안 붙은 저주는 청산 시 전부 사라진다"가 성립한다.</para></summary>
     internal static async Task RemoveNativeDebtCards(Player player)
     {
         try
@@ -482,7 +472,7 @@ internal static class DebtLoanGrants
 
     /// <summary>Mid-combat settle: strip the TEMPORARY injected Debt curses (납부/연체/차압/신용 불량/강제 징수) from the
     /// player's COMBAT piles (hand/draw/discard) so they stop taxing and debuffing the instant the loan is paid
-    /// off. <see cref="RemoveAllDebtLoanCards"/> only clears the DECK; these injected cards never join the deck,
+    /// off. <see cref="RemoveNativeDebtCards"/> only clears the DECK; these injected cards never join the deck,
     /// so they need this separate sweep. Local per-peer; runs inside the lockstep payment path.</summary>
     internal static async Task RemoveDebtCardsFromCombat(Player player)
     {

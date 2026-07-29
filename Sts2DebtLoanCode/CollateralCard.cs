@@ -34,7 +34,7 @@ namespace Sts2DebtLoan;
 /// 턴당 처리량이 배가 되어 무상한 스케일러에서 복리가 된다.
 ///
 /// 원금은 모든 피어가 동일하게 읽는 런 값이고 방어도는 정상 경로로 해결된다 → co-op 안전. 원금 0이면 0이고
-/// (자연 브레이크), 청산하면 이 카드는 덱에서 쓸려나간다(RemoveAllDebtLoanCards). Colorless/Event; 자동 등록.
+/// (자연 브레이크), ★청산해도 카드는 덱에 남는다 — 재대출하면 다시 살아난다. Colorless/Event; 자동 등록.
 /// </summary>
 public sealed class CollateralCard : CardModel
 {

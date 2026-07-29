@@ -39,8 +39,8 @@ namespace Sts2DebtLoan;
 /// a hard floor when tuning. 어음 (+100 principal) is the intended, honest version of the same interaction.
 ///
 /// Principal is a run value read identically on every peer, and damage resolves through the normal attack path →
-/// co-op safe. At principal 0 the damage is 0 (a natural brake), and repaying sweeps the card out of the deck
-/// entirely (RemoveAllDebtLoanCards). Colorless/Event; auto-registered.
+/// co-op safe. At principal 0 the damage is 0 (a natural brake), but ★the card STAYS in the deck after you repay
+/// — it comes back to life on your next loan. Colorless/Event; auto-registered.
 /// </summary>
 public sealed class LeverageCard : CardModel
 {
