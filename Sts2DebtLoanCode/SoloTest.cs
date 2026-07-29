@@ -207,6 +207,42 @@ internal static class SoloTest
             bool tA2 = owedN0 == 120 && owedN4 == 140 && owedN4b == 140 && owedNMax == 160;
             W($"  assert node-interest: owed0={owedN0}(120) 4rooms={owedN4}(140) idempotent={owedN4b}(140) capped={owedNMax}(160) -> {tA2}");
             all &= tA2;
+            // A3) 채무 적분 계측(DebtRoomGold) — 보상 없는 계측 전용. 재는 것은 "얼마나 크게 × 얼마나 오래".
+            //     ★검증 핵심은 멱등성이다: 방 이벤트는 재발화/리로드로 두 번 들어올 수 있는데, 이중 계상되면
+            //     문턱 캘리브레이션의 근거 데이터가 통째로 오염된다(그러고도 조용히 통과한다).
+            //     방 이동은 A2 와 같은 방식으로 앵커(LastLoadFloor)를 뒤로 밀어 흉내낸다.
+            Step("debt load integral");
+            LoanService.ResetFor(player);
+            await LoanService.GrantLoanDirect(player, 100);          // owed 120
+            await Task.Delay(200);
+            var recDL = LoanService.For(player)!;
+            recDL.DebtRoomGold = 0;                                  // 이 구간만 격리 (런 단위 누적이라 앞 구간이 남는다)
+            int owedL = recDL.Principal;                             // 120
+            // ★층은 합성값을 쓴다 — 하네스는 실제로 층 1에 앉아 있어 TotalFloor 를 앞으로 밀 수 없고,
+            //   TotalFloor-3 같은 뒤로 밀기는 음수 층이 되어 "미설정" 센티넬(<0)로 먹힌다(실제로 한 번 밟았다).
+            recDL.LastLoadFloor = 10;
+            int add3   = LoanService.AccrueDebtLoadAt(recDL, 13);    // 3방 → +120×3 = 360
+            int load3  = recDL.DebtRoomGold;
+            int addDup = LoanService.AccrueDebtLoadAt(recDL, 13);    // 같은 층 재호출 → 이중 계상 없음
+            int load3b = recDL.DebtRoomGold;
+            LoanService.AccrueDebtLoadAt(recDL, 11);                 // 역행(리로드 등) → 무시
+            int load3c = recDL.DebtRoomGold;
+            LoanService.AccrueDebtLoadAt(recDL, 15);                 // 2방 더 → +240 = 600
+            int load5  = recDL.DebtRoomGold;
+            int units5 = LoanService.DebtLoadUnits(recDL);           // 600/100 = 6
+            // ★청산하면 시계가 멈춘다 — 이게 신용도 사다리와 배타적으로 만드는 정의 그 자체다.
+            //   앵커는 그래도 전진해야 한다(빚 없이 걸은 방이 재대출 때 소급되면 안 된다).
+            recDL.Active = false; recDL.Principal = 0;
+            LoanService.AccrueDebtLoadAt(recDL, 24);                 // 빚 없이 9방
+            int loadAfterSettle = recDL.DebtRoomGold;                // 불변이어야 한다
+            int anchorAfter     = recDL.LastLoadFloor;               // 24로 전진해야 한다
+            bool tA3 = add3 == 360 && addDup == 0 && load3 == 360 && load3b == 360 && load3c == 360
+                       && load5 == 600 && units5 == 6 && loadAfterSettle == 600 && anchorAfter == 24;
+            W($"  assert debt-load: owed={owedL}(120) 3rooms={load3}(360) idempotent={load3b}(360) " +
+              $"역행무시={load3c}(360) +2rooms={load5}(600) units={units5}(6) | " +
+              $"청산후 불변={loadAfterSettle}(600) 앵커전진={anchorAfter}(24) -> {tA3}");
+            all &= tA3;
+
             // Restore a fresh owed-120 loan (0 rooms) for the sections below, which back-date LoanFloor and expect 120.
             LoanService.ResetFor(player);
             await LoanService.GrantLoanDirect(player, 100);

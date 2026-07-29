@@ -134,6 +134,16 @@ public sealed class DebtLoanRelic : RelicModel
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
     public int CreditPaid { get => _creditPaid; set { AssertMutable(); _creditPaid = value; } }
 
+    private int _debtRoomGold;
+    /// <summary>채무 적분 계측(골드×방). See <see cref="LoanRecord.DebtRoomGold"/>. ★청산해도 리셋 안 됨.</summary>
+    [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
+    public int DebtRoomGold { get => _debtRoomGold; set { AssertMutable(); _debtRoomGold = value; } }
+
+    private int _lastLoadFloor = -1;
+    /// <summary>적분을 마지막으로 적립한 층(멱등 앵커). See <see cref="LoanRecord.LastLoadFloor"/>.</summary>
+    [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]
+    public int LastLoadFloor { get => _lastLoadFloor; set { AssertMutable(); _lastLoadFloor = value; } }
+
     private bool _pendingSettleCleanup;
     /// <summary>강제 청산 뒷정리 대기(리로드로 유실되면 저주가 영영 남는다). See <see cref="LoanRecord.PendingSettleCleanup"/>.</summary>
     [SavedProperty(SerializationCondition.SaveIfNotTypeDefault)]

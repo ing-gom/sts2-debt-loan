@@ -116,10 +116,29 @@ internal sealed class LoanRecord
     /// 목돈 상환은 <see cref="DebtLoanConfig.LumpSumCreditCap"/> 까지만 신용도로 쳐주고, 그 위로는 <b>납부로만</b>
     /// 오른다.
     /// <para>★이유: 인출 3회 + 금액 상한 없음이라 유물 3개를 한 번에 지르면 갚을 돈이 900을 넘고, 그 한 번의
-    /// 청산으로 고정 사다리를 통째로 건너뛴다(실측: 825 빌리면 이자 포함 925 → 신용도 9). 사이클을 도는 쪽이
+    /// 청산으로 고정 사다리를 통째로 건너뛴다(825 빌리면 이자 포함 990 → 신용도 9). 사이클을 도는 쪽이
     /// 손해가 되어 "청산은 사이클의 마디"라는 설계와 정반대가 됐다. 초반 목돈은 인정하되(6까지) 그 뒤는 빚을
     /// 안고 굴린 시간 — 즉 납부 — 만 신용이 되게 한다.</para></summary>
     internal int CreditPaid;
+
+    /// <summary>★채무 적분 계측(보상 없음, 문턱 확정용 데이터 수집) — <c>Σ(방마다 지고 있던 빚)</c>, 골드×방 단위.
+    /// <para>신용도(<see cref="CreditPaid"/>)의 <b>거울</b>이다. 신용도는 "얼마나 갚았나"를, 이건 "얼마나 크게 ×
+    /// 얼마나 오래 졌나"를 잰다. 청산해도 <b>리셋되지 않는</b> 런 단위 트랙인 것도 같다.</para>
+    /// <para>★지표를 '최고 원금'에서 이걸로 바꾼 이유: 최고 원금은 <b>한 번에 크게 빌리면</b> 오르는데, 그건
+    /// 이미 신용도 루트의 최적 행동이라(<see cref="CreditPaid"/> 주석의 실측 참조) 두 사다리를 한 행동으로
+    /// 동시에 타게 된다 — 선택이 아니라 공짜 보너스가 된다. 적분은 <b>갚으면 시계가 멈추므로</b> 진짜로 배타적이다.
+    /// 게다가 최고 원금은 고수위선이라 어음(+100)으로 부풀리고 채무 조정(250 탕감)으로 되돌리는 파밍이 됐다.</para>
+    /// <para>★<b>방</b> 단위라 전투 스톨링으로는 1도 안 오른다 — 취업알선 파워형이 무한 골드 파밍으로 폐기된
+    /// 실패를 구조적으로 회피한다. 표시/문턱 단위는 100골드-방(<see cref="LoanService.DebtLoadUnits"/>).</para>
+    /// 유물에 영속화. 상세 설계 = DEBT_TRACK.md</summary>
+    internal int DebtRoomGold;
+
+    /// <summary>적분을 마지막으로 적립한 TotalFloor. ★<see cref="DebtRoomGold"/> 를 단순 <c>+=</c> 로 쌓으면
+    /// 방 이벤트 재발화·리로드에 이중 계상된다 — <see cref="LoanRecord.InterestPctApplied"/>/
+    /// <see cref="NodeInterestGold"/> 가 목표값 방식으로 짜인 것과 같은 이유. 층 델타로만 적립해 멱등을 만든다.
+    /// <para>★빚이 없는 동안에도 <b>앵커는 전진</b>시킨다. 안 그러면 청산 후 10방 걷고 재대출했을 때 그 10방이
+    /// 소급 계상된다.</para> 유물에 영속화.</summary>
+    internal int LastLoadFloor = -1;
 
     /// <summary>강제 청산(강제 징수·가압류)으로 계약이 닫혔는데 아직 뒷정리를 못 한 상태.
     /// <see cref="LoanService.ForceRepayPrincipal"/> 이 <b>동기</b> 메서드라 그 자리에서 await 를 못 하기 때문.</summary>
@@ -312,6 +331,8 @@ internal static class LoanService
             relic.ShopSpentThisVisit = rec.ShopSpentThisVisit;
             relic.PurgedThisVisit = rec.PurgedThisVisit;
             relic.CreditPaid = rec.CreditPaid;
+            relic.DebtRoomGold = rec.DebtRoomGold;
+            relic.LastLoadFloor = rec.LastLoadFloor;
             relic.PendingSettleCleanup = rec.PendingSettleCleanup;
             relic.PurchasedCardsCsv = string.Join(",", rec.PurchasedCards);
             relic.RefreshVars(DebtCardCountFor(player));   // borrowed/paid/cards into the relic's own DynamicVars (per-relic hover)
@@ -355,6 +376,8 @@ internal static class LoanService
         rec.ShopSpentThisVisit = relic.ShopSpentThisVisit;
         rec.PurgedThisVisit = relic.PurgedThisVisit;
         rec.CreditPaid = relic.CreditPaid;
+        rec.DebtRoomGold = relic.DebtRoomGold;
+        rec.LastLoadFloor = relic.LastLoadFloor;
         rec.PendingSettleCleanup = relic.PendingSettleCleanup;
         rec.PurchasedCards.Clear();
         foreach (var s in (relic.PurchasedCardsCsv ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)) rec.PurchasedCards.Add(s);
@@ -508,7 +531,9 @@ internal static class LoanService
         if (sp) await ApplyActiveLoan(player, borrowed, principal, totalPaid, loanFloor);
         else    DebtLoanNet.BroadcastLoan(player, borrowed, principal, totalPaid, loanFloor);
 
-        MainFile.Logger.Info($"[{MainFile.ModId}] loan +{amount}g (borrowed {borrowed}/{DebtLoanConfig.MaxLoan}, owed {principal}=+30%).");
+        // ★요율은 리터럴로 적지 말 것 — "=+30%" 로 박혀 있다가 요율이 20% 로 바뀐 뒤에도 남아 있었다.
+        MainFile.Logger.Info($"[{MainFile.ModId}] loan +{amount}g (borrowed {borrowed}/{DebtLoanConfig.MaxLoan}, " +
+                             $"owed {principal}, origination +{DebtLoanConfig.BorrowOriginationPct}% = {origination}g).");
 
         // (No merchant bark on the loan itself any more — the merchant now speaks when he HANDS you a payoff card,
         //  see the 정기 납부 loan-time grant + TryGrantDunningLetter, hinting another card comes next visit.)
@@ -539,6 +564,10 @@ internal static class LoanService
         rec.LoanFloor    = loanFloor;
         rec.Active       = true;
         rec.RelicGranted = true;
+        // ★채무 적분 앵커는 대출 시점의 층 — 그래야 '빚을 진 첫 방'부터 계상된다(안 잡으면 첫 방이 통째로 샌다).
+        // 첫 대출에서만 잡는다: 청산 뒤에도 AccrueDebtLoad 가 앵커만 계속 전진시키므로 재대출은 이미 최신이고,
+        // 톱업에서 다시 잡으면 그 사이 이고 있던 방이 유실된다. ★리셋 블록(위)에 넣으면 안 되는 이유이기도 하다.
+        if (rec.LastLoadFloor < 0) rec.LastLoadFloor = loanFloor;
         // One call = one DRAW (the first borrow and every top-up both land here). Counted on the APPLIED path, which
         // SP runs directly and co-op replays on BOTH peers via dl_sync — so the count converges without widening the
         // wire (adding a 5th broadcast arg would break version parity, see coop-guard).
@@ -948,7 +977,8 @@ internal static class LoanService
         int targetPct = Math.Min(capPct, perRoomPct * roomsCarried);     // node-interest % that should be baked by now
 
         // Node interest is charged as GOLD on the whole interest base (loan + card debt), capped two ways: by the
-        // node % AND by the absolute InterestGoldCap (total interest = origination + node never exceeds it). Tracked
+        // node % AND by the absolute InterestGoldCap (a NODE-interest ceiling — origination is NOT capped by it, see
+        // DebtLoanConfig.InterestGoldCap; subtracting origination here just shrinks the node room as it grows). Tracked
         // as absolute gold so growing card debt doesn't retroactively rescale already-accrued interest.
         int baseAmt = rec.Borrowed + rec.CardDebt;
         int origination = (int)Math.Round(rec.Borrowed * (DebtLoanConfig.BorrowOriginationPct / 100.0));
@@ -962,6 +992,47 @@ internal static class LoanService
         SyncToRelic(player);
     }
 
+    /// <summary>표시·문턱 단위 = <b>100골드-방</b>. 빚 400을 10방 이고 다니면 40.</summary>
+    internal static int DebtLoadUnits(LoanRecord? rec) => (rec?.DebtRoomGold ?? 0) / 100;
+
+    /// <summary>플레이어의 현재 채무 적분(100골드-방).</summary>
+    internal static int DebtLoadOf(Player? player) => DebtLoadUnits(For(player));
+
+    /// <summary>★채무 적분 적립 — 방을 지날 때마다 <c>지고 있던 빚 × 지난 방 수</c> 를 더한다(계측 전용, 보상 없음).
+    /// <para><b>멱등</b>: 층 델타로만 적립하므로 같은 방 재진입·이벤트 재발화·리로드에 이중 계상되지 않는다
+    /// (<see cref="AccrueNodeInterest"/> 가 목표값 방식인 것과 같은 이유).</para>
+    /// <para><b>빚이 없으면 시계는 멈추고 앵커만 전진</b>한다 — 청산 후 걸어 다닌 방이 재대출 때 소급되면 안 된다.
+    /// 이 "갚으면 멈춘다"가 신용도 사다리와 배타적으로 만드는 핵심이라, 지표 정의 그 자체다.</para>
+    /// 순수 레코드 산술 + 층은 양 피어가 동일하게 읽는 런 값 → co-op 안전. 상세 = DEBT_TRACK.md</summary>
+    /// <summary>적분 산술 그 자체 — 레코드와 <b>층</b>만 받는다. 더한 양을 돌려준다(0 = 적립 없음).
+    /// <para>★층을 인자로 가른 이유: 실 엔진의 <c>TotalFloor</c> 는 밖에서 앞으로 밀 수 없어(하네스는 층 1에
+    /// 앉아 있다) 여러 방을 지나는 상황을 재현할 방법이 없다. <b>층은 이 함수의 진짜 입력</b>이지 테스트 전용
+    /// 노브가 아니다 — 제거한 <c>principalShareOverride</c> 처럼 본문이 무시하는 인자를 다시 만들지 않는다.</para></summary>
+    internal static int AccrueDebtLoadAt(LoanRecord rec, int floor)
+    {
+        if (rec.LastLoadFloor < 0) { rec.LastLoadFloor = floor; return 0; }   // 첫 관측 = 앵커만 잡는다
+        int rooms = floor - rec.LastLoadFloor;
+        if (rooms <= 0) return 0;                                             // 재진입/역행 → 무시(멱등)
+        rec.LastLoadFloor = floor;
+        if (!rec.Active || rec.Principal <= 0) return 0;                      // 빚 없음 = 시계 정지(앵커는 이미 전진)
+        int add = rec.Principal * rooms;
+        rec.DebtRoomGold += add;
+        return add;
+    }
+
+    internal static void AccrueDebtLoad(Player? player)
+    {
+        var rec = For(player);
+        if (rec == null || player?.RunState == null) return;
+        int floor = player.RunState.TotalFloor;
+        int add = AccrueDebtLoadAt(rec, floor);
+        if (add <= 0) return;
+        SyncToRelic(player);
+        // 계측 로그: 문턱(제안 50/120/250)을 실플 분포로 확정하기 위한 유일한 관측 수단.
+        MainFile.Logger.Info($"[{MainFile.ModId}] debt-load +{add} (owed {rec.Principal} × room(s)) " +
+                             $"→ {rec.DebtRoomGold} gold-rooms = {DebtLoadUnits(rec)} units [floor {floor}]");
+    }
+
     private static void OnRoomEntered()
     {
         try
@@ -970,7 +1041,8 @@ internal static class LoanService
             if (run?.Players == null) return;
             // Every room: refresh each ledger's badge (rooms-until-next-tier) so it visibly counts DOWN as you
             // walk the map — TotalFloor changed, so the live DisplayAmount must be re-pushed to the widget.
-            foreach (var p in run.Players) { AccrueNodeInterest(p); RefreshRelicDisplay(p); }
+            // ★AccrueDebtLoad 는 AccrueNodeInterest 뒤에 — 그 방의 이자까지 얹힌 '지금 지고 있는 빚'을 재야 한다.
+            foreach (var p in run.Players) { AccrueNodeInterest(p); AccrueDebtLoad(p); RefreshRelicDisplay(p); }
             // 가압류로 닫힌 계약의 뒷정리(강제 징수 카드는 자기 자리에서 즉시 처리한다).
             foreach (var p in run.Players) TaskHelper.RunSafely(FinishForcedSettle(p));
             if (run.CurrentRoom?.RoomType != RoomType.Shop) return;

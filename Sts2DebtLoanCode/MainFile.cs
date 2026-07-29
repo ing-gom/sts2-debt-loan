@@ -21,7 +21,8 @@ public class MainFile
     private const string KeyShopCredit = "shopCreditLimit";
     private const string KeyLoanDraws = "maxLoanDraws";
     private const string KeyGarnish = "garnishMaxPct";
-    private const string KeyInterestCap = "interestGoldCap";
+    // ⚠️KeyInterestCap("interestGoldCap") 제거 — 슬라이더를 없앴다(RegisterConfig 의 주석 참조).
+    // 되살릴 거면 키 문자열을 그대로 쓸 것: 이미 저장된 유저 설정이 이 키로 남아 있다.
 
 
     public static readonly MegaCrit.Sts2.Core.Logging.Logger Logger = ModBootstrap.CreateLogger(ModId);
@@ -84,11 +85,11 @@ public class MainFile
                 .Description("Once your loan's interest hits its MAXIMUM, the creditor withholds this % of your gold income and applies it to your debt. No garnishment before max interest. 0 disables it.");
             Loc(b, "이자 최대 시 원천징수 (%)", "대출 이자가 최대에 도달하면 채권자가 획득 골드에서 이 비율만큼 떼어 빚 상환에 충당합니다. 이자 최대 전에는 원천징수가 없습니다. 0이면 끔.");
 
-            b.Slider(KeyInterestCap, "Max total interest (gold)", defaultValue: 100.0,
-                    onChanged: v => DebtLoanConfig.InterestGoldCap = (int)v)
-                .Range(50f, 600f, 25f, format: "F0")
-                .Description("Absolute ceiling on the total interest a loan can accrue (origination + node, across the loan and card debt). Interest never grows past this.");
-            Loc(b, "최대 총 이자 (골드)", "한 대출이 쌓을 수 있는 총 이자(origination + node, 대출+카드 빚 전체)의 절대 상한. 이자는 이 값을 넘지 않습니다.");
+            // ⚠️interestGoldCap 슬라이더는 제거했다. 설명이 "총 이자(origination + node)의 절대 상한"이었는데
+            // GrantLoan 은 origination 을 캡에 걸지 않는다 — 500골드 넘게 빌리면 origination 만으로 캡을 넘어
+            // (825 → 165) 슬라이더가 **자기 설명대로 동작하지 않는 구간**이 있었다. 캡의 실제 의미는
+            // '노드 이자 상한'이므로(DebtLoanConfig.InterestGoldCap 참조) 조절값으로 노출하지 않고 상수로 둔다.
+            // 되살릴 거면 라벨을 '노드 이자 상한'으로 바꾸고 origination 과의 관계를 설명에 명시할 것.
 
             b.Register();
 
@@ -96,7 +97,6 @@ public class MainFile
             DebtLoanConfig.ShopCreditLimit = (int)ModConfigBridge.GetValue<double>(ModId, KeyShopCredit, 120.0);
             DebtLoanConfig.MaxLoanDraws = (int)ModConfigBridge.GetValue<double>(ModId, KeyLoanDraws, 3.0);
             DebtLoanConfig.GarnishMaxPct = (int)ModConfigBridge.GetValue<double>(ModId, KeyGarnish, 40.0);
-            DebtLoanConfig.InterestGoldCap = (int)ModConfigBridge.GetValue<double>(ModId, KeyInterestCap, 100.0);
 
             Logger.Info($"[{ModId}] config: maxLoan {DebtLoanConfig.MaxLoan}g, draws/loan {DebtLoanConfig.MaxLoanDraws}, shop credit {DebtLoanConfig.ShopCreditLimit}g/visit, garnish cap {DebtLoanConfig.GarnishMaxPct}%.");
         }

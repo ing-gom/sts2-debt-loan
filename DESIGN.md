@@ -180,9 +180,16 @@
 | 키 | 의미 | 기본 |
 |---|---|---|
 | `maxLoan` | 런당 총 대출 상한(골드), 0=무제한 | 0 |
-| `maxLoanAct` | 대출 허용 최대 막 | Act 1 |
-| `shopCreditLimit` | 상점 방문당 외상(카드 구매) 한도 | 120 |
 | `maxLoanDraws` | 한 대출당 골드 인출 횟수 (0=무제한) | 3 |
+| `shopCreditLimit` | 상점 방문당 외상(카드 구매) 한도 | 120 |
+| `garnishMaxPct` | 이자 최대 시 골드 수입 원천징수 % (0=끔) | 40 |
+
+**슬라이더는 이 4개가 전부다.** 부팅 로그 `RitsuLib settings integration active (4 entries: …)` 가 실질 게이트
+(등록이 throw 하면 catch 로 조용히 기본값이 된다).
+- ⚠️`maxLoanAct`(막 제한)는 v0.14 에서 폐지됐다 — 표에 오래 남아 있었다. `ActAllowsLoan` 은 항상 true.
+- ⚠️`interestGoldCap` 슬라이더는 **제거**했다. 설명이 "총 이자(origination + node)의 절대 상한"이었는데
+  `GrantLoan` 은 origination 을 캡에 걸지 않아, 500골드 넘게 빌리면 **자기 설명대로 동작하지 않았다**
+  (825 → origination 만으로 165). 캡의 실제 의미는 **노드 이자 상한**이라 상수로 두고 노출하지 않는다.
 
 `ModConfig` 또는 `RitsuLib` 중 어느 것으로도 조절(둘 다 선택; 없으면 기본값). 등록 전 `GetValue` 금지
 (타입 기본값 반환), 신 API는 리플렉션+폴백으로 first-wins 버전 스큐 대비.

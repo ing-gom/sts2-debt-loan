@@ -63,9 +63,17 @@ internal static class DebtLoanConfig
     /// <summary>Interest added per ROOM you carry the debt, on the borrowed amount, on top of origination.</summary>
     internal static int NodeInterestPct = 5;
 
-    /// <summary>Absolute ceiling (gold) on the TOTAL interest a loan can ever accrue (origination + node, across the
-    /// borrowed loan AND card/shop debt). Interest never exceeds this no matter how much card debt piles onto the
-    /// base — so it can't grow without bound. Spec: 100.</summary>
+    /// <summary>★<b>노드 이자</b>(방마다 붙는 이자)의 절대 상한(골드). 대출 시 선취되는 origination 은
+    /// <b>여기에 걸리지 않는다</b> — 그건 빌리는 순간 확정되는 수수료지 시간이 쌓는 이자가 아니다.
+    /// <para>⚠️예전 서술은 "총 이자(origination + node)의 절대 상한"이었고 슬라이더 설명도 그랬는데,
+    /// <see cref="LoanService.GrantLoan"/> 은 origination 을 캡에 걸지 않는다 → 500골드 넘게 빌리면
+    /// origination 만으로 캡을 넘는다(825 → 165). <b>코드가 아니라 서술이 틀렸다</b>. 이 값을 조절값으로
+    /// 노출하던 슬라이더는 제거했다(MainFile.RegisterConfig 참조).</para>
+    /// <para>실효 노드 상한 = <c>max(0, InterestGoldCap − origination)</c>(<see cref="LoanService.AccrueNodeInterest"/>).
+    /// origination 이 클수록 노드 여유가 줄어 <b>크게 빌리면 방당 이자가 0에 수렴</b>한다 — 500 이상은 노드
+    /// 이자가 아예 안 붙는다. 채무 트랙(DEBT_TRACK.md)이 이 특성을 증폭하므로 캘리브레이션에서 감안할 것.
+    /// 순수 노드 상한(= origination 을 빼지 않음)으로 바꾸면 중형 대출의 이자가 오른다 — 밸런스 변경이다.</para>
+    /// Spec: 100.</summary>
     internal static int InterestGoldCap = 100;
     /// <summary>How many rooms of <see cref="NodeInterestPct"/> accrue before it caps. 8 × 5% = +40% on top of
     /// the 20% origination = a 60% ceiling (the SP node cap; MP raises it, see below).</summary>
